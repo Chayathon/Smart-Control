@@ -144,7 +144,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
       List<dynamic> zones = result;
 
-      // วนลูปเพื่อค้นหาและประมวลผล
       for (var zone in zones) {
         if (zone['data']['is_playing'] == true) {
           api.post(
@@ -173,9 +172,6 @@ class _HomeScreenState extends State<HomeScreen> {
           _zoneNumber = '';
           return;
         }
-        // if (zone['status'] == 'active') {
-        //   print('Found active zone: ${zone['zone']}');
-        // }
       }
     } catch (error) {
       print('Error: $error');

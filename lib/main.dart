@@ -16,7 +16,8 @@ class MyApp extends StatelessWidget {
       title: 'GetX Navigation Demo',
       debugShowCheckedModeBanner: false,
       getPages: AppPages.pages,
-      initialRoute: AppRoutes.home,
+      theme: ThemeData(fontFamily: 'Kanit'),
+      initialRoute: AppRoutes.splash,
     );
   }
 }
