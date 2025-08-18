@@ -201,7 +201,7 @@ class _SongUploadScreenState extends State<SongUploadScreen> {
           style: TextStyle(fontWeight: FontWeight.w500, fontSize: 18),
         ),
         backgroundColor: Colors.white,
-        elevation: 2,
+        elevation: 1,
       ),
       backgroundColor: Colors.white,
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,

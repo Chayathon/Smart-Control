@@ -42,6 +42,17 @@ class _HomeScreenState extends State<HomeScreen> {
     connectWebSocket();
   }
 
+  int _extractVolume(String text) {
+    if (text.trim().toUpperCase() == "ALL ZONE VOLUME 0") {
+      return 0;
+    }
+    final match = RegExp(r'(\d+)$').firstMatch(text);
+    if (match != null) {
+      return int.tryParse(match.group(1)!) ?? 0;
+    }
+    return 0;
+  }
+
   Future<void> getStatusZone() async {
     try {
       final api = ApiService.public();
@@ -51,9 +62,12 @@ class _HomeScreenState extends State<HomeScreen> {
       );
       setState(() {
         _is_playing = result['is_playing'];
+
         if (_zoneType == "volume") {
-          _displayText = "${result["volume"]}";
+          final vol = result["volume"] ?? 0;
+          _displayText = "ZONE $_zoneNumber VOLUME $vol";
         }
+
         if (_zoneType == "power") {
           setStream();
         }
@@ -73,6 +87,8 @@ class _HomeScreenState extends State<HomeScreen> {
           "payload": {"set_stream": !_is_playing},
         },
       );
+
+      _displayText = _is_playing ? "OFF AIR" : "ON AIR";
 
       toastification.show(
         context: context,
@@ -96,12 +112,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void setVolume() async {
     try {
+      final volumeValue = _extractVolume(_displayText); // ส่งเฉพาะตัวเลข
       final api = ApiService.public();
       await api.post(
         "/mqtt/publish",
         data: {
           "topic": "mass-radio/zone$_zoneNumber/command",
-          "payload": {"set_volume": _displayText},
+          "payload": {"set_volume": volumeValue},
         },
       );
 
@@ -120,6 +137,51 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  void getAllStatusZone() async {
+    try {
+      final api = ApiService.public();
+      final result = await api.get('/devices/status');
+
+      List<dynamic> zones = result;
+
+      // วนลูปเพื่อค้นหาและประมวลผล
+      for (var zone in zones) {
+        if (zone['data']['is_playing'] == true) {
+          api.post(
+            "/mqtt/publish",
+            data: {
+              "topic": "mass-radio/all/command",
+              "payload": {"set_stream": false},
+            },
+          );
+
+          _displayText = '0';
+          _zoneType = '';
+          _zoneNumber = '';
+          return;
+        } else {
+          api.post(
+            "/mqtt/publish",
+            data: {
+              "topic": "mass-radio/all/command",
+              "payload": {"set_stream": true},
+            },
+          );
+
+          _displayText = '0';
+          _zoneType = '';
+          _zoneNumber = '';
+          return;
+        }
+        // if (zone['status'] == 'active') {
+        //   print('Found active zone: ${zone['zone']}');
+        // }
+      }
+    } catch (error) {
+      print('Error: $error');
+    }
+  }
+
   void getAllZones() async {
     try {
       final api = ApiService.public();
@@ -131,7 +193,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void connectWebSocket() {
-    channel = WebSocketChannel.connect(Uri.parse('ws://localhost:8080'));
+    channel = WebSocketChannel.connect(Uri.parse('ws://192.168.1.83:8080'));
     channel.stream.listen((message) {
       final data = jsonDecode(message);
       if (data["zone"] != null) {
@@ -215,7 +277,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final whiteBg = Colors.grey[50]!;
     final cardBg = Colors.white;
     final accent = Colors.blue[700]!;
-    final lampOn = Colors.red[600]!;
+    final lampOn = Colors.green[500]!;
     final lampOff = Colors.grey[300]!;
     final textColor = Colors.grey[900]!;
 
@@ -245,20 +307,13 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: Row(
                       children: [
                         const SizedBox(width: 24),
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          child: Row(
-                            children: [
-                              Text(
-                                'Smart Control',
-                                style: TextStyle(
-                                  color: textColor,
-                                  fontSize: 26,
-                                  fontWeight: FontWeight.w600,
-                                  letterSpacing: 0.5,
-                                ),
-                              ),
-                            ],
+                        Text(
+                          'Smart Control',
+                          style: TextStyle(
+                            color: textColor,
+                            fontSize: 26,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 0.5,
                           ),
                         ),
                         const Spacer(),
@@ -275,25 +330,6 @@ class _HomeScreenState extends State<HomeScreen> {
                                 setState(() => _isSidebarOpen = true),
                           ),
                         ),
-                        // Row(
-                        //   children: [
-                        //     _buildStatusBadge(
-                        //       Icons.wifi,
-                        //       "Connected",
-                        //       Colors.green[600]!,
-                        //       fontSize: 16,
-                        //       iconSize: 22,
-                        //     ),
-                        //     const SizedBox(width: 20),
-                        //     _buildStatusBadge(
-                        //       Icons.person_outline,
-                        //       _username,
-                        //       accent,
-                        //       fontSize: 16,
-                        //       iconSize: 22,
-                        //     ),
-                        //   ],
-                        // ),
                       ],
                     ),
                   ),
@@ -413,12 +449,12 @@ class _HomeScreenState extends State<HomeScreen> {
                                     crossAxisCount: 5,
                                     crossAxisSpacing: 16,
                                     mainAxisSpacing: 16,
-                                    childAspectRatio: 0.9,
+                                    childAspectRatio: 1.6,
                                   ),
                               itemBuilder: (context, index) {
-                                final isOn = zones[index];
                                 return LampTile(
-                                  isOn: isOn["status"]["stream_enabled"],
+                                  isOn:
+                                      zones[index]["status"]["stream_enabled"],
                                   lampOnColor: lampOn,
                                   lampOffColor: lampOff,
                                   zone: "โซน ${index + 1}",
@@ -435,7 +471,6 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ),
-
           if (_isSidebarOpen)
             GestureDetector(
               onTap: () => setState(() => _isSidebarOpen = false),
@@ -450,15 +485,15 @@ class _HomeScreenState extends State<HomeScreen> {
             duration: const Duration(milliseconds: 500),
             top: 0,
             bottom: 0,
-
-            right: _isSidebarOpen ? 0 : -260,
+            right: _isSidebarOpen ? 0 : -270,
             child: Container(
-              width: 260,
-              color: Colors.blue[700],
+              width: 270,
+              color: Colors.blue[900],
               padding: const EdgeInsets.symmetric(vertical: 50, horizontal: 16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  Spacer(),
                   const Text(
                     "เมนูหลัก",
                     style: TextStyle(
@@ -469,12 +504,13 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   const SizedBox(height: 30),
                   _buildMenuItem(Icons.dashboard, "หน้าหลัก", () {}),
-                  _buildMenuItem(Icons.settings, "ตั้งค่า", () {
+                  Divider(),
+                  _buildMenuItem(Icons.music_note, "จัดการเพลง", () {
                     Get.toNamed(AppRoutes.song_upload);
                   }),
-                  _buildMenuItem(Icons.notifications, "การแจ้งเตือน", () {}),
-                  const Spacer(),
+                  Divider(),
                   _buildMenuItem(Icons.logout, "ออกจากระบบ", () {}),
+                  Spacer(),
                 ],
               ),
             ),
@@ -515,10 +551,9 @@ class _HomeScreenState extends State<HomeScreen> {
               textAlign: TextAlign.right,
               style: TextStyle(
                 color: textColor,
-                fontSize: 32,
+                fontSize: 28,
                 fontFamily: 'Courier',
                 fontWeight: FontWeight.w600,
-                letterSpacing: 1.2,
               ),
             ),
           ),
@@ -557,18 +592,47 @@ class _HomeScreenState extends State<HomeScreen> {
       if (value == 'clear') {
         _displayText = '0';
         _zoneType = '';
+        _zoneNumber = '';
         return;
       }
 
       if (_zoneType == 'volume') {
-        if (int.tryParse(value) != null) {
-          final newValue = _displayText == '0' ? value : _displayText + value;
+        final isAllZone = _displayText.toUpperCase().startsWith("ALL ZONE");
 
-          final numValue = int.parse(newValue);
-          if (numValue > 21) {
-            print('⚠️ ไม่สามารถตั้งค่าเสียงเกิน 21 ได้');
-            return;
+        if (value == 'add') {
+          final current = _extractVolume(_displayText);
+          if (current < 21) {
+            if (isAllZone) {
+              _displayText = "ALL ZONE VOLUME ${current + 1}";
+            } else {
+              _displayText = "ZONE $_zoneNumber VOLUME ${current + 1}";
+            }
           }
+          return;
+        }
+
+        if (value == 'remove') {
+          final current = _extractVolume(_displayText);
+          if (current > 0) {
+            if (isAllZone) {
+              _displayText = "ALL ZONE VOLUME ${current - 1}";
+            } else {
+              _displayText = "ZONE $_zoneNumber VOLUME ${current - 1}";
+            }
+          }
+          return;
+        }
+
+        if (int.tryParse(value) != null) {
+          final numValue = int.parse(value);
+          if (numValue <= 21) {
+            if (isAllZone) {
+              _displayText = "ALL ZONE VOLUME $numValue";
+            } else {
+              _displayText = "ZONE $_zoneNumber VOLUME $numValue";
+            }
+          }
+          return;
         }
       }
 
@@ -576,51 +640,12 @@ class _HomeScreenState extends State<HomeScreen> {
         return;
       }
 
-      if (value == 'add') {
-        final current = int.parse(_displayText);
-        if (_zoneType == 'volume' && current >= 21) {
-          print('⚠️ ไม่สามารถตั้งค่าเสียงเกิน 21 ได้');
-          return;
-        }
-        _displayText = (current + 1).toString();
-        return;
-      }
-
-      if (value == 'remove') {
-        final current = int.parse(_displayText);
-        if (_zoneType == 'volume' && current <= 1) {
-          print('⚠️ ไม่สามารถตั้งค่าเสียงต่ำกว่า 1 ได้');
-          return;
-        }
-        _displayText = (current - 1).toString();
-        return;
-      }
-
       if (value == 'volume') {
-        final zoneValue = int.tryParse(_displayText);
-        if (zoneValue == null || zoneValue <= 0 || zoneValue > zones.length) {
-          toastification.show(
-            context: context,
-            type:
-                ToastificationType.warning, // success | info | warning | error
-            style: ToastificationStyle.minimal,
-            title: const Text('คำเตือน'),
-            description: Text('กรุณาเลือกโซนที่ถูกต้อง (1-${zones.length})'),
-            autoCloseDuration: const Duration(seconds: 3),
-            alignment: Alignment.topRight,
-            showProgressBar: true,
-          );
-
+        if (_displayText == "ALL ZONE") {
+          _zoneType = "volume";
+          _displayText = "ALL ZONE VOLUME 0";
           return;
         }
-        _zoneNumber = _displayText;
-        _zoneType = 'volume';
-        getStatusZone();
-        return;
-      }
-
-      if (value == "power") {
-        _zoneType = "power";
         final zoneValue = int.tryParse(_displayText);
         if (zoneValue == null || zoneValue <= 0 || zoneValue > zones.length) {
           toastification.show(
@@ -636,26 +661,77 @@ class _HomeScreenState extends State<HomeScreen> {
           return;
         }
         _zoneNumber = _displayText;
+        _zoneType = 'volume';
         getStatusZone();
-        _displayText = "0";
+        return;
+      }
+
+      if (value == "power") {
+        _zoneType = "power";
+
+        final isAllZone = _displayText.toUpperCase().startsWith("ALL ZONE");
+        if (isAllZone) {
+          getAllStatusZone();
+
+          return;
+        }
+
+        final zoneValue = int.tryParse(_displayText);
+        if (zoneValue == null || zoneValue <= 0 || zoneValue > zones.length) {
+          toastification.show(
+            context: context,
+            type: ToastificationType.warning,
+            style: ToastificationStyle.minimal,
+            title: const Text('คำเตือน'),
+            description: Text('กรุณาเลือกโซนที่ถูกต้อง (1-${zones.length})'),
+            autoCloseDuration: const Duration(seconds: 3),
+            alignment: Alignment.topRight,
+            showProgressBar: true,
+          );
+          return;
+        }
+
+        _zoneNumber = _displayText;
+        getStatusZone();
+
         return;
       }
 
       if (value == "enter") {
         if (_zoneType == "volume") {
-          setState(() {
+          final isAllZone = _displayText.toUpperCase().startsWith("ALL ZONE");
+          if (isAllZone) {
+            final vol = _extractVolume(_displayText);
+
+            final api = ApiService.public();
+            api.post(
+              "/mqtt/publish",
+              data: {
+                "topic": "mass-radio/all/command",
+                "payload": {"set_volume": vol},
+              },
+            );
+
+            _displayText = '0';
+            _zoneType = '';
+            _zoneNumber = '';
+            return;
+          } else {
             setVolume();
-            _zoneType = "";
-            _displayText = "0";
-          });
+          }
+          _zoneType = "";
+          _displayText = _is_playing ? "ON AIR" : "OFF AIR";
         }
         return;
       }
 
       if (_displayText == '0') {
         _displayText = value;
-      } else if (value == 'enter') {
-        _displayText = '0';
+        if (_displayText == "0") {
+          _displayText = "ALL ZONE";
+        }
+      } else if (_displayText == "ON AIR" || _displayText == "OFF AIR") {
+        _displayText = value;
       } else {
         _displayText += value;
       }

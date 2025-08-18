@@ -6,7 +6,6 @@ class ActionIconButton extends StatelessWidget {
   final VoidCallback onPressed;
   final Color color;
 
-  /// optional
   final double size;
   final EdgeInsets padding;
   final Color? backgroundColor;
