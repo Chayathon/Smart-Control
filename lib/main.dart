@@ -17,7 +17,7 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       getPages: AppPages.pages,
       theme: ThemeData(fontFamily: 'Kanit'),
-      initialRoute: AppRoutes.splash,
+      initialRoute: AppRoutes.home,
     );
   }
 }

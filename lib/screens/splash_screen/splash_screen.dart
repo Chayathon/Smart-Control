@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:lottie/lottie.dart';
 import 'package:animated_text_kit/animated_text_kit.dart';
+import 'package:smart_control/core/color/app_colors.dart';
 import 'package:smart_control/routes/app_routes.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -19,16 +20,14 @@ class _SplashScreenState extends State<SplashScreen>
   void initState() {
     super.initState();
 
-    // 🔹 Animation Controller จะวิ่งจาก 0 → 1 ภายใน 5 วิ
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 5),
+      duration: const Duration(seconds: 2),
     )..forward();
 
-    // 🔹 ไปหน้า Home เมื่อ animation จบ
     _controller.addStatusListener((status) {
       if (status == AnimationStatus.completed) {
-        Get.offAllNamed(AppRoutes.home);
+        Get.offAllNamed(AppRoutes.login);
       }
     });
   }
@@ -47,29 +46,24 @@ class _SplashScreenState extends State<SplashScreen>
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // 🔹 Lottie Logo
             Lottie.asset(
               'assets/lottie/audio.json',
-              width: 500,
-              height: 500,
+              width: 600,
+              height: 600,
               repeat: true,
             ),
 
-            const SizedBox(height: 20),
-
-            // 🔹 App Name
             const Text(
               "Smart Control",
               style: TextStyle(
                 fontSize: 28,
                 fontWeight: FontWeight.bold,
-                color: Colors.blueAccent,
+                color: AppColors.primary,
               ),
             ),
 
             const SizedBox(height: 10),
 
-            // 🔹 Typewriter Effect
             AnimatedTextKit(
               animatedTexts: [
                 TypewriterAnimatedText(
@@ -78,7 +72,7 @@ class _SplashScreenState extends State<SplashScreen>
                     fontSize: 16,
                     color: Colors.black87,
                   ),
-                  speed: const Duration(milliseconds: 100),
+                  speed: const Duration(milliseconds: 50),
                 ),
                 TypewriterAnimatedText(
                   "ควบคุมทุกสิ่งได้ง่ายดาย แค่ปลายนิ้วสัมผัส",
@@ -86,7 +80,7 @@ class _SplashScreenState extends State<SplashScreen>
                     fontSize: 16,
                     color: Colors.black54,
                   ),
-                  speed: const Duration(milliseconds: 100),
+                  speed: const Duration(milliseconds: 50),
                 ),
               ],
               totalRepeatCount: 1,
@@ -97,7 +91,6 @@ class _SplashScreenState extends State<SplashScreen>
 
             const SizedBox(height: 30),
 
-            // 🔹 Smooth Progress Bar + Percent
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 40),
               child: AnimatedBuilder(
@@ -111,7 +104,7 @@ class _SplashScreenState extends State<SplashScreen>
                         minHeight: 4,
                         borderRadius: BorderRadius.circular(8),
                         backgroundColor: Colors.grey[200],
-                        color: Colors.blueAccent,
+                        color: AppColors.primary,
                       ),
                       const SizedBox(height: 8),
                       Text(
@@ -119,7 +112,7 @@ class _SplashScreenState extends State<SplashScreen>
                         style: const TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w500,
-                          color: Colors.blueAccent,
+                          color: AppColors.primary,
                         ),
                       ),
                     ],

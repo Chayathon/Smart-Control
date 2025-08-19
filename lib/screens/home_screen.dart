@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
+import 'package:smart_control/core/alert/app_snackbar.dart';
 import 'package:smart_control/routes/app_routes.dart';
 import 'package:toastification/toastification.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
@@ -90,20 +91,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
       _displayText = _is_playing ? "OFF AIR" : "ON AIR";
 
-      toastification.show(
-        context: context,
-        type: ToastificationType.success,
-        style: ToastificationStyle.minimal,
-        title: const Text('สำเร็จ'),
-        description: Text(
-          !_is_playing
-              ? 'เปิดการใช้งานโซน $_zoneNumber'
-              : 'ปิดการใช้งานโซน $_zoneNumber',
-        ),
-        autoCloseDuration: const Duration(seconds: 3),
-        alignment: Alignment.topRight,
-        showProgressBar: true,
+      AppSnackbar.success(
+        "แจ้งเตือน",
+        !_is_playing
+            ? 'เปิดการใช้งานโซน $_zoneNumber'
+            : 'ปิดการใช้งานโซน $_zoneNumber',
       );
+
       setState(() => _zoneType = "");
     } catch (error) {
       print(error);
@@ -112,7 +106,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void setVolume() async {
     try {
-      final volumeValue = _extractVolume(_displayText); // ส่งเฉพาะตัวเลข
+      final volumeValue = _extractVolume(_displayText);
       final api = ApiService.public();
       await api.post(
         "/mqtt/publish",
@@ -122,16 +116,7 @@ class _HomeScreenState extends State<HomeScreen> {
         },
       );
 
-      toastification.show(
-        context: context,
-        type: ToastificationType.success,
-        style: ToastificationStyle.minimal,
-        title: const Text('สำเร็จ'),
-        description: const Text('ปรับเสียงสำเร็จ'),
-        autoCloseDuration: const Duration(seconds: 3),
-        alignment: Alignment.topRight,
-        showProgressBar: true,
-      );
+      AppSnackbar.success("แจ้งเตือน", "ปรับเสียงสำเร็จ");
     } catch (error) {
       print(error);
     }
@@ -394,7 +379,19 @@ class _HomeScreenState extends State<HomeScreen> {
                                   inactiveColor: Colors.grey[700]!,
                                   onTap: _toggleLive,
                                 ),
-                                const SizedBox(width: 32),
+                                const SizedBox(width: 24),
+                                _buildCircularToggleButton(
+                                  isActive: true,
+                                  activeIcon: Icons.pause,
+                                  inactiveIcon: Icons.play_arrow,
+                                  activeLabel: "หยุดเล่น",
+                                  inactiveLabel: "เล่นต่อ",
+                                  activeColor: Colors.red[600]!,
+                                  inactiveColor: Colors.green[600]!,
+                                  onTap: _toggleLive,
+                                ),
+
+                                const SizedBox(width: 24),
                                 Expanded(
                                   child: Container(
                                     padding: const EdgeInsets.symmetric(
