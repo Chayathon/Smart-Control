@@ -4,6 +4,7 @@ import 'package:lottie/lottie.dart';
 import 'package:animated_text_kit/animated_text_kit.dart';
 import 'package:smart_control/core/color/app_colors.dart';
 import 'package:smart_control/routes/app_routes.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -15,6 +16,7 @@ class SplashScreen extends StatefulWidget {
 class _SplashScreenState extends State<SplashScreen>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
+  final storage = const FlutterSecureStorage();
 
   @override
   void initState() {
@@ -25,9 +27,15 @@ class _SplashScreenState extends State<SplashScreen>
       duration: const Duration(seconds: 2),
     )..forward();
 
-    _controller.addStatusListener((status) {
+    _controller.addStatusListener((status) async {
       if (status == AnimationStatus.completed) {
-        Get.offAllNamed(AppRoutes.login);
+        final accessToken = await storage.read(key: "accessToken");
+
+        if (accessToken != null && accessToken.isNotEmpty) {
+          Get.offAllNamed(AppRoutes.home);
+        } else {
+          Get.offAllNamed(AppRoutes.login);
+        }
       }
     });
   }
@@ -52,7 +60,6 @@ class _SplashScreenState extends State<SplashScreen>
               height: 600,
               repeat: true,
             ),
-
             const Text(
               "Smart Control",
               style: TextStyle(
@@ -61,9 +68,7 @@ class _SplashScreenState extends State<SplashScreen>
                 color: AppColors.primary,
               ),
             ),
-
             const SizedBox(height: 10),
-
             AnimatedTextKit(
               animatedTexts: [
                 TypewriterAnimatedText(
@@ -88,9 +93,7 @@ class _SplashScreenState extends State<SplashScreen>
               displayFullTextOnTap: true,
               stopPauseOnTap: true,
             ),
-
             const SizedBox(height: 30),
-
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 40),
               child: AnimatedBuilder(

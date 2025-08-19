@@ -4,6 +4,7 @@ import 'package:lottie/lottie.dart';
 import 'package:smart_control/core/alert/app_snackbar.dart';
 import 'package:smart_control/core/color/app_colors.dart';
 import 'package:smart_control/core/network/api_service.dart';
+import 'package:smart_control/core/storage/secure_storage_service.dart';
 import 'package:smart_control/routes/app_routes.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -40,7 +41,10 @@ class _LoginScreenState extends State<LoginScreen> {
       });
 
       if (result['result']["message"] == "เข้าสู่ระบบสำเร็จ") {
-        print(result);
+        await SecureStorageService.saveToken(
+          "accessToken",
+          result['result']['accessToken'],
+        );
         AppSnackbar.success("แจ้งเตือน", "เข้าสู่ระบบสำเร็จ");
         Get.offAllNamed(AppRoutes.home);
         return;
