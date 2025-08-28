@@ -26,7 +26,7 @@ class _LoginScreenState extends State<LoginScreen> {
     });
     if (_adminController.text.isNotEmpty &&
         _passwordController.text.isNotEmpty) {
-      final api = ApiService.public();
+      final api = await ApiService.public();
 
       final result = await api.post(
         "/auth/login",
@@ -42,8 +42,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (result['result']["message"] == "เข้าสู่ระบบสำเร็จ") {
         await SecureStorageService.saveToken(
-          "accessToken",
-          result['result']['accessToken'],
+          "data",
+          result['result']['username'],
         );
         AppSnackbar.success("แจ้งเตือน", "เข้าสู่ระบบสำเร็จ");
         Get.offAllNamed(AppRoutes.home);

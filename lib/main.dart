@@ -4,6 +4,7 @@ import 'package:smart_control/routes/app_pages.dart';
 import 'package:smart_control/routes/app_routes.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(const MyApp());
 }
 

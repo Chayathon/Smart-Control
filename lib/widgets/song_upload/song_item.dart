@@ -4,14 +4,8 @@ import 'song_model.dart';
 class SongItem extends StatelessWidget {
   final Song song;
   final VoidCallback onPlay;
-  final VoidCallback onDelete;
 
-  const SongItem({
-    super.key,
-    required this.song,
-    required this.onPlay,
-    required this.onDelete,
-  });
+  const SongItem({super.key, required this.song, required this.onPlay});
 
   @override
   Widget build(BuildContext context) {
@@ -48,10 +42,6 @@ class SongItem extends StatelessWidget {
           subtitle: Text(
             "${song.url}",
             style: TextStyle(fontSize: 12, color: Colors.grey[500]),
-          ),
-          trailing: IconButton(
-            icon: Icon(Icons.delete_outline, color: Colors.grey[600], size: 24),
-            onPressed: onDelete,
           ),
         ),
       ),

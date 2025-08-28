@@ -2,13 +2,16 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
+import 'package:smart_control/core/Service/StreamStatusService.dart';
 import 'package:smart_control/core/alert/app_snackbar.dart';
 import 'package:smart_control/routes/app_routes.dart';
+import 'package:smart_control/widgets/loading_overlay.dart';
 import 'package:toastification/toastification.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:smart_control/core/network/api_service.dart';
 import '../widgets/keypad_row.dart';
 import '../widgets/lamp_tile.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -18,6 +21,9 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  final storage = const FlutterSecureStorage();
+  final _streamStatus = StreamStatusService();
+
   String _displayText = '0';
   String _username = "Admin";
   List<dynamic> zones = [];
@@ -34,13 +40,38 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      LoadingOverlay.show(context);
+      Future.delayed(Duration(seconds: 3), () {
+        getAllZones();
+        connectWebSocket();
+        LoadingOverlay.hide();
+      });
+    });
+
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.landscapeLeft,
       DeviceOrientation.landscapeRight,
     ]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-    getAllZones();
-    connectWebSocket();
+
+    _streamStatus.connect();
+  }
+
+  void logout() async {
+    LoadingOverlay.show(context);
+
+    final api = await ApiService.private();
+
+    await api.post("/auth/logout");
+
+    Future.delayed(Duration(seconds: 1), () async {
+      AppSnackbar.success("สำเร็จ", "ออกจากระบบสำเร็จแล้ว");
+      await storage.delete(key: "data");
+      Get.offAndToNamed(AppRoutes.login);
+      LoadingOverlay.hide();
+    });
   }
 
   int _extractVolume(String text) {
@@ -56,7 +87,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> getStatusZone() async {
     try {
-      final api = ApiService.public();
+      final api = await ApiService.private();
       final result = await api.post(
         "/mqtt/publishAndWait",
         data: {"zone": "$_displayText"},
@@ -80,7 +111,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> setStream() async {
     try {
-      final api = ApiService.public();
+      final api = await ApiService.private();
       await api.post(
         "/mqtt/publish",
         data: {
@@ -107,7 +138,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void setVolume() async {
     try {
       final volumeValue = _extractVolume(_displayText);
-      final api = ApiService.public();
+      final api = await ApiService.private();
       await api.post(
         "/mqtt/publish",
         data: {
@@ -124,8 +155,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void getAllStatusZone() async {
     try {
-      final api = ApiService.public();
-      final result = await api.get('/devices/status');
+      final api = await ApiService.private();
+      final result = await api.get('/mqtt/devices/status');
 
       List<dynamic> zones = result;
 
@@ -165,7 +196,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void getAllZones() async {
     try {
-      final api = ApiService.public();
+      final api = await ApiService.private();
       final result = await api.get('/device');
       setState(() => zones = result);
     } catch (error) {
@@ -174,7 +205,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void connectWebSocket() {
-    channel = WebSocketChannel.connect(Uri.parse('ws://192.168.1.83:8080'));
+    channel = WebSocketChannel.connect(
+      Uri.parse('ws://192.168.1.83:8080/ws/status'),
+    );
     channel.stream.listen((message) {
       final data = jsonDecode(message);
       if (data["zone"] != null) {
@@ -498,11 +531,17 @@ class _HomeScreenState extends State<HomeScreen> {
                   const SizedBox(height: 30),
                   _buildMenuItem(Icons.dashboard, "หน้าหลัก", () {}),
                   Divider(),
-                  _buildMenuItem(Icons.music_note, "จัดการเพลง", () {
+                  _buildMenuItem(Icons.playlist_add, "รายการเพลง", () {
+                    Get.toNamed(AppRoutes.playlist);
+                  }),
+                  Divider(),
+                  _buildMenuItem(Icons.music_note, "อัปโหลดเพลง", () {
                     Get.toNamed(AppRoutes.song_upload);
                   }),
                   Divider(),
-                  _buildMenuItem(Icons.logout, "ออกจากระบบ", () {}),
+                  _buildMenuItem(Icons.logout, "ออกจากระบบ", () {
+                    logout();
+                  }),
                   Spacer(),
                 ],
               ),
@@ -696,18 +735,18 @@ class _HomeScreenState extends State<HomeScreen> {
           if (isAllZone) {
             final vol = _extractVolume(_displayText);
 
-            final api = ApiService.public();
-            api.post(
-              "/mqtt/publish",
-              data: {
-                "topic": "mass-radio/all/command",
-                "payload": {"set_volume": vol},
-              },
-            );
+            // final api = await ApiService.public();
+            // api.post(
+            //   "/mqtt/publish",
+            //   data: {
+            //     "topic": "mass-radio/all/command",
+            //     "payload": {"set_volume": vol},
+            //   },
+            // );
 
-            _displayText = '0';
-            _zoneType = '';
-            _zoneNumber = '';
+            // _displayText = '0';
+            // _zoneType = '';
+            // _zoneNumber = '';
             return;
           } else {
             setVolume();

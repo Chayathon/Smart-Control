@@ -55,7 +55,7 @@ class AppSnackbar {
       icon: const Icon(Icons.info_outline, color: Colors.white),
       backgroundColor: Colors.blueAccent.withOpacity(0.9),
       colorText: Colors.white,
-      snackPosition: SnackPosition.BOTTOM,
+      snackPosition: SnackPosition.TOP,
       margin: const EdgeInsets.all(12),
       borderRadius: 12,
       duration: const Duration(seconds: 3),
