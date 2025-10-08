@@ -153,6 +153,28 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  void setStartPlaylist() async {
+    try {
+      final api = await ApiService.private();
+
+      await api.get('/playlist/start-playlist');
+      AppSnackbar.success("แจ้งเตือน", "เริ่มเล่นเพลย์ลิสต์");
+    } catch (error) {
+      print(error);
+    }
+  }
+
+  void setStopPlaylist() async {
+    try {
+      final api = await ApiService.private();
+
+      await api.get('/playlist/stop-playlist');
+      AppSnackbar.success("แจ้งเตือน", "หยุดเล่นเพลย์ลิสต์");
+    } catch (error) {
+      print(error);
+    }
+  }
+
   void getAllStatusZone() async {
     try {
       final api = await ApiService.private();
@@ -225,6 +247,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _toggleMic() => setState(() => _micOn = !_micOn);
   void _toggleLive() => setState(() => _liveOn = !_liveOn);
+  void _togglePlaying() => {
+    setState(() => _is_playing = !_is_playing),
+    if (_is_playing) {setStartPlaylist()} else {setStopPlaylist()},
+  };
 
   Widget _buildCircularToggleButton({
     required bool isActive,
@@ -414,14 +440,14 @@ class _HomeScreenState extends State<HomeScreen> {
                                 ),
                                 const SizedBox(width: 24),
                                 _buildCircularToggleButton(
-                                  isActive: true,
+                                  isActive: _is_playing,
                                   activeIcon: Icons.pause,
                                   inactiveIcon: Icons.play_arrow,
                                   activeLabel: "หยุดเล่น",
-                                  inactiveLabel: "เล่นต่อ",
+                                  inactiveLabel: "เล่นเพลง",
                                   activeColor: Colors.red[600]!,
                                   inactiveColor: Colors.green[600]!,
-                                  onTap: _toggleLive,
+                                  onTap: _togglePlaying,
                                 ),
 
                                 const SizedBox(width: 24),
@@ -537,6 +563,10 @@ class _HomeScreenState extends State<HomeScreen> {
                   Divider(),
                   _buildMenuItem(Icons.music_note, "อัปโหลดเพลง", () {
                     Get.toNamed(AppRoutes.song_upload);
+                  }),
+                  Divider(),
+                  _buildMenuItem(Icons.mic, "ทดสอบไมค์", () {
+                    Get.toNamed(AppRoutes.test);
                   }),
                   Divider(),
                   _buildMenuItem(Icons.logout, "ออกจากระบบ", () {
