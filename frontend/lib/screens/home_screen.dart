@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
-import 'package:smart_control/core/Service/StreamStatusService.dart';
+import 'package:smart_control/core/services/StreamStatusService.dart';
 import 'package:smart_control/core/alert/app_snackbar.dart';
 import 'package:smart_control/routes/app_routes.dart';
 import 'package:smart_control/widgets/loading_overlay.dart';
