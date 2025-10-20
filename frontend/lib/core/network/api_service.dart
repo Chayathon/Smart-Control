@@ -14,7 +14,7 @@ typedef FromJson<T> = T Function(dynamic data);
 
 class ApiService {
   static const String _baseUrl =
-      'http://110.171.195.179:8080'; // สำหรับอุปกรณ์จริง
+      'http://192.168.1.83:8080'; // สำหรับอุปกรณ์จริง
 
   final Dio _dio;
   final TokenStorage _storage;
