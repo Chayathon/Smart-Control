@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
@@ -43,6 +44,13 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isLoopEnabled = false; // เพิ่มตัวแปรสำหรับเก็บสถานะ loop
   bool _playlistActive =
       false; // โหมดเพลย์ลิสต์กำลังทำงาน (เล่นหรือหยุดชั่วคราว)
+
+  // Cooldown สำหรับปุ่มควบคุมเพลง (หยุดชั่วคราว/ก่อนหน้า/ถัดไป)
+  DateTime? _controlsCooldownUntil;
+  Timer? _controlsCooldownTimer;
+  bool get _isControlsCoolingDown =>
+      _controlsCooldownUntil != null &&
+      DateTime.now().isBefore(_controlsCooldownUntil!);
 
   DateTime? _lastButtonPress;
 
@@ -138,6 +146,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    _controlsCooldownTimer?.cancel();
     _micService.dispose();
     super.dispose();
   }
@@ -307,6 +316,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> nextSong() async {
     if (!(_is_playing || isPaused)) return;
+    if (_isControlsCoolingDown) return;
 
     // ป้องกันกดถัดไปถ้าเป็นเพลงสุดท้ายและไม่มีการวนลูป
     if (_currentSongIndex >= _totalSongs && !_isLoopEnabled) {
@@ -321,6 +331,7 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
     _lastButtonPress = now;
+    _startControlsCooldown(); // เริ่มคูลดาวน์ทันทีที่กด
 
     try {
       final api = await ApiService.private();
@@ -341,6 +352,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> prevSong() async {
     if (!(_is_playing || isPaused)) return;
+    if (_isControlsCoolingDown) return;
 
     // ป้องกันกดย้อนกลับถ้าเป็นเพลงแรกและไม่มีการวนลูป
     if (_currentSongIndex <= 1 && !_isLoopEnabled) {
@@ -355,6 +367,7 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
     _lastButtonPress = now;
+    _startControlsCooldown(); // เริ่มคูลดาวน์ทันทีที่กด
 
     try {
       final api = await ApiService.private();
@@ -491,8 +504,10 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _togglePause() async {
     // อนุญาตให้ทำงานทั้งตอนกำลังเล่นและหยุดชั่วคราว
     if (!(_is_playing || isPaused)) return;
+    if (_isControlsCoolingDown) return;
 
     try {
+      _startControlsCooldown(); // เริ่มคูลดาวน์ทันทีที่กด
       final api = await ApiService.private();
       if (isPaused) {
         await api.get('/playlist/resume-playlist');
@@ -509,6 +524,22 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  void _startControlsCooldown() {
+    // เริ่มคูลดาวน์ 8 วินาทีสำหรับปุ่มควบคุมเพลง
+    _controlsCooldownTimer?.cancel();
+    final until = DateTime.now().add(const Duration(seconds: 8));
+    setState(() {
+      _controlsCooldownUntil = until;
+    });
+    final delay = until.difference(DateTime.now());
+    _controlsCooldownTimer = Timer(delay, () {
+      if (!mounted) return;
+      setState(() {
+        _controlsCooldownUntil = null;
+      });
+    });
+  }
+
   Widget _buildCircularToggleButton({
     required bool isActive,
     required IconData activeIcon,
@@ -518,9 +549,10 @@ class _HomeScreenState extends State<HomeScreen> {
     required Color activeColor,
     required Color inactiveColor,
     required VoidCallback onTap,
+    bool enabled = true,
   }) {
     return InkWell(
-      onTap: onTap,
+      onTap: enabled ? onTap : null,
       borderRadius: BorderRadius.circular(25),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -783,62 +815,77 @@ class _HomeScreenState extends State<HomeScreen> {
                                           MainAxisAlignment.center,
                                       children: [
                                         // ปุ่มเพลงก่อน - ปิดใช้งานถ้าเป็นเพลงแรกและไม่มี loop
+                                        Builder(
+                                          builder: (context) {
+                                            final prevDisabled =
+                                                (_currentSongIndex <= 1 &&
+                                                    !_isLoopEnabled) ||
+                                                _isControlsCoolingDown;
+                                            return Opacity(
+                                              opacity: prevDisabled ? 0.3 : 1.0,
+                                              child: _buildCircularToggleButton(
+                                                isActive: false,
+                                                activeIcon: Icons.skip_previous,
+                                                inactiveIcon:
+                                                    Icons.skip_previous,
+                                                activeLabel: "เพลงก่อน",
+                                                inactiveLabel: "เพลงก่อน",
+                                                activeColor: Colors.blue[700]!,
+                                                inactiveColor: prevDisabled
+                                                    ? Colors.grey
+                                                    : Colors.blue[700]!,
+                                                onTap: prevSong,
+                                                enabled: !prevDisabled,
+                                              ),
+                                            );
+                                          },
+                                        ),
+                                        const SizedBox(width: 32),
                                         Opacity(
-                                          opacity:
-                                              (_currentSongIndex <= 1 &&
-                                                  !_isLoopEnabled)
+                                          opacity: _isControlsCoolingDown
                                               ? 0.3
                                               : 1.0,
                                           child: _buildCircularToggleButton(
-                                            isActive: false,
-                                            activeIcon: Icons.skip_previous,
-                                            inactiveIcon: Icons.skip_previous,
-                                            activeLabel: "เพลงก่อน",
-                                            inactiveLabel: "เพลงก่อน",
-                                            activeColor: Colors.blue[700]!,
+                                            isActive: isPaused,
+                                            activeIcon: Icons.play_circle,
+                                            inactiveIcon: Icons.pause_circle,
+                                            activeLabel: "เล่นต่อ",
+                                            inactiveLabel: "หยุดชั่วคราว",
+                                            activeColor: Colors.green[600]!,
                                             inactiveColor:
-                                                (_currentSongIndex <= 1 &&
-                                                    !_isLoopEnabled)
+                                                _isControlsCoolingDown
                                                 ? Colors.grey
-                                                : Colors.blue[700]!,
-                                            onTap: prevSong,
+                                                : Colors.orange[700]!,
+                                            onTap: _togglePause,
+                                            enabled: !_isControlsCoolingDown,
                                           ),
-                                        ),
-                                        const SizedBox(width: 32),
-                                        _buildCircularToggleButton(
-                                          isActive: isPaused,
-                                          activeIcon: Icons.play_circle,
-                                          inactiveIcon: Icons.pause_circle,
-                                          activeLabel: "เล่นต่อ",
-                                          inactiveLabel: "หยุดชั่วคราว",
-                                          activeColor: Colors.green[600]!,
-                                          inactiveColor: Colors.orange[700]!,
-                                          onTap: _togglePause,
                                         ),
                                         const SizedBox(width: 32),
                                         // ปุ่มเพลงถัดไป - ปิดใช้งานถ้าเป็นเพลงสุดท้ายและไม่มี loop
-                                        Opacity(
-                                          opacity:
-                                              (_currentSongIndex >=
-                                                      _totalSongs &&
-                                                  !_isLoopEnabled)
-                                              ? 0.3
-                                              : 1.0,
-                                          child: _buildCircularToggleButton(
-                                            isActive: false,
-                                            activeIcon: Icons.skip_next,
-                                            inactiveIcon: Icons.skip_next,
-                                            activeLabel: "เพลงถัดไป",
-                                            inactiveLabel: "เพลงถัดไป",
-                                            activeColor: Colors.blue[700]!,
-                                            inactiveColor:
+                                        Builder(
+                                          builder: (context) {
+                                            final nextDisabled =
                                                 (_currentSongIndex >=
                                                         _totalSongs &&
-                                                    !_isLoopEnabled)
-                                                ? Colors.grey
-                                                : Colors.blue[700]!,
-                                            onTap: nextSong,
-                                          ),
+                                                    !_isLoopEnabled) ||
+                                                _isControlsCoolingDown;
+                                            return Opacity(
+                                              opacity: nextDisabled ? 0.3 : 1.0,
+                                              child: _buildCircularToggleButton(
+                                                isActive: false,
+                                                activeIcon: Icons.skip_next,
+                                                inactiveIcon: Icons.skip_next,
+                                                activeLabel: "เพลงถัดไป",
+                                                inactiveLabel: "เพลงถัดไป",
+                                                activeColor: Colors.blue[700]!,
+                                                inactiveColor: nextDisabled
+                                                    ? Colors.grey
+                                                    : Colors.blue[700]!,
+                                                onTap: nextSong,
+                                                enabled: !nextDisabled,
+                                              ),
+                                            );
+                                          },
                                         ),
                                       ],
                                     ),
