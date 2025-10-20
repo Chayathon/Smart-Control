@@ -41,6 +41,8 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isSidebarOpen = false;
   bool isPaused = false;
   bool _isLoopEnabled = false; // เพิ่มตัวแปรสำหรับเก็บสถานะ loop
+  bool _playlistActive =
+      false; // โหมดเพลย์ลิสต์กำลังทำงาน (เล่นหรือหยุดชั่วคราว)
 
   DateTime? _lastButtonPress;
 
@@ -83,6 +85,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
       setState(() {
         if (mode == 'playlist') {
+          _playlistActive = true;
           _is_playing = isPlaying;
           isPaused = pausedState;
           _isLoopEnabled = loopState;
@@ -103,6 +106,7 @@ class _HomeScreenState extends State<HomeScreen> {
             _isPlaylistLoading = false;
           }
         } else if (event == 'playlist-stopped') {
+          _playlistActive = false;
           _is_playing = false;
           _isPlaylistLoading = false;
           isPaused = false;
@@ -274,6 +278,7 @@ class _HomeScreenState extends State<HomeScreen> {
         final currentSong = response['currentSong'];
 
         setState(() {
+          _playlistActive = true;
           _is_playing = isPlaying; // playing จริงหรือไม่
           isPaused = pausedState;
           _isLoopEnabled = response['loop'] ?? false;
@@ -290,6 +295,9 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       } else {
         print('ℹ️ ไม่มี Playlist กำลังเล่น');
+        setState(() {
+          _playlistActive = false;
+        });
       }
     } catch (error) {
       print('❌ Error checking playlist status: $error');
@@ -755,9 +763,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                   ],
                                 ),
 
-                                // แถวสอง: ปุ่มควบคุมเพลง (แสดงตอนกำลังเล่นหรือหยุดชั่วคราว)
-                                if ((_is_playing || isPaused) &&
-                                    !_isPlaylistLoading) ...[
+                                // แถวสอง: ปุ่มควบคุมเพลง (แสดงเมื่อโหมดเพลย์ลิสต์กำลังทำงาน - เล่นหรือหยุดชั่วคราว)
+                                if (_playlistActive && !_isPlaylistLoading) ...[
                                   const SizedBox(height: 12),
                                   Container(
                                     padding: const EdgeInsets.symmetric(
@@ -842,8 +849,8 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                           const SizedBox(height: 12),
 
-                          // แสดงข้อมูลเพลงปัจจุบัน (แสดงตอนกำลังเล่นหรือหยุดชั่วคราว)
-                          if ((_is_playing || isPaused) && _totalSongs > 0)
+                          // แสดงข้อมูลเพลงปัจจุบัน (แสดงเมื่อโหมดเพลย์ลิสต์กำลังทำงาน)
+                          if (_playlistActive && _totalSongs > 0)
                             Container(
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 12,
