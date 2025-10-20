@@ -157,7 +157,13 @@ async function _playIndex(i, seekMs = 0) {
             // เพิ่มเวลาเป็น 1.2 วินาที เพื่อให้ buffer ล้างสะอาดจริงๆ
             console.log('⏳ รอ buffer ล้างสะอาด...');
             await sleep(1200);
-            console.log('✅ Buffer ล้างสะอาดแล้ว เริ่มเพลงถัดไป');
+            // เพิ่มเวลาหน่วงก่อนเริ่มเพลงถัดไปตาม config เพื่อลดการกระตุก
+            var delay = (cfg.stream && typeof cfg.stream.preStartDelayMs === 'number') ? cfg.stream.preStartDelayMs : 0;
+            if (delay > 0) {
+                console.log(`⏳ หน่วงก่อนเริ่มเพลงถัดไป ${delay}ms`);
+                await sleep(delay);
+            }
+            console.log('✅ Buffer ล้างสะอาดแล้ว/ครบหน่วง เริ่มเพลงถัดไป');
 
             // If paused and waiting to resume, do not auto advance
             if (pausePendingResume) {
@@ -249,6 +255,14 @@ async function playPlaylist({ loop = false } = {}) {
     pausePendingResume = false;
     emitStatus({ event: 'playlist-started', extra: { total: playlistQueue.length } });
     
+    // หน่วงก่อนเริ่มเพลงแรก ถ้ากำหนดค่าไว้
+    {
+        var delay = (cfg.stream && typeof cfg.stream.preStartDelayMs === 'number') ? cfg.stream.preStartDelayMs : 0;
+        if (delay > 0) {
+            console.log(`⏳ หน่วงก่อนเริ่มเพลงแรกของเพลย์ลิสต์ ${delay}ms`);
+            await sleep(delay);
+        }
+    }
     await _playIndex(currentIndex, 0);
     return { success: true, message: 'เริ่มเล่นเพลย์ลิสต์' };
 }
@@ -270,6 +284,14 @@ async function nextTrack() {
     await _quickStop();
     playlistStopping = false;
     
+    // หน่วงก่อนเล่นเพลงถัดไปตามค่า config เพื่อลดการกระตุก
+    {
+        var delay = (cfg.stream && typeof cfg.stream.preStartDelayMs === 'number') ? cfg.stream.preStartDelayMs : 0;
+        if (delay > 0) {
+            console.log(`⏳ หน่วงก่อนเล่นเพลงถัดไป ${delay}ms`);
+            await sleep(delay);
+        }
+    }
     // เล่นเพลงถัดไป
     currentIndex = nextIdx;
     playlistMode = true;
@@ -296,6 +318,14 @@ async function prevTrack() {
     await _quickStop();
     playlistStopping = false;
     
+    // หน่วงก่อนเล่นเพลงก่อนหน้าเพื่อลดการกระตุก
+    {
+        var delay = (cfg.stream && typeof cfg.stream.preStartDelayMs === 'number') ? cfg.stream.preStartDelayMs : 0;
+        if (delay > 0) {
+            console.log(`⏳ หน่วงก่อนเล่นเพลงก่อนหน้า ${delay}ms`);
+            await sleep(delay);
+        }
+    }
     // เล่นเพลงก่อนหน้า
     currentIndex = prevIdx;
     playlistMode = true;
