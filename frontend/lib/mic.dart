@@ -1,8 +1,5 @@
-import 'dart:async';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'package:record/record.dart';
-import 'package:web_socket_channel/io.dart';
+import 'package:smart_control/core/mic/mic_stream_service.dart';
 
 class MicPage extends StatefulWidget {
   const MicPage({super.key});
@@ -12,175 +9,174 @@ class MicPage extends StatefulWidget {
 }
 
 class _MicPageState extends State<MicPage> {
-  final _recorder = AudioRecorder();
-
-  IOWebSocketChannel? _channel;
-  StreamSubscription<dynamic>? _micSub;
-  StreamSubscription? _wsSub;
-  Completer<void>? _wsDone;
+  final _micService = MicStreamService();
   bool _isRecording = false;
-  bool _isStopping = false;
+  String _statusMessage = 'พร้อมใช้งาน';
 
-  double tailSeconds = 0.6;
-  static const int sampleRate = 44100;
-  static const int channels = 2;
-  static const int bitsPerSample = 16;
+  static const String _serverUrl = "ws://192.168.1.83:8080/ws/mic";
 
-  Future<void> _startRecording() async {
-    if (_isRecording || _isStopping) return;
-    if (!await _recorder.hasPermission()) return;
+  @override
+  void initState() {
+    super.initState();
+    _setupCallbacks();
+  }
 
-    _channel = IOWebSocketChannel.connect("ws://192.168.1.83:8080/ws/mic");
-    _wsDone = Completer<void>();
-    _wsSub = _channel!.stream.listen(
-      (_) {},
-      onError: (_) {
-        if (!(_wsDone?.isCompleted ?? true)) _wsDone?.complete();
-      },
-      onDone: () {
-        if (!(_wsDone?.isCompleted ?? true)) _wsDone?.complete();
-      },
-      cancelOnError: true,
-    );
+  void _setupCallbacks() {
+    _micService.onStatusChanged = (isRecording) {
+      if (mounted) {
+        setState(() {
+          _isRecording = isRecording;
+          _statusMessage = isRecording ? 'กำลังสตรีม...' : 'พร้อมใช้งาน';
+        });
+      }
+    };
 
-    final stream = await _recorder.startStream(
-      const RecordConfig(
-        encoder: AudioEncoder.pcm16bits,
-        sampleRate: sampleRate,
-        numChannels: channels,
+    _micService.onError = (error) {
+      if (mounted) {
+        setState(() => _statusMessage = 'ข้อผิดพลาด: $error');
+        _showSnackBar(error, isError: true);
+      }
+    };
+  }
+
+  void _showSnackBar(String message, {bool isError = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? Colors.red : Colors.green,
       ),
     );
-
-    _micSub = stream.listen((data) {
-      final ch = _channel;
-      if (ch == null) return;
-
-      if (data is Uint8List) {
-        ch.sink.add(data);
-      } else if (data is List<int>) {
-        ch.sink.add(Uint8List.fromList(data));
-      }
-    }, onError: (_) {});
-
-    setState(() => _isRecording = true);
   }
 
-  Future<void> _flushSilenceTail(double seconds) async {
-    final ch = _channel;
-    if (ch == null || seconds <= 0) return;
+  Future<void> _toggleRecording() async {
+    if (_micService.isStopping) return;
 
-    final int bytesPerSecond = sampleRate * channels * (bitsPerSample ~/ 8);
-    const int chunkMs = 40;
-    final int chunkBytes = ((bytesPerSecond * chunkMs) / 1000).round();
-    final Uint8List silenceChunk = Uint8List(chunkBytes);
-    final int totalChunks = ((seconds * 1000) / chunkMs).ceil();
-
-    for (int i = 0; i < totalChunks; i++) {
-      ch.sink.add(silenceChunk);
-      await Future.delayed(const Duration(milliseconds: chunkMs));
+    if (_isRecording) {
+      await _micService.stopStreaming();
+    } else {
+      final success = await _micService.startStreaming(_serverUrl);
+      if (!success && mounted) {
+        _showSnackBar('ไม่สามารถเริ่มการสตรีมได้', isError: true);
+      }
     }
-
-    await Future.delayed(const Duration(milliseconds: 120));
-  }
-
-  Future<void> _stopRecording() async {
-    if (!_isRecording || _isStopping) return;
-    _isStopping = true;
-
-    try {
-      await _micSub?.cancel();
-    } catch (_) {}
-    _micSub = null;
-
-    try {
-      await _recorder.stop();
-    } catch (_) {}
-
-    try {
-      await _flushSilenceTail(tailSeconds);
-    } catch (_) {}
-
-    try {
-      final closeFuture = _channel?.sink.close(1000, 'normal');
-
-      if (closeFuture is Future) {
-        await closeFuture.catchError((_) {});
-      }
-
-      if (_wsDone != null && !(_wsDone!.isCompleted)) {
-        await Future.any([
-          _wsDone!.future,
-          Future.delayed(const Duration(seconds: 1)),
-        ]);
-      }
-    } catch (_) {}
-
-    try {
-      await _wsSub?.cancel();
-    } catch (_) {}
-    _wsSub = null;
-    _wsDone = null;
-    _channel = null;
-
-    setState(() {
-      _isRecording = false;
-      _isStopping = false;
-    });
-
-    await Future.delayed(const Duration(milliseconds: 150));
   }
 
   @override
   void dispose() {
-    _micSub?.cancel();
-    _wsSub?.cancel();
-    _recorder.dispose();
-    _channel?.sink.close(1001, 'disposed');
+    _micService.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final btnText = _isRecording
-        ? (_isStopping ? "Stopping..." : "Stop")
-        : "Start Mic";
     return Scaffold(
-      appBar: AppBar(title: const Text("Mic Stream")),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            Row(
-              children: [
-                const Text("หน่วงก่อนปิด (วินาที): "),
-                Expanded(
-                  child: Slider(
-                    min: 0.0,
-                    max: 2.0,
-                    divisions: 20,
-                    value: tailSeconds,
-                    label: tailSeconds.toStringAsFixed(2),
-                    onChanged: _isRecording || _isStopping
-                        ? null
-                        : (v) => setState(() => tailSeconds = v),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            ElevatedButton(
-              onPressed: _isStopping
-                  ? null
-                  : (_isRecording ? _stopRecording : _startRecording),
-              child: Text(btnText),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              "ถ้าสตรีม mono ให้เปลี่ยน numChannels=1 ทั้งฝั่งนี้และฝั่งรับ เพื่อกันบัฟเฟอร์เพี้ยน",
-              textAlign: TextAlign.center,
-            ),
-          ],
+      appBar: AppBar(
+        title: const Text("ทดสอบไมโครโฟน"),
+        backgroundColor: Colors.blue[700],
+      ),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _buildStatusIndicator(),
+              const SizedBox(height: 40),
+              _buildControlButton(),
+              const SizedBox(height: 40),
+              _buildInfoBox(),
+            ],
+          ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildStatusIndicator() {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: _isRecording ? Colors.green[50] : Colors.grey[100],
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: _isRecording ? Colors.green : Colors.grey[300]!,
+          width: 2,
+        ),
+      ),
+      child: Column(
+        children: [
+          Icon(
+            _isRecording ? Icons.mic : Icons.mic_off,
+            size: 80,
+            color: _isRecording ? Colors.green : Colors.grey,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            _statusMessage,
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w600,
+              color: _isRecording ? Colors.green[900] : Colors.grey[700],
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildControlButton() {
+    return SizedBox(
+      width: 200,
+      height: 60,
+      child: ElevatedButton.icon(
+        onPressed: _micService.isStopping ? null : _toggleRecording,
+        icon: Icon(_isRecording ? Icons.stop : Icons.mic, size: 28),
+        label: Text(
+          _micService.isStopping
+              ? "กำลังหยุด..."
+              : (_isRecording ? "หยุดไมค์" : "เริ่มไมค์"),
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+        ),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: _isRecording ? Colors.red : Colors.green,
+          foregroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInfoBox() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.blue[50],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.blue[200]!),
+      ),
+      child: const Column(
+        children: [
+          Text(
+            "📱 ระบบปรับปรุงสำหรับ Raspberry Pi 4",
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: Colors.blue,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          SizedBox(height: 8),
+          Text(
+            "• Low latency streaming\n"
+            "• Auto gain & noise suppression\n"
+            "• Stereo 44.1kHz PCM16",
+            style: TextStyle(fontSize: 14),
+            textAlign: TextAlign.center,
+          ),
+        ],
       ),
     );
   }

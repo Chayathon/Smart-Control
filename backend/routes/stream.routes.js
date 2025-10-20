@@ -9,8 +9,8 @@ router.get('/status', ctrl.status);
 router.get('/pause', ctrl.pause);
 router.get('/resume', ctrl.resume);
 
-
-
+// Mic control endpoint
+router.post('/mic/stop', authenticateToken, ctrl.stopMic);
 
 router.post('/uploadSongYT', ctrl.uploadSongYT);
 router.post('/uploadSongFile', authenticateToken, ctrl.upload.single('song'), ctrl.uploadSongFile);

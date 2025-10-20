@@ -9,6 +9,7 @@ import 'package:smart_control/widgets/loading_overlay.dart';
 import 'package:toastification/toastification.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:smart_control/core/network/api_service.dart';
+import 'package:smart_control/core/mic/mic_stream_service.dart';
 import '../widgets/keypad_row.dart';
 import '../widgets/lamp_tile.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -23,19 +24,30 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final storage = const FlutterSecureStorage();
   final _streamStatus = StreamStatusService();
+  final _micService = MicStreamService();
 
   String _displayText = '0';
-  String _username = "Admin";
   List<dynamic> zones = [];
   double _micVolume = 0.5;
   String _zoneNumber = "";
   String _zoneType = "";
   bool _is_playing = false;
+  bool _isPlaylistLoading = false;
+  String _currentSongTitle = "";
+  int _currentSongIndex = 0;
+  int _totalSongs = 0;
   bool _micOn = false;
   bool _liveOn = false;
   bool _isSidebarOpen = false;
+  bool isPaused = false;
+  bool _isLoopEnabled = false; // เพิ่มตัวแปรสำหรับเก็บสถานะ loop
+
+  DateTime? _lastButtonPress;
 
   late WebSocketChannel channel;
+
+  // WebSocket URL for mic streaming
+  static const String micServerUrl = "ws://192.168.1.83:8080/ws/mic";
 
   @override
   void initState() {
@@ -46,6 +58,7 @@ class _HomeScreenState extends State<HomeScreen> {
       Future.delayed(Duration(seconds: 3), () {
         getAllZones();
         connectWebSocket();
+        checkPlaylistStatus(); // เช็คสถานะ playlist
         LoadingOverlay.hide();
       });
     });
@@ -57,6 +70,72 @@ class _HomeScreenState extends State<HomeScreen> {
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
 
     _streamStatus.connect();
+
+    // Setup stream status callback
+    _streamStatus.onStatusUpdate = (data) {
+      if (!mounted) return;
+
+      final event = data['event'];
+      final isPlaying = data['isPlaying'] ?? false;
+      final mode = data['mode'] ?? 'single';
+      final pausedState = data['isPaused'] ?? false;
+      final loopState = data['loop'] ?? false;
+
+      setState(() {
+        if (mode == 'playlist') {
+          _is_playing = isPlaying;
+          isPaused = pausedState;
+          _isLoopEnabled = loopState;
+          _currentSongIndex = (data['index'] ?? 0) + 1;
+          _totalSongs = data['total'] ?? 0;
+
+          // แก้ไขการอ่านชื่อเพลง - ตรวจสอบทั้ง extra และ title ใน data
+          if (data['title'] != null) {
+            _currentSongTitle = data['title'];
+          } else if (data['extra'] != null && data['extra']['title'] != null) {
+            _currentSongTitle = data['extra']['title'];
+          }
+
+          // Reset loading state
+          if (event == 'started' ||
+              event == 'stopped' ||
+              event == 'playlist-stopped') {
+            _isPlaylistLoading = false;
+          }
+        } else if (event == 'playlist-stopped') {
+          _is_playing = false;
+          _isPlaylistLoading = false;
+          isPaused = false;
+          _isLoopEnabled = false;
+          _currentSongTitle = "";
+          _currentSongIndex = 0;
+          _totalSongs = 0;
+        }
+      });
+
+      print(
+        "Playlist status: playing=$_is_playing, paused=$isPaused, song=$_currentSongIndex/$_totalSongs, title=$_currentSongTitle",
+      );
+    };
+
+    // Setup mic service callbacks
+    _micService.onStatusChanged = (isRecording) {
+      if (mounted) {
+        setState(() => _micOn = isRecording);
+      }
+    };
+
+    _micService.onError = (error) {
+      if (mounted) {
+        AppSnackbar.error("ข้อผิดพลาด", error);
+      }
+    };
+  }
+
+  @override
+  void dispose() {
+    _micService.dispose();
+    super.dispose();
   }
 
   void logout() async {
@@ -153,7 +232,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  void setStartPlaylist() async {
+  Future<void> setStartPlaylist() async {
     try {
       final api = await ApiService.private();
 
@@ -161,10 +240,11 @@ class _HomeScreenState extends State<HomeScreen> {
       AppSnackbar.success("แจ้งเตือน", "เริ่มเล่นเพลย์ลิสต์");
     } catch (error) {
       print(error);
+      rethrow;
     }
   }
 
-  void setStopPlaylist() async {
+  Future<void> setStopPlaylist() async {
     try {
       final api = await ApiService.private();
 
@@ -172,6 +252,115 @@ class _HomeScreenState extends State<HomeScreen> {
       AppSnackbar.success("แจ้งเตือน", "หยุดเล่นเพลย์ลิสต์");
     } catch (error) {
       print(error);
+      rethrow;
+    }
+  }
+
+  Future<void> checkPlaylistStatus() async {
+    try {
+      final api = await ApiService.private();
+      final response = await api.get('/playlist/status');
+
+      if (!mounted) return;
+
+      print('📊 Playlist Status Response: $response');
+
+      // ตรวจสอบว่ามี playlist กำลังเล่นอยู่หรือไม่
+      final isPlaying = response['isPlaying'] ?? false;
+      final playlistMode = response['playlistMode'] ?? false;
+
+      if (playlistMode && isPlaying) {
+        final currentSong = response['currentSong'];
+
+        setState(() {
+          _is_playing = true;
+          isPaused = response['isPaused'] ?? false;
+          _isLoopEnabled = response['loop'] ?? false;
+          _totalSongs = response['totalSongs'] ?? 0;
+
+          if (currentSong != null) {
+            _currentSongTitle = currentSong['title'] ?? '';
+            _currentSongIndex = (currentSong['index'] ?? 0) + 1;
+          }
+        });
+
+        print(
+          '✅ พบ Playlist กำลังเล่น: เพลง $_currentSongIndex/$_totalSongs - $_currentSongTitle',
+        );
+      } else {
+        print('ℹ️ ไม่มี Playlist กำลังเล่น');
+      }
+    } catch (error) {
+      print('❌ Error checking playlist status: $error');
+      // ไม่แสดง error แค่ log ไว้
+    }
+  }
+
+  Future<void> nextSong() async {
+    if (!_is_playing) return;
+
+    // ป้องกันกดถัดไปถ้าเป็นเพลงสุดท้ายและไม่มีการวนลูป
+    if (_currentSongIndex >= _totalSongs && !_isLoopEnabled) {
+      AppSnackbar.success("แจ้งเตือน", "เป็นเพลงสุดท้ายแล้ว");
+      return;
+    }
+
+    // Debounce - ป้องกันการกดซ้ำเร็วเกินไป
+    final now = DateTime.now();
+    if (_lastButtonPress != null &&
+        now.difference(_lastButtonPress!).inMilliseconds < 500) {
+      return;
+    }
+    _lastButtonPress = now;
+
+    try {
+      final api = await ApiService.private();
+      final response = await api.get('/playlist/next-track');
+
+      // ตรวจสอบ response จาก backend
+      if (response['status'] == 'error') {
+        AppSnackbar.success(
+          "แจ้งเตือน",
+          response['message'] ?? "ไม่สามารถเปลี่ยนเพลงได้",
+        );
+      }
+    } catch (error) {
+      print(error);
+      AppSnackbar.error("ข้อผิดพลาด", "ไม่สามารถเปลี่ยนเพลงได้");
+    }
+  }
+
+  Future<void> prevSong() async {
+    if (!_is_playing) return;
+
+    // ป้องกันกดย้อนกลับถ้าเป็นเพลงแรกและไม่มีการวนลูป
+    if (_currentSongIndex <= 1 && !_isLoopEnabled) {
+      AppSnackbar.success("แจ้งเตือน", "เป็นเพลงแรกแล้ว");
+      return;
+    }
+
+    // Debounce - ป้องกันการกดซ้ำเร็วเกินไป
+    final now = DateTime.now();
+    if (_lastButtonPress != null &&
+        now.difference(_lastButtonPress!).inMilliseconds < 500) {
+      return;
+    }
+    _lastButtonPress = now;
+
+    try {
+      final api = await ApiService.private();
+      final response = await api.get('/playlist/prev-track');
+
+      // ตรวจสอบ response จาก backend
+      if (response['status'] == 'error') {
+        AppSnackbar.success(
+          "แจ้งเตือน",
+          response['message'] ?? "ไม่สามารถเปลี่ยนเพลงได้",
+        );
+      }
+    } catch (error) {
+      print(error);
+      AppSnackbar.error("ข้อผิดพลาด", "ไม่สามารถเปลี่ยนเพลงได้");
     }
   }
 
@@ -245,12 +434,70 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  void _toggleMic() => setState(() => _micOn = !_micOn);
+  Future<void> _toggleMic() async {
+    if (_micService.isStopping) return;
+
+    if (_micOn) {
+      await _micService.stopStreaming();
+      setState(() => _micOn = false);
+      AppSnackbar.success("ไมโครโฟน", "ปิดไมโครโฟนแล้ว");
+    } else {
+      final success = await _micService.startStreaming(micServerUrl);
+      if (success) {
+        setState(() => _micOn = true);
+        AppSnackbar.success("ไมโครโฟน", "เปิดไมโครโฟนแล้ว");
+      } else {
+        AppSnackbar.error("ข้อผิดพลาด", "ไม่สามารถเปิดไมโครโฟนได้");
+      }
+    }
+  }
+
   void _toggleLive() => setState(() => _liveOn = !_liveOn);
-  void _togglePlaying() => {
-    setState(() => _is_playing = !_is_playing),
-    if (_is_playing) {setStartPlaylist()} else {setStopPlaylist()},
-  };
+
+  void _togglePlaying() async {
+    if (_isPlaylistLoading) return;
+
+    setState(() => _isPlaylistLoading = true);
+
+    try {
+      if (_is_playing) {
+        await setStopPlaylist();
+        setState(() {
+          _is_playing = false;
+          isPaused = false;
+          _currentSongTitle = "";
+          _currentSongIndex = 0;
+          _totalSongs = 0;
+        });
+      } else {
+        await setStartPlaylist();
+        // Don't set _is_playing here, wait for SSE update
+      }
+    } catch (e) {
+      setState(() => _isPlaylistLoading = false);
+      AppSnackbar.error("ข้อผิดพลาด", "ไม่สามารถดำเนินการได้");
+    }
+  }
+
+  Future<void> _togglePause() async {
+    if (!_is_playing) return;
+
+    try {
+      final api = await ApiService.private();
+      if (isPaused) {
+        await api.get('/playlist/resume-playlist');
+        setState(() => isPaused = false);
+        AppSnackbar.success("แจ้งเตือน", "เล่นต่อ");
+      } else {
+        await api.get('/playlist/pause-playlist');
+        setState(() => isPaused = true);
+        AppSnackbar.success("แจ้งเตือน", "หยุดชั่วคราว");
+      }
+    } catch (error) {
+      print(error);
+      AppSnackbar.error("ข้อผิดพลาด", "ไม่สามารถหยุดชั่วคราวได้");
+    }
+  }
 
   Widget _buildCircularToggleButton({
     required bool isActive,
@@ -415,84 +662,289 @@ class _HomeScreenState extends State<HomeScreen> {
                               color: Colors.grey[50],
                               borderRadius: BorderRadius.circular(12),
                             ),
-                            child: Row(
+                            child: Column(
                               children: [
-                                _buildCircularToggleButton(
-                                  isActive: _micOn,
-                                  activeIcon: Icons.mic,
-                                  inactiveIcon: Icons.mic_off,
-                                  activeLabel: "ปิดไมค์",
-                                  inactiveLabel: "เปิดไมค์",
-                                  activeColor: Colors.green[600]!,
-                                  inactiveColor: Colors.grey[700]!,
-                                  onTap: _toggleMic,
-                                ),
-                                const SizedBox(width: 24),
-                                _buildCircularToggleButton(
-                                  isActive: _liveOn,
-                                  activeIcon: Icons.live_tv,
-                                  inactiveIcon: Icons.live_tv_outlined,
-                                  activeLabel: "หยุดถ่ายทอด",
-                                  inactiveLabel: "เริ่มถ่ายทอด",
-                                  activeColor: Colors.red[600]!,
-                                  inactiveColor: Colors.grey[700]!,
-                                  onTap: _toggleLive,
-                                ),
-                                const SizedBox(width: 24),
-                                _buildCircularToggleButton(
-                                  isActive: _is_playing,
-                                  activeIcon: Icons.pause,
-                                  inactiveIcon: Icons.play_arrow,
-                                  activeLabel: "หยุดเล่น",
-                                  inactiveLabel: "เล่นเพลง",
-                                  activeColor: Colors.red[600]!,
-                                  inactiveColor: Colors.green[600]!,
-                                  onTap: _togglePlaying,
+                                // แถวแรก: ไมค์, ถ่ายทอด, เล่น/หยุด, ปรับเสียง
+                                Row(
+                                  children: [
+                                    _buildCircularToggleButton(
+                                      isActive: _micOn,
+                                      activeIcon: Icons.mic,
+                                      inactiveIcon: Icons.mic_off,
+                                      activeLabel: "ปิดไมค์",
+                                      inactiveLabel: "เปิดไมค์",
+                                      activeColor: Colors.green[600]!,
+                                      inactiveColor: Colors.grey[700]!,
+                                      onTap: _toggleMic,
+                                    ),
+                                    const SizedBox(width: 24),
+                                    _buildCircularToggleButton(
+                                      isActive: _liveOn,
+                                      activeIcon: Icons.live_tv,
+                                      inactiveIcon: Icons.live_tv_outlined,
+                                      activeLabel: "หยุดถ่ายทอด",
+                                      inactiveLabel: "เริ่มถ่ายทอด",
+                                      activeColor: Colors.red[600]!,
+                                      inactiveColor: Colors.grey[700]!,
+                                      onTap: _toggleLive,
+                                    ),
+                                    const SizedBox(width: 24),
+                                    _buildCircularToggleButton(
+                                      isActive: _is_playing,
+                                      activeIcon: _isPlaylistLoading
+                                          ? Icons.hourglass_empty
+                                          : Icons.stop,
+                                      inactiveIcon: _isPlaylistLoading
+                                          ? Icons.hourglass_empty
+                                          : Icons.play_arrow,
+                                      activeLabel: _isPlaylistLoading
+                                          ? "กำลังโหลด..."
+                                          : "หยุดเล่น",
+                                      inactiveLabel: _isPlaylistLoading
+                                          ? "กำลังโหลด..."
+                                          : "เล่นเพลง",
+                                      activeColor: Colors.red[600]!,
+                                      inactiveColor: Colors.green[600]!,
+                                      onTap: _isPlaylistLoading
+                                          ? () {}
+                                          : _togglePlaying,
+                                    ),
+                                    const SizedBox(width: 24),
+                                    Expanded(
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 20,
+                                          vertical: 12,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white,
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                          border: Border.all(
+                                            color: Colors.grey[200]!,
+                                          ),
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            Icon(
+                                              Icons.volume_down,
+                                              size: 28,
+                                              color: Colors.grey[600],
+                                            ),
+                                            Expanded(
+                                              child: Slider(
+                                                value: _micVolume,
+                                                onChanged: (value) => setState(
+                                                  () => _micVolume = value,
+                                                ),
+                                                activeColor: accent,
+                                              ),
+                                            ),
+                                            Icon(
+                                              Icons.volume_up,
+                                              size: 28,
+                                              color: accent,
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
 
-                                const SizedBox(width: 24),
-                                Expanded(
-                                  child: Container(
+                                // แถวสอง: ปุ่มควบคุมเพลง (แสดงเฉพาะตอนเล่นเพลง)
+                                if (_is_playing && !_isPlaylistLoading) ...[
+                                  const SizedBox(height: 12),
+                                  Container(
                                     padding: const EdgeInsets.symmetric(
-                                      horizontal: 20,
                                       vertical: 12,
+                                      horizontal: 12,
                                     ),
                                     decoration: BoxDecoration(
-                                      color: Colors.white,
+                                      color: Colors.blue[50],
                                       borderRadius: BorderRadius.circular(12),
                                       border: Border.all(
-                                        color: Colors.grey[200]!,
+                                        color: Colors.blue[100]!,
                                       ),
                                     ),
                                     child: Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
                                       children: [
-                                        Icon(
-                                          Icons.volume_down,
-                                          size: 28,
-                                          color: Colors.grey[600],
-                                        ),
-                                        Expanded(
-                                          child: Slider(
-                                            value: _micVolume,
-                                            onChanged: (value) => setState(
-                                              () => _micVolume = value,
-                                            ),
-                                            activeColor: accent,
+                                        // ปุ่มเพลงก่อน - ปิดใช้งานถ้าเป็นเพลงแรกและไม่มี loop
+                                        Opacity(
+                                          opacity:
+                                              (_currentSongIndex <= 1 &&
+                                                  !_isLoopEnabled)
+                                              ? 0.3
+                                              : 1.0,
+                                          child: _buildCircularToggleButton(
+                                            isActive: false,
+                                            activeIcon: Icons.skip_previous,
+                                            inactiveIcon: Icons.skip_previous,
+                                            activeLabel: "เพลงก่อน",
+                                            inactiveLabel: "เพลงก่อน",
+                                            activeColor: Colors.blue[700]!,
+                                            inactiveColor:
+                                                (_currentSongIndex <= 1 &&
+                                                    !_isLoopEnabled)
+                                                ? Colors.grey
+                                                : Colors.blue[700]!,
+                                            onTap: prevSong,
                                           ),
                                         ),
-                                        Icon(
-                                          Icons.volume_up,
-                                          size: 28,
-                                          color: accent,
+                                        const SizedBox(width: 32),
+                                        _buildCircularToggleButton(
+                                          isActive: isPaused,
+                                          activeIcon: Icons.play_circle,
+                                          inactiveIcon: Icons.pause_circle,
+                                          activeLabel: "เล่นต่อ",
+                                          inactiveLabel: "หยุดชั่วคราว",
+                                          activeColor: Colors.green[600]!,
+                                          inactiveColor: Colors.orange[700]!,
+                                          onTap: _togglePause,
+                                        ),
+                                        const SizedBox(width: 32),
+                                        // ปุ่มเพลงถัดไป - ปิดใช้งานถ้าเป็นเพลงสุดท้ายและไม่มี loop
+                                        Opacity(
+                                          opacity:
+                                              (_currentSongIndex >=
+                                                      _totalSongs &&
+                                                  !_isLoopEnabled)
+                                              ? 0.3
+                                              : 1.0,
+                                          child: _buildCircularToggleButton(
+                                            isActive: false,
+                                            activeIcon: Icons.skip_next,
+                                            inactiveIcon: Icons.skip_next,
+                                            activeLabel: "เพลงถัดไป",
+                                            inactiveLabel: "เพลงถัดไป",
+                                            activeColor: Colors.blue[700]!,
+                                            inactiveColor:
+                                                (_currentSongIndex >=
+                                                        _totalSongs &&
+                                                    !_isLoopEnabled)
+                                                ? Colors.grey
+                                                : Colors.blue[700]!,
+                                            onTap: nextSong,
+                                          ),
                                         ),
                                       ],
                                     ),
                                   ),
-                                ),
+                                ],
                               ],
                             ),
                           ),
-                          const SizedBox(height: 24),
+                          const SizedBox(height: 12),
+
+                          // แสดงข้อมูลเพลงปัจจุบัน
+                          if (_is_playing && _totalSongs > 0)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: [
+                                    Colors.blue[700]!.withOpacity(0.1),
+                                    Colors.blue[500]!.withOpacity(0.05),
+                                  ],
+                                ),
+                                borderRadius: BorderRadius.circular(100),
+                                border: Border.all(color: Colors.blue[200]!),
+                              ),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(10),
+                                    decoration: BoxDecoration(
+                                      color: Colors.blue[700],
+                                      borderRadius: BorderRadius.circular(100),
+                                    ),
+                                    child: const Icon(
+                                      Icons.music_note,
+                                      color: Colors.white,
+                                      size: 24,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 16),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          _currentSongTitle.isNotEmpty
+                                              ? _currentSongTitle
+                                              : "กำลังโหลดข้อมูลเพลง...",
+                                          style: TextStyle(
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.w700,
+                                            color: textColor,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          "เพลงที่ $_currentSongIndex จาก $_totalSongs",
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            color: Colors.grey[600],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 6,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: isPaused
+                                          ? Colors.orange[100]
+                                          : Colors.green[100],
+                                      borderRadius: BorderRadius.circular(20),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          isPaused
+                                              ? Icons.pause
+                                              : Icons.graphic_eq,
+                                          size: 14,
+                                          color: isPaused
+                                              ? Colors.orange[700]
+                                              : Colors.green[700],
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          isPaused
+                                              ? "หยุดชั่วคราว"
+                                              : "กำลังเล่น",
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w600,
+                                            color: isPaused
+                                                ? Colors.orange[700]
+                                                : Colors.green[700],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          if (_is_playing && _totalSongs > 0)
+                            const SizedBox(height: 16),
+
                           Expanded(
                             child: GridView.builder(
                               itemCount: zones.length,
@@ -763,17 +1215,13 @@ class _HomeScreenState extends State<HomeScreen> {
         if (_zoneType == "volume") {
           final isAllZone = _displayText.toUpperCase().startsWith("ALL ZONE");
           if (isAllZone) {
-            final vol = _extractVolume(_displayText);
-
+            // Reserved for future all zone volume control
+            // final vol = _extractVolume(_displayText);
             // final api = await ApiService.public();
-            // api.post(
-            //   "/mqtt/publish",
-            //   data: {
-            //     "topic": "mass-radio/all/command",
-            //     "payload": {"set_volume": vol},
-            //   },
-            // );
-
+            // api.post("/mqtt/publish", data: {
+            //   "topic": "mass-radio/all/command",
+            //   "payload": {"set_volume": vol},
+            // });
             // _displayText = '0';
             // _zoneType = '';
             // _zoneNumber = '';

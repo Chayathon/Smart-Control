@@ -21,6 +21,8 @@ let playlistQueue = [];
 let currentIndex = -1;
 let playlistMode = false;
 let playlistLoop = false;
+let playlistStopping = false;
+let nextTrackQueued = false;
 
 const isAlive = (p) => !!p && p.exitCode === null;
 
@@ -59,34 +61,64 @@ async function buildQueueFromDb() {
 }
 
 async function _playIndex(i) {
+    if (playlistStopping) {
+        console.log('⏸️ Playlist stopping, aborting playback');
+        return;
+    }
+
     if (i < 0 || i >= playlistQueue.length) {
         console.log('📭 คิวว่าง หรือ index เกิน');
-        await stopAll();
+        await _quickStop();
         playlistMode = false;
         return;
     }
 
-    while (starting) await sleep(50);
+    // ไม่รอ starting flag เพื่อให้ตอบสนองเร็วขึ้น
+    if (starting) {
+        console.log('⚠️ กำลัง starting อยู่ ข้ามการเล่นครั้งนี้');
+        nextTrackQueued = true;
+        return;
+    }
+    
+    console.log(`🎬 เริ่มต้นการเล่นเพลง index ${i}`);
     starting = true;
+    nextTrackQueued = false;
 
     try {
-        await stopAll();
+        // Quick stop แทน stopAll เพื่อลดดีเลย์
+        await _quickStop();
+        
+        if (playlistStopping) {
+            console.log('⏸️ ตรวจพบ playlist stopping หลัง quick stop');
+            return;
+        }
+
         playlistMode = true;
 
         const { source, from, name } = playlistQueue[i];
-        console.log(`▶️ เล่นจากเพลย์ลิสต์: [${i + 1}/${playlistQueue.length}] ${name}`);
+        console.log(`▶️ [${i + 1}/${playlistQueue.length}] ${name}`);
+        console.log(`📂 Source: ${source}`);
 
         const icecastUrl = `icecast://${cfg.icecast.username}:${cfg.icecast.password}` +
             `@${cfg.icecast.host}:${cfg.icecast.port}${cfg.icecast.mount}`;
 
-
+        // ปรับแต่งสำหรับ transition ที่นุ่มนวล
         const ffArgs = [
-            '-hide_banner', '-loglevel', 'warning', '-nostdin',
+            '-hide_banner', '-loglevel', 'error', '-nostdin',
             '-re',
             '-i', source,
             '-vn',
+            // Audio fade in ช้าขึ้นเพื่อให้เนียนขึ้น
+            '-af', 'afade=t=in:st=0:d=0.8',
             '-c:a', 'libmp3lame',
             '-b:a', '128k',
+            '-ar', '44100',
+            '-ac', '2',
+            // Optimize for smooth transitions
+            '-write_xing', '0',
+            '-id3v2_version', '0',
+            '-fflags', '+flush_packets+nobuffer',
+            '-flush_packets', '1',
             '-content_type', 'audio/mpeg',
             '-f', 'mp3',
             icecastUrl
@@ -97,12 +129,20 @@ async function _playIndex(i) {
 
         ffmpegProcess.on('close', async (code) => {
             console.log(`🎵 เพลงสิ้นสุด (code ${code})`);
+            const wasPlaylistMode = playlistMode;
             ffmpegProcess = null;
             isPaused = false;
             currentStreamUrl = null;
 
-            if (!playlistMode) return;
+            if (!wasPlaylistMode || playlistStopping) {
+                return;
+            }
 
+            // รอให้ Icecast buffer ล้างสะอาดเพื่อป้องกันเสียงกระตุก
+            // เพิ่มเวลาเป็น 1.2 วินาที เพื่อให้ buffer ล้างสะอาดจริงๆ
+            console.log('⏳ รอ buffer ล้างสะอาด...');
+            await sleep(1200);
+            console.log('✅ Buffer ล้างสะอาดแล้ว เริ่มเพลงถัดไป');
 
             const next = currentIndex + 1;
             if (next < playlistQueue.length) {
@@ -114,23 +154,68 @@ async function _playIndex(i) {
             } else {
                 console.log('✅ เพลย์ลิสต์จบครบทุกเพลง');
                 playlistMode = false;
-                bus.emit('status', { event: 'playlist-ended' });
+                emitStatus({ event: 'playlist-ended' });
             }
         });
 
         isPaused = false;
         currentStreamUrl = source;
+        
+        console.log(`📡 Emitting status: title="${name}", index=${i}, total=${playlistQueue.length}`);
         emitStatus({
             event: 'started',
-            extra: { title: name }
+            extra: { title: name, index: i, total: playlistQueue.length }
         });
     } finally {
         starting = false;
     }
 }
 
+// Quick stop สำหรับ playlist transitions
+async function _quickStop() {
+    if (!ffmpegProcess || ffmpegProcess.exitCode !== null) {
+        ffmpegProcess = null;
+        isPaused = false;
+        currentStreamUrl = null;
+        return;
+    }
+
+    console.log('🛑 Quick stop: ปิด ffmpeg process...');
+    
+    return new Promise((resolve) => {
+        const timeout = setTimeout(() => {
+            if (ffmpegProcess && ffmpegProcess.exitCode === null) {
+                console.log('⚠️ Force kill ffmpeg (timeout)');
+                try { ffmpegProcess.kill('SIGKILL'); } catch { }
+            }
+            ffmpegProcess = null;
+            isPaused = false;
+            currentStreamUrl = null;
+            resolve();
+        }, 800);
+
+        ffmpegProcess.once('close', () => {
+            clearTimeout(timeout);
+            console.log('✅ ffmpeg ปิดสมบูรณ์');
+            ffmpegProcess = null;
+            isPaused = false;
+            currentStreamUrl = null;
+            resolve();
+        });
+
+        try { 
+            ffmpegProcess.stdin?.end(); 
+        } catch { }
+        
+        try { 
+            ffmpegProcess.kill('SIGTERM'); 
+        } catch { }
+    });
+}
+
 async function playPlaylist({ loop = false } = {}) {
     playlistLoop = !!loop;
+    playlistStopping = false;
 
     await buildQueueFromDb();
 
@@ -138,37 +223,74 @@ async function playPlaylist({ loop = false } = {}) {
         console.log('⚠️ ไม่มีเพลงในเพลย์ลิสต์');
         return { success: false, message: 'ไม่มีเพลงในเพลย์ลิสต์' };
     }
+    
     currentIndex = 0;
-    emitStatus({ event: 'playlist-started' });
+    playlistMode = true;
+    emitStatus({ event: 'playlist-started', extra: { total: playlistQueue.length } });
+    
     await _playIndex(currentIndex);
     return { success: true, message: 'เริ่มเล่นเพลย์ลิสต์' };
 }
 
 async function nextTrack() {
     if (!playlistMode) return { success: false, message: 'ไม่ได้อยู่ในโหมดเพลย์ลิสต์' };
+    
+    // ป้องกันกดถัดไปถ้าเป็นเพลงสุดท้ายและไม่มีการวนลูป
     if (currentIndex + 1 >= playlistQueue.length && !playlistLoop) {
         return { success: false, message: 'ถึงเพลงสุดท้ายแล้ว' };
     }
-    currentIndex = (currentIndex + 1) % playlistQueue.length;
-
+    
+    // คำนวณ index ถัดไป
+    const nextIdx = (currentIndex + 1) % playlistQueue.length;
+    
+    // หยุด process ปัจจุบันและรอให้จบสมบูรณ์
+    console.log(`⏭️ กดเพลงถัดไป: ${currentIndex} -> ${nextIdx}`);
+    playlistStopping = true;  // ป้องกัน auto-play
+    await _quickStop();
+    playlistStopping = false;
+    
+    // เล่นเพลงถัดไป
+    currentIndex = nextIdx;
+    playlistMode = true;
     await _playIndex(currentIndex);
-    emitStatus({ event: 'next' });
+    
     return { success: true, message: 'เพลงถัดไป' };
 }
 
 async function prevTrack() {
     if (!playlistMode) return { success: false, message: 'ไม่ได้อยู่ในโหมดเพลย์ลิสต์' };
-    currentIndex = (currentIndex - 1 + playlistQueue.length) % playlistQueue.length;
+    
+    // ป้องกันกดย้อนกลับถ้าเป็นเพลงแรกและไม่มีการวนลูป
+    if (currentIndex === 0 && !playlistLoop) {
+        return { success: false, message: 'เป็นเพลงแรกแล้ว' };
+    }
+    
+    // คำนวณ index ก่อนหน้า
+    const prevIdx = (currentIndex - 1 + playlistQueue.length) % playlistQueue.length;
+    
+    // หยุด process ปัจจุบันและรอให้จบสมบูรณ์
+    console.log(`⏮️ กดเพลงก่อนหน้า: ${currentIndex} -> ${prevIdx}`);
+    playlistStopping = true;  // ป้องกัน auto-play
+    await _quickStop();
+    playlistStopping = false;
+    
+    // เล่นเพลงก่อนหน้า
+    currentIndex = prevIdx;
+    playlistMode = true;
     await _playIndex(currentIndex);
-    emitStatus({ event: 'prev' });
+    
     return { success: true, message: 'เพลงก่อนหน้า' };
 }
 
 async function stopPlaylist() {
+    playlistStopping = true;
     playlistMode = false;
     playlistQueue = [];
     currentIndex = -1;
+    
     await stopAll();
+    
+    playlistStopping = false;
     emitStatus({ event: 'playlist-stopped' });
     return { success: true, message: 'หยุดเพลย์ลิสต์' };
 }
@@ -178,7 +300,10 @@ async function stopPlaylist() {
 function wireChildLogging(child, tag) {
     child.stderr.on('data', (d) => {
         const s = d.toString();
-        if (s.trim()) console.log(`[${tag}] ${s.trim()}`);
+        // Only log actual errors, not warnings
+        if (s.trim() && !s.includes('deprecated pixel format')) {
+            console.log(`[${tag}] ${s.trim()}`);
+        }
     });
     child.on('error', (err) => console.error(`[${tag}] error:`, err));
 }
@@ -358,27 +483,70 @@ async function startLocalFile(filePath) {
 }
 
 function pause() {
-    if (!isAlive(ffmpegProcess)) throw new Error('no active stream');
-    if (isPaused) return;
-    ffmpegProcess.kill('SIGSTOP');
-    isPaused = true;
-    emitStatus({ event: 'paused' });
+    if (!isAlive(ffmpegProcess)) {
+        console.log('⚠️ ไม่มี stream ที่กำลังเล่นอยู่');
+        throw new Error('no active stream');
+    }
+    if (isPaused) {
+        console.log('⚠️ หยุดชั่วคราวอยู่แล้ว');
+        return;
+    }
+    
+    try {
+        ffmpegProcess.kill('SIGSTOP');
+        isPaused = true;
+        console.log('⏸️ หยุดชั่วคราวสำเร็จ');
+        emitStatus({ event: 'paused' });
+    } catch (err) {
+        console.error('❌ ไม่สามารถหยุดชั่วคราวได้:', err);
+        throw err;
+    }
 }
 
 function resume() {
-    if (!ffmpegProcess) throw new Error('no paused stream');
-    if (!isPaused) return;
-    ffmpegProcess.kill('SIGCONT');
-    isPaused = false;
-    emitStatus({ event: 'resumed' });
+    if (!ffmpegProcess) {
+        console.log('⚠️ ไม่มี process ที่หยุดอยู่');
+        throw new Error('no paused stream');
+    }
+    if (!isPaused) {
+        console.log('⚠️ ไม่ได้หยุดชั่วคราวอยู่');
+        return;
+    }
+    
+    try {
+        ffmpegProcess.kill('SIGCONT');
+        isPaused = false;
+        console.log('▶️ เล่นต่อสำเร็จ');
+        emitStatus({ event: 'resumed' });
+    } catch (err) {
+        console.error('❌ ไม่สามารถเล่นต่อได้:', err);
+        throw err;
+    }
 }
 
 function getStatus() {
-    return {
+    const status = {
         isPlaying: isAlive(ffmpegProcess),
         isPaused,
         currentUrl: currentStreamUrl,
+        mode: playlistMode ? 'playlist' : 'single',
+        playlistMode,
+        currentIndex,
+        totalSongs: playlistQueue.length,
+        loop: playlistLoop,
     };
+    
+    // เพิ่มข้อมูลเพลงปัจจุบันถ้าอยู่ในโหมด playlist
+    if (playlistMode && currentIndex >= 0 && currentIndex < playlistQueue.length) {
+        const currentSong = playlistQueue[currentIndex];
+        status.currentSong = {
+            title: currentSong.name,
+            index: currentIndex,
+            total: playlistQueue.length,
+        };
+    }
+    
+    return status;
 }
 
 async function uploadSongYT(youtubeUrl, filename) {
@@ -417,7 +585,7 @@ async function uploadSongYT(youtubeUrl, filename) {
 }
 
 async function startMicStream(ws) {
-    // ถ้ามี client เก่าอยู่ ตัดทิ้งก่อน
+    // ปิด client เก่าก่อน (ถ้ามี)
     if (activeWs && activeWs !== ws) {
         try { activeWs.terminate(); } catch { }
         activeWs = null;
@@ -428,58 +596,111 @@ async function startMicStream(ws) {
 
     try {
         await stopAll();
-        console.log("🎤 เริ่มสตรีมเสียงจาก Flutter");
+        console.log("🎤 Starting mic stream (Optimized for RPi4)");
         activeWs = ws;
 
         const icecastUrl = `icecast://${cfg.icecast.username}:${cfg.icecast.password}` +
             `@${cfg.icecast.host}:${cfg.icecast.port}${cfg.icecast.mount}`;
 
+        // Optimized ffmpeg configuration for RPi4 - Low Latency
         const ffArgs = [
             '-hide_banner', '-loglevel', 'warning', '-nostdin',
-            '-f', 's16le',
-            '-ar', '44100',
-            '-ac', '2',
-            '-i', 'pipe:0',
-
-            '-af', 'volume=2.0',
-            '-c:a', 'libmp3lame',
-            '-b:a', '128k',
-            '-content_type', 'audio/mpeg',
-            '-f', 'mp3',
-            icecastUrl
+            
+            // Input: PCM 16-bit stereo 44.1kHz
+            '-f', 's16le', '-ar', '44100', '-ac', '2', '-i', 'pipe:0',
+            
+            // Audio processing
+            '-af', 'volume=2.0,highpass=f=80,lowpass=f=15000',
+            
+            // Output: MP3 128k
+            '-c:a', 'libmp3lame', '-b:a', '128k', '-ar', '44100', '-ac', '2',
+            
+            // Low-latency optimization
+            '-write_xing', '0', '-id3v2_version', '0',
+            '-fflags', '+nobuffer', '-flush_packets', '1',
+            
+            '-content_type', 'audio/mpeg', '-f', 'mp3', icecastUrl
         ];
 
-        ffmpegProcess = spawn('ffmpeg', ffArgs, { stdio: ['pipe', 'ignore', 'pipe'] });
-        wireChildLogging(ffmpegProcess, 'ffmpeg');
+        ffmpegProcess = spawn('ffmpeg', ffArgs, { 
+            stdio: ['pipe', 'ignore', 'pipe']
+        });
+        
+        wireChildLogging(ffmpegProcess, 'ffmpeg-mic');
 
+        // Performance monitoring
+        let bytesReceived = 0;
+        let lastLog = Date.now();
+
+        // Handle incoming audio data
         ws.on('message', (msg) => {
-            if (!ffmpegProcess || ffmpegProcess.exitCode !== null) return;
-            if (Buffer.isBuffer(msg)) ffmpegProcess.stdin.write(msg);
+            if (!ffmpegProcess || ffmpegProcess.exitCode !== null || !Buffer.isBuffer(msg)) return;
+            
+            try {
+                ffmpegProcess.stdin.write(msg);
+                bytesReceived += msg.length;
+                
+                // Log every 5 seconds
+                const now = Date.now();
+                if (now - lastLog > 5000) {
+                    const kbps = ((bytesReceived * 8) / 5000).toFixed(1);
+                    console.log(`🎤 Stream: ${kbps} kbps`);
+                    bytesReceived = 0;
+                    lastLog = now;
+                }
+            } catch (err) {
+                console.error('⚠️ Write error:', err.message);
+            }
         });
 
-        const cleanClose = async () => {
-            console.log("❌ Flutter mic disconnected");
-            try { ffmpegProcess?.stdin?.end(); } catch { }
+        // Cleanup handler
+        const cleanup = async () => {
+            console.log("🔌 Mic disconnected");
+            try { 
+                if (ffmpegProcess?.stdin && !ffmpegProcess.stdin.destroyed) {
+                    ffmpegProcess.stdin.end();
+                }
+            } catch { }
+            
+            await sleep(200); // Wait for buffer flush
             await stopAll();
+            
             if (activeWs === ws) activeWs = null;
         };
 
-        ws.on('close', cleanClose);
+        ws.on('close', cleanup);
         ws.on('error', (err) => {
-            console.error('⚠️ WebSocket error:', err.message);
-            cleanClose();
+            console.error('⚠️ WS error:', err.message);
+            cleanup();
         });
 
         ffmpegProcess.on('close', (code) => {
-            console.log(`🎵 ffmpeg for mic closed (code ${code})`);
+            console.log(`🎵 ffmpeg closed (${code})`);
+            if (activeWs === ws) activeWs = null;
         });
 
         isPaused = false;
         currentStreamUrl = "flutter-mic";
-        bus.emit('status', { event: 'started', url: currentStreamUrl });
+        bus.emit('status', { event: 'mic-started', url: currentStreamUrl });
     } finally {
         starting = false;
     }
+}
+
+async function stopMicStream() {
+    console.log("🛑 Stopping mic stream");
+    
+    if (activeWs) {
+        try {
+            activeWs.close(1000, 'stop-requested');
+        } catch (err) {
+            console.error('⚠️ Close error:', err);
+        }
+        activeWs = null;
+    }
+    
+    await stopAll();
+    bus.emit('status', { event: 'mic-stopped' });
 }
 
 module.exports = {
@@ -491,6 +712,7 @@ module.exports = {
     uploadSongYT,
     startLocalFile,
     startMicStream,
+    stopMicStream,
     playPlaylist,
     nextTrack,
     prevTrack,

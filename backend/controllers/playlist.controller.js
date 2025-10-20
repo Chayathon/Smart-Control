@@ -48,6 +48,26 @@ async function stopPlaylist(_req, res) {
     }
 }
 
+async function pausePlaylist(_req, res) {
+    try {
+        stream.pause();
+        return res.json({ status: 'success', message: 'หยุดชั่วคราว' });
+    } catch (e) {
+        console.error('Error pausePlaylist:', e);
+        return res.status(500).json({ status: 'error', message: e.message || 'pause failed' });
+    }
+}
+
+async function resumePlaylist(_req, res) {
+    try {
+        stream.resume();
+        return res.json({ status: 'success', message: 'เล่นต่อ' });
+    } catch (e) {
+        console.error('Error resumePlaylist:', e);
+        return res.status(500).json({ status: 'error', message: e.message || 'resume failed' });
+    }
+}
+
 async function postSetupPlaylist(req, res) {
     try {
         const { playlist } = req.body;
@@ -67,9 +87,22 @@ async function getPlaylistSong(req, res) {
     }
 }
 
+async function getPlaylistStatus(_req, res) {
+    try {
+        const status = stream.getStatus();
+        return res.json({ status: 'success', ...status });
+    } catch (e) {
+        console.error('Error getPlaylistStatus:', e);
+        return res.status(500).json({ status: 'error', message: e.message || 'get status failed' });
+    }
+}
+
 module.exports = {
     postSetupPlaylist, getPlaylistSong, playPlaylist,
     nextTrack,
     prevTrack,
     stopPlaylist,
+    pausePlaylist,
+    resumePlaylist,
+    getPlaylistStatus,
 };

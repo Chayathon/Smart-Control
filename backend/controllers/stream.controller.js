@@ -130,4 +130,25 @@ async function uploadSongYT(req, res) {
     }
 }
 
-module.exports = { start, stop, status, pause, resume, uploadSongYT, upload, uploadSongFile, startFile };
+async function stopMic(_req, res) {
+    try {
+        await stream.stopMicStream();
+        res.json({ status: 'success', message: 'Mic stream stopped' });
+    } catch (e) {
+        console.error('Error stopping mic stream:', e);
+        res.status(500).json({ status: 'error', message: e.message });
+    }
+}
+
+module.exports = { 
+    start, 
+    stop, 
+    status, 
+    pause, 
+    resume, 
+    uploadSongYT, 
+    upload, 
+    uploadSongFile, 
+    startFile,
+    stopMic
+};
