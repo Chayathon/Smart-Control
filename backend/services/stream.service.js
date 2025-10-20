@@ -24,6 +24,12 @@ let playlistLoop = false;
 let playlistStopping = false;
 let nextTrackQueued = false;
 
+// Timing and pause-resume control
+let trackStartMonotonic = 0;   // timestamp when current track started
+let trackBaseOffsetMs = 0;     // accumulated offset before current start
+let lastKnownElapsedMs = 0;    // snapshot of elapsed when pausing/closing
+let pausePendingResume = false; // true when paused by user and waiting to resume
+
 const isAlive = (p) => !!p && p.exitCode === null;
 
 function emitStatus({ event, extra = {} }) {
@@ -60,7 +66,7 @@ async function buildQueueFromDb() {
     currentIndex = playlistQueue.length ? 0 : -1;
 }
 
-async function _playIndex(i) {
+async function _playIndex(i, seekMs = 0) {
     if (playlistStopping) {
         console.log('⏸️ Playlist stopping, aborting playback');
         return;
@@ -106,6 +112,7 @@ async function _playIndex(i) {
         const ffArgs = [
             '-hide_banner', '-loglevel', 'error', '-nostdin',
             '-re',
+            ...(seekMs > 0 ? ['-ss', String(seekMs / 1000)] : []),
             '-i', source,
             '-vn',
             // Audio fade in ช้าขึ้นเพื่อให้เนียนขึ้น
@@ -124,15 +131,23 @@ async function _playIndex(i) {
             icecastUrl
         ];
 
-        ffmpegProcess = spawn('ffmpeg', ffArgs, { stdio: ['ignore', 'ignore', 'pipe'] });
+    ffmpegProcess = spawn('ffmpeg', ffArgs, { stdio: ['ignore', 'ignore', 'pipe'] });
         wireChildLogging(ffmpegProcess, 'ffmpeg');
+    // initialize timing
+    trackBaseOffsetMs = Math.max(0, seekMs | 0);
+    trackStartMonotonic = Date.now();
 
         ffmpegProcess.on('close', async (code) => {
             console.log(`🎵 เพลงสิ้นสุด (code ${code})`);
             const wasPlaylistMode = playlistMode;
             ffmpegProcess = null;
-            isPaused = false;
+            // หากเป็นการ pause ชั่วคราว อย่ารีเซ็ตสถานะ paused
+            if (!pausePendingResume) {
+                isPaused = false;
+            }
             currentStreamUrl = null;
+            // snapshot elapsed
+            lastKnownElapsedMs = trackBaseOffsetMs + Math.max(0, Date.now() - trackStartMonotonic);
 
             if (!wasPlaylistMode || playlistStopping) {
                 return;
@@ -144,6 +159,11 @@ async function _playIndex(i) {
             await sleep(1200);
             console.log('✅ Buffer ล้างสะอาดแล้ว เริ่มเพลงถัดไป');
 
+            // If paused and waiting to resume, do not auto advance
+            if (pausePendingResume) {
+                console.log('⏸️ Pause pending resume, not auto-advancing');
+                return;
+            }
             const next = currentIndex + 1;
             if (next < playlistQueue.length) {
                 currentIndex = next;
@@ -175,7 +195,6 @@ async function _playIndex(i) {
 async function _quickStop() {
     if (!ffmpegProcess || ffmpegProcess.exitCode !== null) {
         ffmpegProcess = null;
-        isPaused = false;
         currentStreamUrl = null;
         return;
     }
@@ -189,7 +208,6 @@ async function _quickStop() {
                 try { ffmpegProcess.kill('SIGKILL'); } catch { }
             }
             ffmpegProcess = null;
-            isPaused = false;
             currentStreamUrl = null;
             resolve();
         }, 800);
@@ -198,7 +216,6 @@ async function _quickStop() {
             clearTimeout(timeout);
             console.log('✅ ffmpeg ปิดสมบูรณ์');
             ffmpegProcess = null;
-            isPaused = false;
             currentStreamUrl = null;
             resolve();
         });
@@ -226,9 +243,13 @@ async function playPlaylist({ loop = false } = {}) {
     
     currentIndex = 0;
     playlistMode = true;
+    trackBaseOffsetMs = 0;
+    trackStartMonotonic = 0;
+    lastKnownElapsedMs = 0;
+    pausePendingResume = false;
     emitStatus({ event: 'playlist-started', extra: { total: playlistQueue.length } });
     
-    await _playIndex(currentIndex);
+    await _playIndex(currentIndex, 0);
     return { success: true, message: 'เริ่มเล่นเพลย์ลิสต์' };
 }
 
@@ -252,7 +273,8 @@ async function nextTrack() {
     // เล่นเพลงถัดไป
     currentIndex = nextIdx;
     playlistMode = true;
-    await _playIndex(currentIndex);
+    trackBaseOffsetMs = 0; trackStartMonotonic = 0; lastKnownElapsedMs = 0; pausePendingResume = false;
+    await _playIndex(currentIndex, 0);
     
     return { success: true, message: 'เพลงถัดไป' };
 }
@@ -277,7 +299,8 @@ async function prevTrack() {
     // เล่นเพลงก่อนหน้า
     currentIndex = prevIdx;
     playlistMode = true;
-    await _playIndex(currentIndex);
+    trackBaseOffsetMs = 0; trackStartMonotonic = 0; lastKnownElapsedMs = 0; pausePendingResume = false;
+    await _playIndex(currentIndex, 0);
     
     return { success: true, message: 'เพลงก่อนหน้า' };
 }
@@ -483,45 +506,55 @@ async function startLocalFile(filePath) {
 }
 
 function pause() {
-    if (!isAlive(ffmpegProcess)) {
-        console.log('⚠️ ไม่มี stream ที่กำลังเล่นอยู่');
-        throw new Error('no active stream');
+    if (!playlistMode || currentIndex < 0 || currentIndex >= playlistQueue.length) {
+        console.log('⚠️ ไม่มี playlist ที่กำลังเล่นอยู่');
+        throw new Error('no active playlist');
     }
     if (isPaused) {
         console.log('⚠️ หยุดชั่วคราวอยู่แล้ว');
         return;
     }
-    
-    try {
-        ffmpegProcess.kill('SIGSTOP');
-        isPaused = true;
-        console.log('⏸️ หยุดชั่วคราวสำเร็จ');
-        emitStatus({ event: 'paused' });
-    } catch (err) {
-        console.error('❌ ไม่สามารถหยุดชั่วคราวได้:', err);
-        throw err;
-    }
+    // Snapshot elapsed time
+    lastKnownElapsedMs = trackBaseOffsetMs + Math.max(0, Date.now() - trackStartMonotonic);
+    isPaused = true;
+    pausePendingResume = true;
+    console.log(`⏸️ ขอหยุดชั่วคราว ณ ~${Math.round(lastKnownElapsedMs/1000)}s`);
+    // Stop ffmpeg to avoid Icecast timeout causing auto-advance
+    (async () => {
+        try {
+            playlistStopping = true; // prevent auto-advance in close handler
+            await _quickStop();
+        } finally {
+            playlistStopping = false;
+            emitStatus({ event: 'paused', extra: { resumeMs: lastKnownElapsedMs } });
+        }
+    })().catch(e => console.error('pause() error:', e));
 }
 
 function resume() {
-    if (!ffmpegProcess) {
-        console.log('⚠️ ไม่มี process ที่หยุดอยู่');
+    if (!playlistMode || currentIndex < 0 || currentIndex >= playlistQueue.length) {
+        console.log('⚠️ ไม่มี playlist สำหรับเล่นต่อ');
         throw new Error('no paused stream');
     }
-    if (!isPaused) {
+    if (!isPaused && !pausePendingResume) {
         console.log('⚠️ ไม่ได้หยุดชั่วคราวอยู่');
         return;
     }
-    
-    try {
-        ffmpegProcess.kill('SIGCONT');
-        isPaused = false;
-        console.log('▶️ เล่นต่อสำเร็จ');
-        emitStatus({ event: 'resumed' });
-    } catch (err) {
-        console.error('❌ ไม่สามารถเล่นต่อได้:', err);
-        throw err;
-    }
+    const seekMs = Math.max(0, lastKnownElapsedMs | 0);
+    isPaused = false;
+    pausePendingResume = false;
+    console.log(`▶️ เล่นต่อจาก ~${Math.round(seekMs/1000)}s ที่ index ${currentIndex}`);
+    (async () => {
+        try {
+            // Ensure current process is stopped
+            playlistStopping = true;
+            await _quickStop();
+        } finally {
+            playlistStopping = false;
+            _playIndex(currentIndex, seekMs).catch(e => console.error('resume play failed:', e));
+            emitStatus({ event: 'resumed', extra: { resumeMs: seekMs } });
+        }
+    })().catch(e => console.error('resume() error:', e));
 }
 
 function getStatus() {
@@ -534,6 +567,7 @@ function getStatus() {
         currentIndex,
         totalSongs: playlistQueue.length,
         loop: playlistLoop,
+        resumeMs: lastKnownElapsedMs,
     };
     
     // เพิ่มข้อมูลเพลงปัจจุบันถ้าอยู่ในโหมด playlist
