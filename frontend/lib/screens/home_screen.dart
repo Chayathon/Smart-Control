@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
-import 'package:smart_control/core/services/StreamStatusService.dart';
+// import 'package:smart_control/core/services/StreamStatusService.dart';
 import 'package:smart_control/core/alert/app_snackbar.dart';
 import 'package:smart_control/routes/app_routes.dart';
 import 'package:smart_control/widgets/loading_overlay.dart';
@@ -11,6 +11,7 @@ import 'package:toastification/toastification.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:smart_control/core/network/api_service.dart';
 import 'package:smart_control/core/mic/mic_stream_service.dart';
+import 'package:smart_control/core/services/playlist_service.dart';
 import '../widgets/keypad_row.dart';
 import '../widgets/lamp_tile.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -24,7 +25,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final storage = const FlutterSecureStorage();
-  final _streamStatus = StreamStatusService();
+  // final _streamStatus = StreamStatusService();
   final _micService = MicStreamService();
 
   String _displayText = '0';
@@ -33,7 +34,6 @@ class _HomeScreenState extends State<HomeScreen> {
   String _zoneNumber = "";
   String _zoneType = "";
   bool _is_playing = false;
-  bool _isPlaylistLoading = false;
   String _currentSongTitle = "";
   int _currentSongIndex = 0;
   int _totalSongs = 0;
@@ -45,14 +45,8 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _playlistActive =
       false; // โหมดเพลย์ลิสต์กำลังทำงาน (เล่นหรือหยุดชั่วคราว)
 
-  // Cooldown สำหรับปุ่มควบคุมเพลง (หยุดชั่วคราว/ก่อนหน้า/ถัดไป)
-  DateTime? _controlsCooldownUntil;
-  Timer? _controlsCooldownTimer;
-  bool get _isControlsCoolingDown =>
-      _controlsCooldownUntil != null &&
-      DateTime.now().isBefore(_controlsCooldownUntil!);
-
-  DateTime? _lastButtonPress;
+  // Delegate cooldown and playback logic to PlaylistService
+  final PlaylistService _playlist = PlaylistService.instance;
 
   late WebSocketChannel channel;
 
@@ -68,7 +62,7 @@ class _HomeScreenState extends State<HomeScreen> {
       Future.delayed(Duration(seconds: 3), () {
         getAllZones();
         connectWebSocket();
-        checkPlaylistStatus(); // เช็คสถานะ playlist
+        _playlist.ensureInitialized();
         LoadingOverlay.hide();
       });
     });
@@ -79,56 +73,22 @@ class _HomeScreenState extends State<HomeScreen> {
     ]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
 
-    _streamStatus.connect();
-
-    // Setup stream status callback
-    _streamStatus.onStatusUpdate = (data) {
+    // Bind PlaylistService state to this UI
+    _playlist.state.addListener(() {
+      final s = _playlist.state.value;
       if (!mounted) return;
-
-      final event = data['event'];
-      final isPlaying = data['isPlaying'] ?? false;
-      final mode = data['mode'] ?? 'single';
-      final pausedState = data['isPaused'] ?? false;
-      final loopState = data['loop'] ?? false;
-
       setState(() {
-        if (mode == 'playlist') {
-          _playlistActive = true;
-          _is_playing = isPlaying;
-          isPaused = pausedState;
-          _isLoopEnabled = loopState;
-          _currentSongIndex = (data['index'] ?? 0) + 1;
-          _totalSongs = data['total'] ?? 0;
-
-          // แก้ไขการอ่านชื่อเพลง - ตรวจสอบทั้ง extra และ title ใน data
-          if (data['title'] != null) {
-            _currentSongTitle = data['title'];
-          } else if (data['extra'] != null && data['extra']['title'] != null) {
-            _currentSongTitle = data['extra']['title'];
-          }
-
-          // Reset loading state
-          if (event == 'started' ||
-              event == 'stopped' ||
-              event == 'playlist-stopped') {
-            _isPlaylistLoading = false;
-          }
-        } else if (event == 'playlist-stopped') {
-          _playlistActive = false;
-          _is_playing = false;
-          _isPlaylistLoading = false;
-          isPaused = false;
-          _isLoopEnabled = false;
-          _currentSongTitle = "";
-          _currentSongIndex = 0;
-          _totalSongs = 0;
-        }
+        _playlistActive = s.active;
+        _is_playing = s.isPlaying;
+        isPaused = s.isPaused;
+        _isLoopEnabled = s.isLoop;
+        _currentSongIndex = s.index;
+        _totalSongs = s.total;
+        _currentSongTitle = s.title;
       });
-
-      print(
-        "Playlist status: playing=$_is_playing, paused=$isPaused, song=$_currentSongIndex/$_totalSongs, title=$_currentSongTitle",
-      );
-    };
+      // Debug print
+      // print("Playlist status: playing=${s.isPlaying}, paused=${s.isPaused}, song=${s.index}/${s.total}, title=${s.title}");
+    });
 
     // Setup mic service callbacks
     _micService.onStatusChanged = (isRecording) {
@@ -146,7 +106,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
-    _controlsCooldownTimer?.cancel();
     _micService.dispose();
     super.dispose();
   }
@@ -245,146 +204,9 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> setStartPlaylist() async {
-    try {
-      final api = await ApiService.private();
+  Future<void> nextSong() => _playlist.next();
 
-      await api.get('/playlist/start-playlist');
-      AppSnackbar.success("แจ้งเตือน", "เริ่มเล่นเพลย์ลิสต์");
-    } catch (error) {
-      print(error);
-      rethrow;
-    }
-  }
-
-  Future<void> setStopPlaylist() async {
-    try {
-      final api = await ApiService.private();
-
-      await api.get('/playlist/stop-playlist');
-      AppSnackbar.success("แจ้งเตือน", "หยุดเล่นเพลย์ลิสต์");
-    } catch (error) {
-      print(error);
-      rethrow;
-    }
-  }
-
-  Future<void> checkPlaylistStatus() async {
-    try {
-      final api = await ApiService.private();
-      final response = await api.get('/playlist/status');
-
-      if (!mounted) return;
-
-      print('📊 Playlist Status Response: $response');
-
-      // ตรวจสอบว่ามี playlist กำลังเล่น/หยุดชั่วคราวอยู่หรือไม่
-      final isPlaying = response['isPlaying'] ?? false;
-      final playlistMode = response['playlistMode'] ?? false;
-      final pausedState = response['isPaused'] ?? false;
-
-      if (playlistMode && (isPlaying || pausedState)) {
-        final currentSong = response['currentSong'];
-
-        setState(() {
-          _playlistActive = true;
-          _is_playing = isPlaying; // playing จริงหรือไม่
-          isPaused = pausedState;
-          _isLoopEnabled = response['loop'] ?? false;
-          _totalSongs = response['totalSongs'] ?? 0;
-
-          if (currentSong != null) {
-            _currentSongTitle = currentSong['title'] ?? '';
-            _currentSongIndex = (currentSong['index'] ?? 0) + 1;
-          }
-        });
-
-        print(
-          '✅ พบ Playlist กำลังเล่น: เพลง $_currentSongIndex/$_totalSongs - $_currentSongTitle',
-        );
-      } else {
-        print('ℹ️ ไม่มี Playlist กำลังเล่น');
-        setState(() {
-          _playlistActive = false;
-        });
-      }
-    } catch (error) {
-      print('❌ Error checking playlist status: $error');
-      // ไม่แสดง error แค่ log ไว้
-    }
-  }
-
-  Future<void> nextSong() async {
-    if (!(_is_playing || isPaused)) return;
-    if (_isControlsCoolingDown) return;
-
-    // ป้องกันกดถัดไปถ้าเป็นเพลงสุดท้ายและไม่มีการวนลูป
-    if (_currentSongIndex >= _totalSongs && !_isLoopEnabled) {
-      AppSnackbar.success("แจ้งเตือน", "เป็นเพลงสุดท้ายแล้ว");
-      return;
-    }
-
-    // Debounce - ป้องกันการกดซ้ำเร็วเกินไป
-    final now = DateTime.now();
-    if (_lastButtonPress != null &&
-        now.difference(_lastButtonPress!).inMilliseconds < 500) {
-      return;
-    }
-    _lastButtonPress = now;
-    _startControlsCooldown(); // เริ่มคูลดาวน์ทันทีที่กด
-
-    try {
-      final api = await ApiService.private();
-      final response = await api.get('/playlist/next-track');
-
-      // ตรวจสอบ response จาก backend
-      if (response['status'] == 'error') {
-        AppSnackbar.success(
-          "แจ้งเตือน",
-          response['message'] ?? "ไม่สามารถเปลี่ยนเพลงได้",
-        );
-      }
-    } catch (error) {
-      print(error);
-      AppSnackbar.error("ข้อผิดพลาด", "ไม่สามารถเปลี่ยนเพลงได้");
-    }
-  }
-
-  Future<void> prevSong() async {
-    if (!(_is_playing || isPaused)) return;
-    if (_isControlsCoolingDown) return;
-
-    // ป้องกันกดย้อนกลับถ้าเป็นเพลงแรกและไม่มีการวนลูป
-    if (_currentSongIndex <= 1 && !_isLoopEnabled) {
-      AppSnackbar.success("แจ้งเตือน", "เป็นเพลงแรกแล้ว");
-      return;
-    }
-
-    // Debounce - ป้องกันการกดซ้ำเร็วเกินไป
-    final now = DateTime.now();
-    if (_lastButtonPress != null &&
-        now.difference(_lastButtonPress!).inMilliseconds < 500) {
-      return;
-    }
-    _lastButtonPress = now;
-    _startControlsCooldown(); // เริ่มคูลดาวน์ทันทีที่กด
-
-    try {
-      final api = await ApiService.private();
-      final response = await api.get('/playlist/prev-track');
-
-      // ตรวจสอบ response จาก backend
-      if (response['status'] == 'error') {
-        AppSnackbar.success(
-          "แจ้งเตือน",
-          response['message'] ?? "ไม่สามารถเปลี่ยนเพลงได้",
-        );
-      }
-    } catch (error) {
-      print(error);
-      AppSnackbar.error("ข้อผิดพลาด", "ไม่สามารถเปลี่ยนเพลงได้");
-    }
-  }
+  Future<void> prevSong() => _playlist.prev();
 
   void getAllStatusZone() async {
     try {
@@ -477,26 +299,9 @@ class _HomeScreenState extends State<HomeScreen> {
   void _toggleLive() => setState(() => _liveOn = !_liveOn);
 
   void _togglePlaying() async {
-    if (_isPlaylistLoading) return;
-
-    setState(() => _isPlaylistLoading = true);
-
     try {
-      if (_is_playing) {
-        await setStopPlaylist();
-        setState(() {
-          _is_playing = false;
-          isPaused = false;
-          _currentSongTitle = "";
-          _currentSongIndex = 0;
-          _totalSongs = 0;
-        });
-      } else {
-        await setStartPlaylist();
-        // Don't set _is_playing here, wait for SSE update
-      }
+      await _playlist.togglePlayStop();
     } catch (e) {
-      setState(() => _isPlaylistLoading = false);
       AppSnackbar.error("ข้อผิดพลาด", "ไม่สามารถดำเนินการได้");
     }
   }
@@ -504,40 +309,19 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _togglePause() async {
     // อนุญาตให้ทำงานทั้งตอนกำลังเล่นและหยุดชั่วคราว
     if (!(_is_playing || isPaused)) return;
-    if (_isControlsCoolingDown) return;
+    if (_playlist.state.value.isControlsCoolingDown) return;
 
     try {
-      _startControlsCooldown(); // เริ่มคูลดาวน์ทันทีที่กด
-      final api = await ApiService.private();
-      if (isPaused) {
-        await api.get('/playlist/resume-playlist');
-        setState(() => isPaused = false);
-        AppSnackbar.success("แจ้งเตือน", "เล่นต่อ");
-      } else {
-        await api.get('/playlist/pause-playlist');
-        setState(() => isPaused = true);
-        AppSnackbar.success("แจ้งเตือน", "หยุดชั่วคราว");
-      }
+      await _playlist.togglePauseResume();
+      if (mounted) setState(() => isPaused = _playlist.state.value.isPaused);
+      AppSnackbar.success(
+        "แจ้งเตือน",
+        _playlist.state.value.isPaused ? "หยุดชั่วคราว" : "เล่นต่อ",
+      );
     } catch (error) {
       print(error);
       AppSnackbar.error("ข้อผิดพลาด", "ไม่สามารถหยุดชั่วคราวได้");
     }
-  }
-
-  void _startControlsCooldown() {
-    // เริ่มคูลดาวน์ 8 วินาทีสำหรับปุ่มควบคุมเพลง
-    _controlsCooldownTimer?.cancel();
-    final until = DateTime.now().add(const Duration(seconds: 8));
-    setState(() {
-      _controlsCooldownUntil = until;
-    });
-    final delay = until.difference(DateTime.now());
-    _controlsCooldownTimer = Timer(delay, () {
-      if (!mounted) return;
-      setState(() {
-        _controlsCooldownUntil = null;
-      });
-    });
   }
 
   Widget _buildCircularToggleButton({
@@ -733,21 +517,25 @@ class _HomeScreenState extends State<HomeScreen> {
                                     const SizedBox(width: 24),
                                     _buildCircularToggleButton(
                                       isActive: _is_playing,
-                                      activeIcon: _isPlaylistLoading
+                                      activeIcon:
+                                          _playlist.state.value.isLoading
                                           ? Icons.hourglass_empty
                                           : Icons.stop,
-                                      inactiveIcon: _isPlaylistLoading
+                                      inactiveIcon:
+                                          _playlist.state.value.isLoading
                                           ? Icons.hourglass_empty
                                           : Icons.play_arrow,
-                                      activeLabel: _isPlaylistLoading
+                                      activeLabel:
+                                          _playlist.state.value.isLoading
                                           ? "กำลังโหลด..."
                                           : "หยุดเล่น",
-                                      inactiveLabel: _isPlaylistLoading
+                                      inactiveLabel:
+                                          _playlist.state.value.isLoading
                                           ? "กำลังโหลด..."
                                           : "เล่นเพลง",
                                       activeColor: Colors.red[600]!,
                                       inactiveColor: Colors.green[600]!,
-                                      onTap: _isPlaylistLoading
+                                      onTap: _playlist.state.value.isLoading
                                           ? () {}
                                           : _togglePlaying,
                                     ),
@@ -796,7 +584,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                 ),
 
                                 // แถวสอง: ปุ่มควบคุมเพลง (แสดงเมื่อโหมดเพลย์ลิสต์กำลังทำงาน - เล่นหรือหยุดชั่วคราว)
-                                if (_playlistActive && !_isPlaylistLoading) ...[
+                                if (_playlistActive &&
+                                    !_playlist.state.value.isLoading) ...[
                                   const SizedBox(height: 12),
                                   Container(
                                     padding: const EdgeInsets.symmetric(
@@ -820,7 +609,10 @@ class _HomeScreenState extends State<HomeScreen> {
                                             final prevDisabled =
                                                 (_currentSongIndex <= 1 &&
                                                     !_isLoopEnabled) ||
-                                                _isControlsCoolingDown;
+                                                _playlist
+                                                    .state
+                                                    .value
+                                                    .isControlsCoolingDown;
                                             return Opacity(
                                               opacity: prevDisabled ? 0.3 : 1.0,
                                               child: _buildCircularToggleButton(
@@ -828,8 +620,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                                 activeIcon: Icons.skip_previous,
                                                 inactiveIcon:
                                                     Icons.skip_previous,
-                                                activeLabel: "เพลงก่อน",
-                                                inactiveLabel: "เพลงก่อน",
+                                                activeLabel: "เพลงก่อนหน้า",
+                                                inactiveLabel: "เพลงก่อนหน้า",
                                                 activeColor: Colors.blue[700]!,
                                                 inactiveColor: prevDisabled
                                                     ? Colors.grey
@@ -842,7 +634,11 @@ class _HomeScreenState extends State<HomeScreen> {
                                         ),
                                         const SizedBox(width: 32),
                                         Opacity(
-                                          opacity: _isControlsCoolingDown
+                                          opacity:
+                                              _playlist
+                                                  .state
+                                                  .value
+                                                  .isControlsCoolingDown
                                               ? 0.3
                                               : 1.0,
                                           child: _buildCircularToggleButton(
@@ -853,11 +649,17 @@ class _HomeScreenState extends State<HomeScreen> {
                                             inactiveLabel: "หยุดชั่วคราว",
                                             activeColor: Colors.green[600]!,
                                             inactiveColor:
-                                                _isControlsCoolingDown
+                                                _playlist
+                                                    .state
+                                                    .value
+                                                    .isControlsCoolingDown
                                                 ? Colors.grey
                                                 : Colors.orange[700]!,
                                             onTap: _togglePause,
-                                            enabled: !_isControlsCoolingDown,
+                                            enabled: !_playlist
+                                                .state
+                                                .value
+                                                .isControlsCoolingDown,
                                           ),
                                         ),
                                         const SizedBox(width: 32),
@@ -868,7 +670,10 @@ class _HomeScreenState extends State<HomeScreen> {
                                                 (_currentSongIndex >=
                                                         _totalSongs &&
                                                     !_isLoopEnabled) ||
-                                                _isControlsCoolingDown;
+                                                _playlist
+                                                    .state
+                                                    .value
+                                                    .isControlsCoolingDown;
                                             return Opacity(
                                               opacity: nextDisabled ? 0.3 : 1.0,
                                               child: _buildCircularToggleButton(
