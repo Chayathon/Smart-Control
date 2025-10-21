@@ -16,19 +16,21 @@ async function uploadSongFile(req, res) {
         const file = req.file;
 
         if (!file) {
-            return res.status(400).json({ status: 'error', message: 'No file uploaded' });
+        return res.status(400).json({ status: 'error', message: 'No file uploaded' });
         }
 
-        const savedFileName = await song.uploadSongFile(file, filename);
+        const created = await song.uploadSongFile(file, filename);
 
-        res.json({
+        return res.json({
             status: 'success',
             message: 'Song uploaded successfully',
-            file: `${savedFileName}`
+            file: created.fileName,
+            name: created.name,
+            url: created.url
         });
     } catch (err) {
-        console.error(err);
-        res.status(500).json({ status: 'error', message: err.message });
+        console.error('uploadSongFile error:', err);
+        return res.status(500).json({ status: 'error', message: err.message });
     }
 }
 

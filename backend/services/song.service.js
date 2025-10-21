@@ -3,47 +3,75 @@ const path = require('path');
 const fs = require('fs');
 const multer = require('multer')
 
+// ===== Utils =====
+function ensureDir(dir) {
+    if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+    }
+}
+
+// อนุญาตอักษรไทย/อังกฤษ/ตัวเลข/ขีด/ขีดล่าง/ช่องว่าง
+function sanitizeBaseName(input) {
+    const trimmed = (input || '').toString().trim();
+    const cleaned = trimmed.replace(/[^a-zA-Z0-9ก-๙\-_ ]/g, '');
+    // กันกรณีว่างเปล่าหลัง sanitize
+    return cleaned.length ? cleaned : `song-${Date.now()}`;
+}
+
+const UPLOAD_DIR = path.join(__dirname, '../uploads');
+ensureDir(UPLOAD_DIR);
+
+// ===== Multer config =====
+const storage = multer.diskStorage({
+    destination: function (req, file, cb) {
+        cb(null, UPLOAD_DIR);
+    },
+    filename: function (req, file, cb) {
+        const base = sanitizeBaseName(req.body.filename || path.parse(file.originalname).name);
+        const unique = Math.random().toString(36).slice(2);
+        // บังคับ .mp3 เสมอ
+        cb(null, `${base}-${unique}.mp3`);
+    }
+});
+
+// ยอมรับทั้ง mimetype 'audio/mpeg' และกรณี browser ให้เป็น 'audio/mp3'
+const fileFilter = (req, file, cb) => {
+    const okMime = file.mimetype === 'audio/mpeg' || file.mimetype === 'audio/mp3';
+    const ext = path.extname(file.originalname || '').toLowerCase();
+    const okExt = ext === '.mp3';
+    if (okMime && okExt) return cb(null, true);
+    return cb(new Error('Only MP3 files are allowed!'), false);
+};
+
+// จำกัดขนาดไฟล์ (เช่น 25MB) ปรับได้ตามต้องการ
+const upload = multer({
+    storage,
+    fileFilter,
+    limits: { fileSize: 25 * 1024 * 1024 }
+});
+
 async function getSongList() {
     return await Song.find().sort({ no: 1 }).lean();
 }
 
-const storage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        const uploadDir = path.join(__dirname, '../uploads');
-        if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
-        cb(null, uploadDir);
-    },
-    filename: function (req, file, cb) {
-        const safeName = req.body.filename
-            ? req.body.filename.replace(/[^a-zA-Z0-9ก-๙\-_ ]/g, '')
-            : `song-${Date.now()}`;
-        const uniqueSuffix = Math.random().toString(36).slice(2);
-        cb(null, `${safeName}-${uniqueSuffix}.mp3`);
-    }
-});
+async function uploadSongFile(file, givenName) {
+    const safeDisplayName = sanitizeBaseName(givenName || path.parse(file.originalname).name);
+    const fileNameOnDisk = file.filename;
+    const urlPath = `/uploads/${fileNameOnDisk}`;
 
-const fileFilter = (req, file, cb) => {
-    if (file.mimetype === 'audio/mpeg') {
-        cb(null, true);
-    } else {
-        cb(new Error('Only MP3 files are allowed!'), false);
-    }
-};
-
-const upload = multer({ storage, fileFilter });
-
-async function uploadSongFile(file, filename) {
-    const savedFileName = path.basename(file.filename, '.mp3');
-
-    const song = new Song({
-        name: filename || file.originalname.replace(/\.mp3$/i, ''),
-        url: file.filename
+    const doc = new Song({
+        name: safeDisplayName,
+        url: fileNameOnDisk
     });
-    await song.save();
 
-    upload.single('song');
+    await doc.save();
 
-    return savedFileName;
+    return {
+        id: doc._id,
+        name: doc.name,
+        fileName: fileNameOnDisk,
+        url: urlPath
+    };
 }
 
 async function uploadSongYT(youtubeUrl, filename) {
@@ -107,4 +135,4 @@ async function deleteSong(id) {
     }
 }
 
-module.exports = { getSongList, uploadSongFile, uploadSongYT, deleteSong };
+module.exports = { upload, UPLOAD_DIR, getSongList, uploadSongFile, uploadSongYT, deleteSong };
