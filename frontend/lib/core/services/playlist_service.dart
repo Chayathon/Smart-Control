@@ -128,7 +128,7 @@ class PlaylistService with ChangeNotifier {
     state.value = state.value.copyWith(isLoading: true);
     try {
       final api = await ApiService.private();
-      await api.get('/playlist/start-playlist');
+      await api.get('/stream/start-playlist');
       // Wait for SSE to update playing state
     } catch (e) {
       state.value = state.value.copyWith(isLoading: false);
@@ -141,7 +141,7 @@ class PlaylistService with ChangeNotifier {
     state.value = state.value.copyWith(isLoading: true);
     try {
       final api = await ApiService.private();
-      await api.get('/playlist/stop-playlist');
+      await api.get('/stream/stop-playlist');
       // reset will be handled by SSE; fallback in case SSE missing
       // state.value = const PlaylistState();
     } catch (e) {
@@ -166,10 +166,10 @@ class PlaylistService with ChangeNotifier {
     _startControlsCooldown();
     final api = await ApiService.private();
     if (state.value.isPaused) {
-      await api.get('/playlist/resume-playlist');
+      await api.get('/stream/resume-playlist');
       state.value = state.value.copyWith(isPaused: false);
     } else {
-      await api.get('/playlist/pause-playlist');
+      await api.get('/stream/pause-playlist');
       state.value = state.value.copyWith(isPaused: true);
     }
   }
@@ -194,7 +194,7 @@ class PlaylistService with ChangeNotifier {
 
     try {
       final api = await ApiService.private();
-      await api.get('/playlist/next-track');
+      await api.get('/stream/next-track');
     } catch (_) {}
   }
 
@@ -218,7 +218,7 @@ class PlaylistService with ChangeNotifier {
 
     try {
       final api = await ApiService.private();
-      await api.get('/playlist/prev-track');
+      await api.get('/stream/prev-track');
     } catch (_) {}
   }
 
