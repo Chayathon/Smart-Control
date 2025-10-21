@@ -1,5 +1,14 @@
 const song = require('../services/song.service');
 
+function isHttpUrl(u) {
+    try {
+        const x = new URL(u);
+        return x.protocol === 'http:' || x.protocol === 'https:';
+    } catch {
+        return false;
+    }
+}
+
 async function getSongList(req, res) {
     try {
         const list = await song.getSongList();
@@ -16,7 +25,7 @@ async function uploadSongFile(req, res) {
         const file = req.file;
 
         if (!file) {
-        return res.status(400).json({ status: 'error', message: 'No file uploaded' });
+            return res.status(400).json({ status: 'error', message: 'No file uploaded' });
         }
 
         const created = await song.uploadSongFile(file, filename);
@@ -40,11 +49,22 @@ async function uploadSongYT(req, res) {
         if (!url || !isHttpUrl(url)) {
             return res.status(400).json({ status: 'error', message: 'ต้องระบุ URL ที่ถูกต้อง' });
         }
-        const name = await song.uploadSongYT(url, filename);
-        res.json({ status: 'success', name });
+
+        const result = await song.uploadSongYT(url, filename);
+
+        return res.json({
+            status: 'success',
+            message: 'Song uploaded successfully',
+            data: {
+                id: result.id,
+                name: result.name,
+                file: result.fileName,
+                url: result.url
+            }
+        });
     } catch (e) {
         console.error('Error uploading song:', e);
-        res.status(500).json({ status: 'error', message: e.message || 'upload failed' });
+        return res.status(500).json({ status: 'error', message: e.message || 'upload failed' });
     }
 }
 

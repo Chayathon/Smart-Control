@@ -1,138 +1,149 @@
 const Song = require('../models/Song');
-const path = require('path');
-const fs = require('fs');
-const multer = require('multer')
 
-// ===== Utils =====
+const fs = require('fs');
+const path = require('path');
+const { spawn } = require('child_process');
+const multer = require('multer');
+
+// -------- Utils --------
 function ensureDir(dir) {
-    if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-    }
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 }
 
-// อนุญาตอักษรไทย/อังกฤษ/ตัวเลข/ขีด/ขีดล่าง/ช่องว่าง
 function sanitizeBaseName(input) {
     const trimmed = (input || '').toString().trim();
     const cleaned = trimmed.replace(/[^a-zA-Z0-9ก-๙\-_ ]/g, '');
-    // กันกรณีว่างเปล่าหลัง sanitize
     return cleaned.length ? cleaned : `song-${Date.now()}`;
+}
+
+// promise wrapper สำหรับคำสั่ง CLI
+function runCmd(cmd, args, opts = {}) {
+    return new Promise((resolve, reject) => {
+        const p = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'], ...opts });
+        let stdout = '';
+        let stderr = '';
+        p.stdout.on('data', d => (stdout += d.toString()));
+        p.stderr.on('data', d => (stderr += d.toString()));
+        p.on('error', reject);
+        p.on('close', code => (code === 0 ? resolve({ stdout, stderr }) : reject(new Error(stderr || `Exit ${code}`))));
+    });
 }
 
 const UPLOAD_DIR = path.join(__dirname, '../uploads');
 ensureDir(UPLOAD_DIR);
 
-// ===== Multer config =====
 const storage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        cb(null, UPLOAD_DIR);
-    },
-    filename: function (req, file, cb) {
+    destination: (_, __, cb) => cb(null, UPLOAD_DIR),
+    filename: (req, file, cb) => {
         const base = sanitizeBaseName(req.body.filename || path.parse(file.originalname).name);
         const unique = Math.random().toString(36).slice(2);
-        // บังคับ .mp3 เสมอ
-        cb(null, `${base}-${unique}.mp3`);
+        cb(null, `${base}-${unique}.mp3`); // บังคับ .mp3
     }
 });
 
-// ยอมรับทั้ง mimetype 'audio/mpeg' และกรณี browser ให้เป็น 'audio/mp3'
 const fileFilter = (req, file, cb) => {
     const okMime = file.mimetype === 'audio/mpeg' || file.mimetype === 'audio/mp3';
     const ext = path.extname(file.originalname || '').toLowerCase();
-    const okExt = ext === '.mp3';
-    if (okMime && okExt) return cb(null, true);
+    if (okMime && ext === '.mp3') return cb(null, true);
     return cb(new Error('Only MP3 files are allowed!'), false);
 };
 
-// จำกัดขนาดไฟล์ (เช่น 25MB) ปรับได้ตามต้องการ
-const upload = multer({
-    storage,
-    fileFilter,
-    limits: { fileSize: 25 * 1024 * 1024 }
-});
+const upload = multer({ storage, fileFilter, limits: { fileSize: 10 * 1024 * 1024 } });
 
 async function getSongList() {
     return await Song.find().sort({ no: 1 }).lean();
 }
 
 async function uploadSongFile(file, givenName) {
-    const safeDisplayName = sanitizeBaseName(givenName || path.parse(file.originalname).name);
-    const fileNameOnDisk = file.filename;
-    const urlPath = `/uploads/${fileNameOnDisk}`;
+  const safeDisplayName = sanitizeBaseName(givenName || path.parse(file.originalname).name);
+  const fileNameOnDisk = file.filename;
+  const urlPath = `/uploads/${fileNameOnDisk}`;
 
-    const doc = new Song({
-        name: safeDisplayName,
-        url: fileNameOnDisk
-    });
+  const doc = new Song({ name: safeDisplayName, url: fileNameOnDisk });
+  await doc.save();
 
-    await doc.save();
-
-    return {
-        id: doc._id,
-        name: doc.name,
-        fileName: fileNameOnDisk,
-        url: urlPath
-    };
+  return { id: doc._id, name: doc.name, fileName: fileNameOnDisk, url: urlPath };
 }
 
 async function uploadSongYT(youtubeUrl, filename) {
-    const uploadDir = path.join(__dirname, '../uploads');
-    if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
+  // ตั้งค่า
+  const safeBase = sanitizeBaseName(filename);
+  const unique = Math.random().toString(36).slice(2);
+  const outputName = `${safeBase}-${unique}.mp3`;
+  const outputPath = path.join(UPLOAD_DIR, outputName);
 
-    const safeName = filename
-        ? filename.replace(/[^a-zA-Z0-9ก-๙\-_ ]/g, '')
-        : `song-${Date.now()}`;
+  // ไฟล์ชั่วคราว (m4a / opus แล้วแต่ source)
+  const tmpBase = `tmp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const tmpAudio = path.join(UPLOAD_DIR, `${tmpBase}.m4a`);
 
-    const outputName = `${safeName}-${Math.random().toString(36).slice(2)}.mp3`;
-    const outputPath = path.join(uploadDir, outputName);
-    const tempFile = path.join(uploadDir, `temp-${Date.now()}.m4a`);
+  const MAX_DURATION_SEC = 10 * 60;
 
-    await ytdlp(youtubeUrl, {
-        output: tempFile,
-        extractAudio: true,
-        audioFormat: 'm4a',
-        audioQuality: 0,
-    });
+  // ดึงเมตาดาต้า (เอา title ถ้าไม่ได้ส่ง filename)
+  let title = safeBase;
 
-    await new Promise((resolve, reject) => {
-        ffmpeg(tempFile)
-            .audioCodec('libmp3lame')
-            .audioBitrate(192)
-            .save(outputPath)
-            .on('end', resolve)
-            .on('error', reject);
-    });
+  if (!filename) {
+    const { stdout: metaOut } = await runCmd('yt-dlp', ['--no-warnings', '--print', '%(title)s', youtubeUrl]);
+    title = sanitizeBaseName(metaOut.split('\n')[0] || safeBase);
+  }
 
-    fs.unlinkSync(tempFile);
+  // ดาวน์โหลดเสียงด้วย yt-dlp (บังคับ bestaudio เฉพาะเสียง)
+  const ytdlpArgs = [
+    '-f', 'bestaudio[ext=m4a]/bestaudio/bestaudio*', // พยายาม m4a ก่อน
+    '-x', '--audio-format', 'm4a',
+    '--no-playlist',
+    '--no-warnings',
+    '--force-overwrites',
+    '-N', '1',
+    '--max-filesize', '200M',
+    '--match-filter', `duration <= ${MAX_DURATION_SEC}`,
+    '-o', tmpAudio,
+    youtubeUrl
+  ];
+  await runCmd('yt-dlp', ytdlpArgs);
 
-    const song = new Song({ name: safeName, url: outputName });
-    await song.save();
-    return outputName;
+  // แปลงเป็น MP3 ด้วย ffmpeg
+  await runCmd('ffmpeg', [
+    '-y',
+    '-i', tmpAudio,
+    '-vn',
+    '-acodec', 'libmp3lame',
+    '-b:a', '192k',
+    outputPath
+  ]);
+
+  // ลบไฟล์ชั่วคราว
+  try { fs.unlinkSync(tmpAudio); } catch (_) {}
+
+  const doc = new Song({
+    name: title,
+    url: outputName
+  });
+  await doc.save();
+
+  return {
+    id: doc._id.toString(),
+    name: doc.name,
+    fileName: outputName,
+    url: `/uploads/${outputName}`
+  };
 }
 
 async function deleteSong(id) {
-    try {
-        const song = await Song.findById(id);
-        if (!song) {
-            console.log(`Song with id ${id} not found`);
-            return;
-        }
+  const doc = await Song.findById(id);
+  if (!doc) return;
 
-        const filePath = path.join(process.cwd(), 'uploads', song.url);
+  const filePath = path.join(UPLOAD_DIR, doc.url);
+  await Song.findByIdAndDelete(id);
 
-        await Song.findByIdAndDelete(id);
-        console.log(`Song with id ${id} deleted from DB`);
-
-        fs.unlink(filePath, (err) => {
-            if (err) {
-                console.error(`Error deleting file ${filePath}:`, err);
-            } else {
-                console.log(`File ${filePath} deleted successfully`);
-            }
-        });
-
-    } catch (error) {
-        console.error(`Error deleting song with id ${id}:`, error);
-    }
+  fs.unlink(filePath, err => {
+    if (err) console.error('Error deleting file:', err);
+  });
 }
 
-module.exports = { upload, UPLOAD_DIR, getSongList, uploadSongFile, uploadSongYT, deleteSong };
+module.exports = {
+    upload, UPLOAD_DIR,
+    getSongList,
+    uploadSongFile,
+    uploadSongYT,
+    deleteSong
+};
