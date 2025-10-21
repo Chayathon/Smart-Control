@@ -24,10 +24,7 @@ async function setupPlaylist(playlist) {
             return { order, id_song: String(id_song) };
         });
 
-
         const del = await Playlist.deleteMany({});
-
-
         const inserted = await Playlist.insertMany(docs, { ordered: true });
 
         return {

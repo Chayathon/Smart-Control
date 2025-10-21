@@ -5,7 +5,7 @@ async function playPlaylist(req, res) {
     try {
         const loop = req.query.loop === 'true' || req.body?.loop === true;
         const result = await stream.playPlaylist({ loop });
-        return res.json({ status: 'success', ...result });
+        return res.json({ status: 'success', message: result.message });
     } catch (e) {
         console.error('Error playPlaylist:', e);
         return res.status(500).json({ status: 'error', message: e.message || 'play playlist failed' });
@@ -18,7 +18,7 @@ async function nextTrack(_req, res) {
         if (!result.success) {
             return res.status(400).json({ status: 'error', message: result.message });
         }
-        return res.json({ status: 'success', ...result });
+        return res.json({ status: 'success', message: result.message });
     } catch (e) {
         console.error('Error nextTrack:', e);
         return res.status(500).json({ status: 'error', message: e.message || 'next failed' });
@@ -31,7 +31,7 @@ async function prevTrack(_req, res) {
         if (!result.success) {
             return res.status(400).json({ status: 'error', message: result.message });
         }
-        return res.json({ status: 'success', ...result });
+        return res.json({ status: 'success', message: result.message });
     } catch (e) {
         console.error('Error prevTrack:', e);
         return res.status(500).json({ status: 'error', message: e.message || 'prev failed' });
@@ -41,7 +41,7 @@ async function prevTrack(_req, res) {
 async function stopPlaylist(_req, res) {
     try {
         const result = await stream.stopPlaylist();
-        return res.json({ status: 'success', ...result });
+        return res.json({ status: 'success', message: result.message });
     } catch (e) {
         console.error('Error stopPlaylist:', e);
         return res.status(500).json({ status: 'error', message: e.message || 'stop playlist failed' });
@@ -90,7 +90,17 @@ async function getPlaylistSong(req, res) {
 async function getPlaylistStatus(_req, res) {
     try {
         const status = stream.getStatus();
-        return res.json({ status: 'success', ...status });
+        // avoid nesting large objects; pick only essentials
+        const payload = {
+            isPlaying: status.isPlaying,
+            isPaused: status.isPaused,
+            playlistMode: status.playlistMode,
+            currentIndex: status.currentIndex,
+            totalSongs: status.totalSongs,
+            loop: status.loop,
+            currentSong: status.currentSong || null,
+        };
+        return res.json({ status: 'success', ...payload });
     } catch (e) {
         console.error('Error getPlaylistStatus:', e);
         return res.status(500).json({ status: 'error', message: e.message || 'get status failed' });
