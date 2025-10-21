@@ -4,11 +4,10 @@ import 'package:latlong2/latlong.dart' as latlng;
 
 import 'monitoring_mock.dart';
 import 'parts/map_card.dart';
-import 'parts/list_card.dart'; // enums TypeFilter/StatusFilter อยู่ในไฟล์นี้
+import 'parts/list_card.dart'; // มี TypeFilter/StatusFilter
 
 class MonitoringScreen extends StatefulWidget {
   const MonitoringScreen({super.key});
-
   @override
   State<MonitoringScreen> createState() => _MonitoringScreenState();
 }
@@ -23,7 +22,7 @@ class _MonitoringScreenState extends State<MonitoringScreen>
   String? selectedId;
 
   final MapController _mapController = MapController();
-  latlng.LatLng _currentCenter = latlng.LatLng(13.6580, 100.6608);
+  late latlng.LatLng _currentCenter;
   double _currentZoom = 18.0;
   int _camAnimToken = 0;
 
@@ -110,6 +109,9 @@ class _MonitoringScreenState extends State<MonitoringScreen>
     final textColor = Colors.grey[900]!;
     final border = Colors.grey[200]!;
 
+    final size = MediaQuery.of(context).size;
+    final isNarrow = size.width < 900;
+
     final byType = items.where((e) {
       switch (typeFilterEnum) {
         case TypeFilter.all:
@@ -141,19 +143,18 @@ class _MonitoringScreenState extends State<MonitoringScreen>
     return Scaffold(
       backgroundColor: bg,
       appBar: AppBar(
-        backgroundColor: cardBg,
-        elevation: 0.5,
+        backgroundColor: Colors.white,
+        elevation: 1,
         centerTitle: true,
-        iconTheme: const IconThemeData(color: Colors.black87),
-        title: Text(
-          'ตรวจสอบสถานะ (Monitoring)',
-          style: TextStyle(color: textColor, fontWeight: FontWeight.w700),
+        iconTheme: const IconThemeData(color: Colors.black),
+        title: const Text(
+          'ตรวจสอบสถานะ',
+          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black),
         ),
         actions: [
           IconButton(
             tooltip: 'แจ้งเตือน',
-            icon: Icon(Icons.notifications_active_outlined,
-                size: 28, color: Colors.amber[700]), // << ใหญ่ขึ้น
+            icon: const Icon(Icons.notifications_active_outlined, size: 28, color: Colors.black),
             onPressed: () {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('ตั้งค่าการแจ้งเตือน (mock)')),
@@ -165,103 +166,92 @@ class _MonitoringScreenState extends State<MonitoringScreen>
       ),
       body: Padding(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-        child: LayoutBuilder(
-          builder: (context, c) {
-            final isNarrow = c.maxWidth < 900;
-
-            if (!isNarrow) {
-              return Column(
+        child: isNarrow
+            // จอแคบ: Map บน + List ล่าง
+            ? Column(
                 children: [
-                  const SizedBox(height: 4),
+                  SizedBox(
+                    height: 320,
+                    child: MapCard(
+                      mapController: _mapController,
+                      items: filtered,
+                      center: _currentCenter,
+                      border: border,
+                      onMarkerTap: (e, list) {
+                        setState(() => selectedId = e.id);
+                        _smoothFocusMapOn(e);
+                        _scrollToEntry(e, list);
+                      },
+                      isOnline: _isOnline,
+                      selectedId: selectedId,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
                   Expanded(
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: MapCard(
-                            mapController: _mapController,
-                            items: filtered,
-                            center: _currentCenter,
-                            border: border,
-                            onMarkerTap: (e, list) {
-                              setState(() => selectedId = e.id);
-                              _smoothFocusMapOn(e);
-                              _scrollToEntry(e, list);
-                            },
-                            isOnline: _isOnline,
-                            selectedId: selectedId,
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: MonitoringListPanel(
-                            items: filtered,
-                            selectedId: selectedId,
-                            cardBg: cardBg,
-                            border: border,
-                            accent: accent,
-                            textColor: textColor,
-                            listController: _listController,
-                            onToggleLighting: _toggleLighting,
-                            onSelectEntry: _selectEntry,
-                            typeFilter: typeFilterEnum,
-                            onChangeTypeFilter: (v) => setState(() => typeFilterEnum = v),
-                            statusFilter: statusFilterEnum,
-                            onChangeStatusFilter: (v) => setState(() => statusFilterEnum = v),
-                            totalCount: totalCount,
-                            onlineCount: onlineCount,
-                            offlineCount: offlineCount,
-                          ),
-                        ),
-                      ],
+                    child: MonitoringListPanel(
+                      items: filtered,
+                      selectedId: selectedId,
+                      cardBg: cardBg,
+                      border: border,
+                      accent: accent,
+                      textColor: textColor,
+                      listController: _listController,
+                      onToggleLighting: _toggleLighting,
+                      onSelectEntry: _selectEntry,
+                      typeFilter: typeFilterEnum,
+                      onChangeTypeFilter: (v) => setState(() => typeFilterEnum = v),
+                      statusFilter: statusFilterEnum,
+                      onChangeStatusFilter: (v) => setState(() => statusFilterEnum = v),
+                      totalCount: totalCount,
+                      onlineCount: onlineCount,
+                      offlineCount: offlineCount,
                     ),
                   ),
                 ],
-              );
-            }
-
-            return Column(
-              children: [
-                SizedBox(
-                  height: 320,
-                  child: MapCard(
-                    mapController: _mapController,
-                    items: filtered,
-                    center: _currentCenter,
-                    border: border,
-                    onMarkerTap: (e, list) {
-                      setState(() => selectedId = e.id);
-                      _smoothFocusMapOn(e);
-                      _scrollToEntry(e, list);
-                    },
-                    isOnline: _isOnline,
-                    selectedId: selectedId,
-                  ),
+              )
+            // จอกว้าง: Map ซ้าย + List ขวา (Row มี constraint ชัดเจน)
+            : SizedBox.expand(
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: MapCard(
+                        mapController: _mapController,
+                        items: filtered,
+                        center: _currentCenter,
+                        border: border,
+                        onMarkerTap: (e, list) {
+                          setState(() => selectedId = e.id);
+                          _smoothFocusMapOn(e);
+                          _scrollToEntry(e, list);
+                        },
+                        isOnline: _isOnline,
+                        selectedId: selectedId,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: MonitoringListPanel(
+                        items: filtered,
+                        selectedId: selectedId,
+                        cardBg: cardBg,
+                        border: border,
+                        accent: accent,
+                        textColor: textColor,
+                        listController: _listController,
+                        onToggleLighting: _toggleLighting,
+                        onSelectEntry: _selectEntry,
+                        typeFilter: typeFilterEnum,
+                        onChangeTypeFilter: (v) => setState(() => typeFilterEnum = v),
+                        statusFilter: statusFilterEnum,
+                        onChangeStatusFilter: (v) => setState(() => statusFilterEnum = v),
+                        totalCount: totalCount,
+                        onlineCount: onlineCount,
+                        offlineCount: offlineCount,
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 12),
-                Expanded(
-                  child: MonitoringListPanel(
-                    items: filtered,
-                    selectedId: selectedId,
-                    cardBg: cardBg,
-                    border: border,
-                    accent: accent,
-                    textColor: textColor,
-                    listController: _listController,
-                    onToggleLighting: _toggleLighting,
-                    onSelectEntry: _selectEntry,
-                    typeFilter: typeFilterEnum,
-                    onChangeTypeFilter: (v) => setState(() => typeFilterEnum = v),
-                    statusFilter: statusFilterEnum,
-                    onChangeStatusFilter: (v) => setState(() => statusFilterEnum = v),
-                    totalCount: totalCount,
-                    onlineCount: onlineCount,
-                    offlineCount: offlineCount,
-                  ),
-                ),
-              ],
-            );
-          },
-        ),
+              ),
       ),
     );
   }
@@ -275,8 +265,13 @@ class _MonitoringScreenState extends State<MonitoringScreen>
 
       items[idx] = entry.copyWith(
         data: LightingData(
-          acV: d.acV, acA: d.acA, acW: d.acW, acHz: d.acHz, acKWh: d.acKWh,
-          online: d.online, statusLighting: !d.statusLighting,
+          acV: d.acV,
+          acA: d.acA,
+          acW: d.acW,
+          acHz: d.acHz,
+          acKWh: d.acKWh,
+          online: d.online,
+          statusLighting: !d.statusLighting,
         ),
         updatedAt: DateTime.now(),
       );
@@ -285,8 +280,10 @@ class _MonitoringScreenState extends State<MonitoringScreen>
 
   latlng.LatLng _avgCenter(List<MonitoringEntry> entries) {
     if (entries.isEmpty) return latlng.LatLng(13.6580, 100.6608);
-    final lat = entries.map((e) => e.lat).reduce((a, b) => a + b) / entries.length;
-    final lng = entries.map((e) => e.lng).reduce((a, b) => a + b) / entries.length;
+    final lat =
+        entries.map((e) => e.lat).reduce((a, b) => a + b) / entries.length;
+    final lng =
+        entries.map((e) => e.lng).reduce((a, b) => a + b) / entries.length;
     return latlng.LatLng(lat, lng);
   }
 

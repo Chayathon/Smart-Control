@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import '../monitoring_mock.dart';
 
+/// ===== ตัวกรอง =====
 enum TypeFilter { all, lighting, wave, sim }
 enum StatusFilter { all, online, offline }
 
+/// ===== แผงลิสต์ + ส่วนตัวกรอง =====
 class MonitoringListPanel extends StatelessWidget {
   final List<MonitoringEntry> items;
   final String? selectedId;
@@ -17,6 +19,7 @@ class MonitoringListPanel extends StatelessWidget {
 
   final StatusFilter statusFilter;
   final ValueChanged<StatusFilter> onChangeStatusFilter;
+
   final int totalCount, onlineCount, offlineCount;
 
   const MonitoringListPanel({
@@ -59,20 +62,25 @@ class MonitoringListPanel extends StatelessWidget {
           color: cardBg,
           border: Border.all(color: border),
           boxShadow: [
-            BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 20, offset: const Offset(0, 10)),
+            BoxShadow(
+              color: Colors.black.withOpacity(0.08),
+              blurRadius: 20,
+              offset: const Offset(0, 10),
+            ),
           ],
         ),
         child: Column(
           children: [
-            // ==== แถบตัวกรอง (บน/ล่างเท่ากัน) ====
+            // ===== แถบตัวกรอง =====
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
               child: Row(
                 children: [
-                  // ดรอปดาวน์ชิดซ้าย
-                  TypeDropdown(value: typeFilter, onChanged: onChangeTypeFilter),
+                  TypeDropdown(
+                    value: typeFilter,
+                    onChanged: onChangeTypeFilter,
+                  ),
                   const SizedBox(width: 12),
-                  // ปุ่มสถานะชิดขวา
                   Expanded(
                     child: SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
@@ -107,7 +115,7 @@ class MonitoringListPanel extends StatelessWidget {
             ),
             const Divider(height: 1),
 
-            // ==== ลิสต์ ====
+            // ===== ลิสต์อุปกรณ์ =====
             Expanded(
               child: Scrollbar(
                 controller: listController,
@@ -135,7 +143,14 @@ class MonitoringListPanel extends StatelessWidget {
                                 width: isSelected ? 1.2 : 0.0,
                               ),
                               boxShadow: isSelected
-                                  ? [BoxShadow(color: Colors.blue.withOpacity(0.15), blurRadius: 12, spreadRadius: 1, offset: const Offset(0, 4))]
+                                  ? [
+                                      BoxShadow(
+                                        color: Colors.blue.withOpacity(0.15),
+                                        blurRadius: 12,
+                                        spreadRadius: 1,
+                                        offset: const Offset(0, 4),
+                                      )
+                                    ]
                                   : [],
                             ),
                             child: child,
@@ -143,16 +158,26 @@ class MonitoringListPanel extends StatelessWidget {
                         );
 
                     if (e.kind == MonitoringKind.lighting) {
-                      return wrap(LightingTile(
-                        entry: e, title: '${e.order} ${_titleFor(e)}',
-                        accent: accent, textColor: textColor, border: border,
-                        onToggleLighting: onToggleLighting,
-                      ));
+                      return wrap(
+                        LightingTile(
+                          entry: e,
+                          title: '${e.order} ${_titleFor(e)}',
+                          accent: accent,
+                          textColor: textColor,
+                          border: border,
+                          onToggleLighting: onToggleLighting,
+                        ),
+                      );
                     } else {
-                      return wrap(WirelessTile(
-                        entry: e, title: '${e.order} ${_titleFor(e)}',
-                        accent: accent, textColor: textColor, border: border,
-                      ));
+                      return wrap(
+                        WirelessTile(
+                          entry: e,
+                          title: '${e.order} ${_titleFor(e)}',
+                          accent: accent,
+                          textColor: textColor,
+                          border: border,
+                        ),
+                      );
                     }
                   },
                 ),
@@ -165,7 +190,7 @@ class MonitoringListPanel extends StatelessWidget {
   }
 }
 
-/// ดรอปดาวน์ (เมนูใต้ปุ่ม, เมนูกว้างเท่าปุ่ม, ซ้าย–ขวาแคบลงจริง + ข้อความเยื้องซ้ายเล็กน้อย)
+/// ===== ดรอปดาวน์ "แบบเดิม" (ปุ่ม 3D + เมนูกว้างเท่าปุ่ม, ชิดซ้ายปุ่ม) =====
 class TypeDropdown extends StatelessWidget {
   final TypeFilter value;
   final ValueChanged<TypeFilter> onChanged;
@@ -186,19 +211,30 @@ class TypeDropdown extends StatelessWidget {
   }
 
   List<PopupMenuEntry<TypeFilter>> _buildItems(double w) {
-    // ใช้ padding = zero แล้วคุมด้วย Padding ภายในเอง
-    const left = 6.0;  // เว้นจากขอบซ้าย "นิดนึง"
-    const right = 4.0; // ขอบขวาแคบ
-    const v = 10.0;    // แนวตั้งกำลังดี
+    // ✅ เมนูมีช่องไฟซ้าย/ขวา และความสูงแถวพอดี
+    const innerLeftText = 12.0;  // เดิม 6
+    const innerRightText = 10.0; // เดิม 4
+    const v = 12.0;              // เดิม 10
+    const edge = 10.0;           // เดิม 8
 
-    PopupMenuEntry<TypeFilter> _item(TypeFilter val, String text, {bool isLast = false}) {
+    PopupMenuEntry<TypeFilter> _item(
+      TypeFilter val,
+      String text, {
+      double topExtra = 0,
+      double bottomExtra = 0,
+    }) {
       return PopupMenuItem(
         value: val,
-        padding: EdgeInsets.zero, // << ตัด padding มาตรฐานทิ้ง
+        padding: EdgeInsets.zero,
         child: SizedBox(
-          width: w, // ให้เมนูกว้างเท่าปุ่มตามที่วางแผนไว้
+          width: w, // เมนูกว้างเท่าปุ่ม
           child: Padding(
-            padding: EdgeInsets.fromLTRB(left, v, right, isLast ? v + 8 : v), // อันสุดท้ายเพิ่มล่างให้สมดุล
+            padding: EdgeInsets.fromLTRB(
+              innerLeftText,
+              v + topExtra,
+              innerRightText,
+              v + bottomExtra,
+            ),
             child: Text(text, overflow: TextOverflow.ellipsis),
           ),
         ),
@@ -206,10 +242,10 @@ class TypeDropdown extends StatelessWidget {
     }
 
     return [
-      _item(TypeFilter.all, 'ทั้งหมด'),
+      _item(TypeFilter.all, 'ทั้งหมด', topExtra: edge),
       _item(TypeFilter.lighting, 'ระบบไฟส่องสว่าง'),
       _item(TypeFilter.wave, 'ระบบไร้สายแบบคลื่น'),
-      _item(TypeFilter.sim, 'ระบบไร้สายแบบซิม', isLast: true),
+      _item(TypeFilter.sim, 'ระบบไร้สายแบบซิม', bottomExtra: edge),
     ];
   }
 
@@ -218,31 +254,38 @@ class TypeDropdown extends StatelessWidget {
     return _TypeDropdownButton3D(
       label: _labelOf(value),
       onTap: (boxContext) async {
-        final box = boxContext.findRenderObject() as RenderBox;
-        final overlay = Overlay.of(boxContext).context.findRenderObject() as RenderBox;
-        final offset = box.localToGlobal(Offset.zero, ancestor: overlay);
-        final menuWidth = box.size.width;
+        // เปิดเมนูหลังเฟรมปัจจุบัน เพื่อเลี่ยง assert mouse tracker
+        WidgetsBinding.instance.addPostFrameCallback((_) async {
+          final box = boxContext.findRenderObject() as RenderBox;
+          final overlay =
+              Overlay.of(boxContext).context.findRenderObject() as RenderBox;
+          final offset = box.localToGlobal(Offset.zero, ancestor: overlay);
 
-        final selected = await showMenu<TypeFilter>(
-          context: boxContext,
-          color: Colors.white,
-          elevation: 8,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          position: RelativeRect.fromLTRB(
-            offset.dx,
-            offset.dy + box.size.height + 4,
-            overlay.size.width - offset.dx - box.size.width,
-            overlay.size.height - (offset.dy + box.size.height + 4),
-          ),
-          items: _buildItems(menuWidth),
-        );
+          final buttonW = box.size.width;
+          final menuW = buttonW; // เมนู = ปุ่ม
+          final left = offset.dx; // ชิดซ้ายปุ่ม
+          final top = offset.dy + box.size.height + 4.0;
+          final right = overlay.size.width - left - menuW;
 
-        if (selected != null) onChanged(selected);
+          final selected = await showMenu<TypeFilter>(
+            context: boxContext,
+            color: Colors.white,
+            elevation: 8,
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            position: RelativeRect.fromLTRB(
+                left, top, right, overlay.size.height - top),
+            items: _buildItems(menuW),
+          );
+
+          if (selected != null) onChanged(selected);
+        });
       },
     );
   }
 }
 
+/// ปุ่ม 3D แบบเดิม (กว้าง 180 และเพิ่มช่องไฟซ้าย–ขวาให้ข้อความ)
 class _TypeDropdownButton3D extends StatelessWidget {
   final String label;
   final void Function(BuildContext buttonContext) onTap;
@@ -256,26 +299,40 @@ class _TypeDropdownButton3D extends StatelessWidget {
         return InkWell(
           onTap: () => onTap(buttonContext),
           borderRadius: BorderRadius.circular(12),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(minWidth: 200),
+          child: SizedBox(
+            width: 180,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12), // สูงเท่าปุ่มสถานะ
+              padding: const EdgeInsets.symmetric(
+                horizontal: 12, // ✅ เพิ่มระยะจากขอบสำหรับข้อความ
+                vertical: 12,
+              ),
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: Colors.grey[300]!),
                 boxShadow: const [
-                  BoxShadow(color: Color(0x33000000), offset: Offset(3, 5), blurRadius: 10),
-                  BoxShadow(color: Color(0x66FFFFFF), offset: Offset(-3, -3), blurRadius: 10),
+                  BoxShadow(
+                      color: Color(0x33000000),
+                      offset: Offset(3, 5),
+                      blurRadius: 10),
+                  BoxShadow(
+                      color: Color(0x66FFFFFF),
+                      offset: Offset(-3, -3),
+                      blurRadius: 10),
                 ],
               ),
               child: Row(
-                mainAxisSize: MainAxisSize.min,
+                mainAxisSize: MainAxisSize.max,
                 children: [
                   Flexible(
-                    child: Text(label, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700)),
+                    fit: FlexFit.loose,
+                    child: Text(
+                      label,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
                   ),
-                  const SizedBox(width: 6),
+                  const SizedBox(width: 8),
                   const Icon(Icons.expand_more, size: 20),
                 ],
               ),
@@ -287,7 +344,7 @@ class _TypeDropdownButton3D extends StatelessWidget {
   }
 }
 
-/// ปุ่มสถานะ 3D
+/// ===== ปุ่มสถานะ 3D =====
 class Status3DButton extends StatelessWidget {
   final String label;
   final bool selected;
@@ -308,12 +365,24 @@ class Status3DButton extends StatelessWidget {
 
     final shadows = selected
         ? <BoxShadow>[
-            const BoxShadow(color: Color(0x59000000), offset: Offset(2, 3), blurRadius: 8),
-            BoxShadow(color: Colors.white.withOpacity(0.6), offset: const Offset(-2, -2), blurRadius: 6),
+            const BoxShadow(
+                color: Color(0x59000000),
+                offset: Offset(2, 3),
+                blurRadius: 8),
+            BoxShadow(
+                color: Colors.white.withOpacity(0.6),
+                offset: const Offset(-2, -2),
+                blurRadius: 6),
           ]
         : const <BoxShadow>[
-            BoxShadow(color: Color(0x33000000), offset: Offset(3, 5), blurRadius: 10),
-            BoxShadow(color: Color(0xF2FFFFFF), offset: Offset(-3, -3), blurRadius: 10),
+            BoxShadow(
+                color: Color(0x33000000),
+                offset: Offset(3, 5),
+                blurRadius: 10),
+            BoxShadow(
+                color: Color(0xF2FFFFFF),
+                offset: Offset(-3, -3),
+                blurRadius: 10),
           ];
 
     return InkWell(
@@ -327,14 +396,14 @@ class Status3DButton extends StatelessWidget {
           border: Border.all(color: border),
           boxShadow: shadows,
         ),
-        child: Text(label, style: TextStyle(fontWeight: FontWeight.w700, color: txt)),
+        child: Text(label,
+            style: TextStyle(fontWeight: FontWeight.w700, color: txt)),
       ),
     );
   }
 }
 
-/// ------- Tiles / Badge / Metrics (คงเดิม) -------
-
+/// ===== การ์ดอุปกรณ์ / Badge / Metrics =====
 class LightingTile extends StatelessWidget {
   final MonitoringEntry entry;
   final String title;
@@ -365,7 +434,12 @@ class LightingTile extends StatelessWidget {
         color: Colors.white,
         border: Border.all(color: border),
         borderRadius: BorderRadius.circular(12),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 12, offset: const Offset(0, 6))],
+        boxShadow: [
+          BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 12,
+              offset: const Offset(0, 6))
+        ],
       ),
       padding: const EdgeInsets.all(14),
       child: Column(
@@ -375,10 +449,19 @@ class LightingTile extends StatelessWidget {
             Expanded(
               child: Text(
                 title,
-                maxLines: 1, overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
-                  fontWeight: FontWeight.w900, fontSize: 20, letterSpacing: .2, color: Colors.black87,
-                  shadows: [Shadow(blurRadius: 6, color: Color(0x22000000), offset: Offset(0, 1))],
+                  fontWeight: FontWeight.w900,
+                  fontSize: 20,
+                  letterSpacing: .2,
+                  color: Colors.black87,
+                  shadows: [
+                    Shadow(
+                        blurRadius: 6,
+                        color: Color(0x22000000),
+                        offset: Offset(0, 1))
+                  ],
                 ),
               ),
             ),
@@ -404,20 +487,28 @@ class LightingTile extends StatelessWidget {
             alignment: Alignment.centerRight,
             child: ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: d.statusLighting ? Colors.red[600] : Colors.green[600],
+                backgroundColor:
+                    d.statusLighting ? Colors.red[600] : Colors.green[600],
                 foregroundColor: Colors.white,
                 alignment: Alignment.center,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                 minimumSize: const Size(112, 44),
               ),
               onPressed: () => onToggleLighting(entry),
               child: Row(
-                mainAxisSize: MainAxisSize.min, mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  SizedBox(width: 22, height: 22, child: Center(child: Icon(d.statusLighting ? Icons.lightbulb_outline : Icons.lightbulb, size: 20))),
-                  const SizedBox(width: 8),
-                  const SizedBox(width: 48, child: Center(child: Text('เปิด/ปิด'))),
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: const [
+                  SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: Center(child: Icon(Icons.lightbulb, size: 20))),
+                  SizedBox(width: 8),
+                  SizedBox(width: 48, child: Center(child: Text('เปิด/ปิด'))),
                 ],
               ),
             ),
@@ -457,7 +548,12 @@ class WirelessTile extends StatelessWidget {
         color: Colors.white,
         border: Border.all(color: border),
         borderRadius: BorderRadius.circular(12),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 12, offset: const Offset(0, 6))],
+        boxShadow: [
+          BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 12,
+              offset: const Offset(0, 6))
+        ],
       ),
       padding: const EdgeInsets.all(14),
       child: Column(
@@ -467,10 +563,19 @@ class WirelessTile extends StatelessWidget {
             Expanded(
               child: Text(
                 title,
-                maxLines: 1, overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
-                  fontWeight: FontWeight.w900, fontSize: 20, letterSpacing: .2, color: Colors.black87,
-                  shadows: [Shadow(blurRadius: 6, color: Color(0x22000000), offset: Offset(0, 1))],
+                  fontWeight: FontWeight.w900,
+                  fontSize: 20,
+                  letterSpacing: .2,
+                  color: Colors.black87,
+                  shadows: [
+                    Shadow(
+                        blurRadius: 6,
+                        color: Color(0x22000000),
+                        offset: Offset(0, 1))
+                  ],
                 ),
               ),
             ),
@@ -495,6 +600,7 @@ class WirelessTile extends StatelessWidget {
   }
 }
 
+/// ===== แบดจ์ Online/Offline (เอาจุดนำหน้าออกแล้ว) =====
 class OnlineGlowBadge extends StatelessWidget {
   final bool isOnline;
   const OnlineGlowBadge({super.key, required this.isOnline});
@@ -504,21 +610,29 @@ class OnlineGlowBadge extends StatelessWidget {
     final base = isOnline ? Colors.green[600]! : Colors.red[600]!;
     final glow = isOnline ? Colors.green[300]! : Colors.red[300]!;
     final label = isOnline ? 'Online' : 'Offline';
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
       decoration: BoxDecoration(
         color: base,
         borderRadius: BorderRadius.circular(100),
         border: Border.all(color: base.withOpacity(0.85)),
-        boxShadow: [BoxShadow(color: glow.withOpacity(0.7), blurRadius: 14, spreadRadius: 1.5)],
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.fiber_manual_record, size: 12, color: Colors.white),
-          const SizedBox(width: 16),
-          Text(label, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 12)),
+        boxShadow: [
+          BoxShadow(
+            color: glow.withOpacity(0.7),
+            blurRadius: 14,
+            spreadRadius: 1.5,
+          ),
         ],
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.w800,
+          fontSize: 12,
+          letterSpacing: .2,
+        ),
       ),
     );
   }
@@ -537,8 +651,13 @@ class MetricList extends StatelessWidget {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(child: Text(m.label, style: TextStyle(color: Colors.grey[700], fontWeight: FontWeight.w600))),
-                    Text(m.value, style: const TextStyle(fontWeight: FontWeight.w700)),
+                    Expanded(
+                        child: Text(m.label,
+                            style: TextStyle(
+                                color: Colors.grey[700],
+                                fontWeight: FontWeight.w600))),
+                    Text(m.value,
+                        style: const TextStyle(fontWeight: FontWeight.w700)),
                   ],
                 ),
               ))
