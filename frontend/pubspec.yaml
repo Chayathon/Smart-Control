@@ -50,6 +50,8 @@ dependencies:
   record: ^6.1.0
   flutter_client_sse: ^2.0.3
   dio_cookie_manager: ^3.3.0
+  flutter_map: ^8.2.2
+  latlong2: ^0.9.1
 
 dev_dependencies:
   flutter_test:

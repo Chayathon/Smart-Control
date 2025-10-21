@@ -1021,6 +1021,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     Get.toNamed(AppRoutes.test);
                   }),
                   Divider(),
+                  _buildMenuItem(Icons.analytics, "ตรวจสอบสถานะ", () {
+                    Get.toNamed(AppRoutes.monitoring);
+                  }),
+                  Divider(),
                   _buildMenuItem(Icons.logout, "ออกจากระบบ", () {
                     logout();
                   }),
