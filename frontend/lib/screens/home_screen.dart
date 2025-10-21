@@ -646,7 +646,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                             activeIcon: Icons.play_circle,
                                             inactiveIcon: Icons.pause_circle,
                                             activeLabel: "เล่นต่อ",
-                                            inactiveLabel: "หยุดชั่วคราว",
+                                            inactiveLabel: "หยุด",
                                             activeColor: Colors.green[600]!,
                                             inactiveColor:
                                                 _playlist
@@ -804,8 +804,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 ],
                               ),
                             ),
-                          if ((_is_playing || isPaused) && _totalSongs > 0)
-                            const SizedBox(height: 16),
+                          const SizedBox(height: 16),
 
                           Expanded(
                             child: GridView.builder(
