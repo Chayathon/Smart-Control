@@ -1,10 +1,36 @@
 const Song = require('../models/Song');
 const path = require('path');
 const fs = require('fs');
+const multer = require('multer')
 
 async function getSongList() {
     return await Song.find().sort({ no: 1 }).lean();
 }
+
+const storage = multer.diskStorage({
+    destination: function (req, file, cb) {
+        const uploadDir = path.join(__dirname, '../uploads');
+        if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
+        cb(null, uploadDir);
+    },
+    filename: function (req, file, cb) {
+        const safeName = req.body.filename
+            ? req.body.filename.replace(/[^a-zA-Z0-9ก-๙\-_ ]/g, '')
+            : `song-${Date.now()}`;
+        const uniqueSuffix = Math.random().toString(36).slice(2);
+        cb(null, `${safeName}-${uniqueSuffix}.mp3`);
+    }
+});
+
+const fileFilter = (req, file, cb) => {
+    if (file.mimetype === 'audio/mpeg') {
+        cb(null, true);
+    } else {
+        cb(new Error('Only MP3 files are allowed!'), false);
+    }
+};
+
+const upload = multer({ storage, fileFilter });
 
 async function uploadSongFile(file, filename) {
     const savedFileName = path.basename(file.filename, '.mp3');
@@ -14,6 +40,8 @@ async function uploadSongFile(file, filename) {
         url: file.filename
     });
     await song.save();
+
+    upload.single('song');
 
     return savedFileName;
 }
