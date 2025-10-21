@@ -5,13 +5,6 @@ const bus = require('../services/bus')
 
 router.post("/setup", authenticateToken, ctrl.postSetupPlaylist);
 router.get("/", authenticateToken, ctrl.getPlaylistSong);
-
-router.get('/start-playlist', authenticateToken, ctrl.playPlaylist);
-router.get('/next-track', authenticateToken, ctrl.nextTrack);
-router.get('/prev-track', authenticateToken, ctrl.prevTrack);
-router.get('/stop-playlist', authenticateToken, ctrl.stopPlaylist);
-router.get('/pause-playlist', authenticateToken, ctrl.pausePlaylist);
-router.get('/resume-playlist', authenticateToken, ctrl.resumePlaylist);
 router.get('/status', authenticateToken, ctrl.getPlaylistStatus);
 
 router.get('/stream/status-sse', (req, res) => {

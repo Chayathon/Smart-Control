@@ -30,50 +30,6 @@ const fileFilter = (req, file, cb) => {
 
 const upload = multer({ storage, fileFilter });
 
-
-async function uploadSongFile(req, res) {
-    try {
-        const { filename } = req.body;
-        const file = req.file;
-
-        if (!file) {
-            return res.status(400).json({ status: 'error', message: 'No file uploaded' });
-        }
-
-        const savedFileName = path.basename(file.filename, '.mp3');
-
-        const song = new Song({
-            name: filename || file.originalname.replace(/\.mp3$/i, ''),
-            url: file.filename
-        });
-
-        await song.save();
-
-        res.json({
-            status: 'success',
-            message: 'Song uploaded successfully',
-            file: `${file.filename}`
-        });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ status: 'error', message: err.message });
-    }
-}
-
-async function start(req, res) {
-    const url = req.query.url || req.body?.url;
-    if (!url || !isHttpUrl(url)) {
-        return res.status(400).json({ status: 'error', message: 'ต้องระบุ URL ที่ถูกต้อง' });
-    }
-    try {
-        await stream.start(url);
-        res.json({ status: 'success', url });
-    } catch (e) {
-        console.error('Error starting stream:', e);
-        res.status(500).json({ status: 'error', message: e.message || 'start failed' });
-    }
-}
-
 async function startFile(req, res) {
     const filePath = req.query.path || req.body?.path;
     try {
@@ -85,49 +41,8 @@ async function startFile(req, res) {
     }
 }
 
-async function stop(_req, res) {
-    try {
-        await stream.stopAll();
-        res.json({ status: 'success' });
-    } catch (e) {
-        res.status(500).json({ status: 'error', message: e.message });
-    }
-}
-
 function status(_req, res) {
     res.json({ status: 'success', data: stream.getStatus() });
-}
-
-function pause(_req, res) {
-    try {
-        stream.pause();
-        res.json({ status: 'success' });
-    } catch (e) {
-        res.status(400).json({ status: 'error', message: e.message });
-    }
-}
-
-function resume(_req, res) {
-    try {
-        stream.resume();
-        res.json({ status: 'success' });
-    } catch (e) {
-        res.status(400).json({ status: 'error', message: e.message });
-    }
-}
-
-async function uploadSongYT(req, res) {
-    try {
-        const { url, filename } = req.body || {};
-        if (!url || !isHttpUrl(url)) {
-            return res.status(400).json({ status: 'error', message: 'ต้องระบุ URL ที่ถูกต้อง' });
-        }
-        const name = await stream.uploadSongYT(url, filename);
-        res.json({ status: 'success', name });
-    } catch (e) {
-        console.error('Error uploading song:', e);
-        res.status(500).json({ status: 'error', message: e.message || 'upload failed' });
-    }
 }
 
 async function stopMic(_req, res) {
@@ -140,15 +55,81 @@ async function stopMic(_req, res) {
     }
 }
 
+async function playPlaylist(req, res) {
+    try {
+        const loop = req.query.loop === 'true' || req.body?.loop === true;
+        const result = await stream.playPlaylist({ loop });
+        return res.json({ status: 'success', message: result.message });
+    } catch (e) {
+        console.error('Error playPlaylist:', e);
+        return res.status(500).json({ status: 'error', message: e.message || 'play playlist failed' });
+    }
+}
+
+async function stopPlaylist(_req, res) {
+    try {
+        const result = await stream.stopPlaylist();
+        return res.json({ status: 'success', message: result.message });
+    } catch (e) {
+        console.error('Error stopPlaylist:', e);
+        return res.status(500).json({ status: 'error', message: e.message || 'stop playlist failed' });
+    }
+}
+
+async function nextTrack(_req, res) {
+    try {
+        const result = await stream.nextTrack();
+        if (!result.success) {
+            return res.status(400).json({ status: 'error', message: result.message });
+        }
+        return res.json({ status: 'success', message: result.message });
+    } catch (e) {
+        console.error('Error nextTrack:', e);
+        return res.status(500).json({ status: 'error', message: e.message || 'next failed' });
+    }
+}
+
+async function prevTrack(_req, res) {
+    try {
+        const result = await stream.prevTrack();
+        if (!result.success) {
+            return res.status(400).json({ status: 'error', message: result.message });
+        }
+        return res.json({ status: 'success', message: result.message });
+    } catch (e) {
+        console.error('Error prevTrack:', e);
+        return res.status(500).json({ status: 'error', message: e.message || 'prev failed' });
+    }
+}
+
+async function pausePlaylist(_req, res) {
+    try {
+        stream.pause();
+        return res.json({ status: 'success', message: 'หยุดชั่วคราว' });
+    } catch (e) {
+        console.error('Error pausePlaylist:', e);
+        return res.status(500).json({ status: 'error', message: e.message || 'pause failed' });
+    }
+}
+
+async function resumePlaylist(_req, res) {
+    try {
+        stream.resume();
+        return res.json({ status: 'success', message: 'เล่นต่อ' });
+    } catch (e) {
+        console.error('Error resumePlaylist:', e);
+        return res.status(500).json({ status: 'error', message: e.message || 'resume failed' });
+    }
+}
+
 module.exports = { 
-    start, 
-    stop, 
-    status, 
-    pause, 
-    resume, 
-    uploadSongYT, 
-    upload, 
-    uploadSongFile, 
+    status,
     startFile,
-    stopMic
+    stopMic,
+    playPlaylist,
+    stopPlaylist,
+    nextTrack,
+    prevTrack,
+    pausePlaylist,
+    resumePlaylist
 };

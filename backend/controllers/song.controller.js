@@ -1,12 +1,48 @@
-const Song = require('../services/song.service');
+const song = require('../services/song.service');
 
 async function getSongList(req, res) {
     try {
-        const list = await Song.getSongList();
+        const list = await song.getSongList();
         res.json({ status: 'success', data: list });
     } catch (error) {
         console.error('Error getting song list:', error);
         res.status(500).json({ status: 'error', message: error.message || 'get song list failed' });
+    }
+}
+
+async function uploadSongFile(req, res) {
+    try {
+        const { filename } = req.body;
+        const file = req.file;
+
+        if (!file) {
+            return res.status(400).json({ status: 'error', message: 'No file uploaded' });
+        }
+
+        const savedFileName = await song.uploadSongFile(file, filename);
+
+        res.json({
+            status: 'success',
+            message: 'Song uploaded successfully',
+            file: `${savedFileName}`
+        });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ status: 'error', message: err.message });
+    }
+}
+
+async function uploadSongYT(req, res) {
+    try {
+        const { url, filename } = req.body || {};
+        if (!url || !isHttpUrl(url)) {
+            return res.status(400).json({ status: 'error', message: 'ต้องระบุ URL ที่ถูกต้อง' });
+        }
+        const name = await song.uploadSongYT(url, filename);
+        res.json({ status: 'success', name });
+    } catch (e) {
+        console.error('Error uploading song:', e);
+        res.status(500).json({ status: 'error', message: e.message || 'upload failed' });
     }
 }
 
@@ -18,7 +54,7 @@ async function deleteSong(req, res) {
             return res.status(400).json({ status: 'error', message: 'songId is required' });
         }
 
-        const result = await Song.deleteSong(songId);
+        const result = await song.deleteSong(songId);
 
         return res.json({ status: 'success', ...result });
     } catch (e) {
@@ -27,4 +63,4 @@ async function deleteSong(req, res) {
     }
 }
 
-module.exports = { getSongList, deleteSong }
+module.exports = { getSongList, uploadSongFile, uploadSongYT, deleteSong }

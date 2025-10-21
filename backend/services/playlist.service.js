@@ -1,5 +1,4 @@
 const Playlist = require('../models/Playlist');
-const Song = require('../models/Song')
 
 async function setupPlaylist(playlist) {
     try {
@@ -42,9 +41,4 @@ async function getPlaylist() {
     return list;
 }
 
-async function getSongList() {
-    const list = await Song.find()
-    return list;
-}
-
-module.exports = { setupPlaylist, getPlaylist, getSongList };
+module.exports = { setupPlaylist, getPlaylist };

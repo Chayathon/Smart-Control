@@ -46,7 +46,6 @@ function emitStatus({ event, extra = {} }) {
     });
 }
 
-
 function toSourceFromSong(songDoc) {
     const url = songDoc.url || '';
     const isHttp = /^https?:\/\//i.test(url);
@@ -255,14 +254,6 @@ async function playPlaylist({ loop = false } = {}) {
     pausePendingResume = false;
     emitStatus({ event: 'playlist-started', extra: { total: playlistQueue.length } });
     
-    // หน่วงก่อนเริ่มเพลงแรก ถ้ากำหนดค่าไว้
-    {
-        var delay = (cfg.stream && typeof cfg.stream.preStartDelayMs === 'number') ? cfg.stream.preStartDelayMs : 0;
-        if (delay > 0) {
-            console.log(`⏳ หน่วงก่อนเริ่มเพลงแรกของเพลย์ลิสต์ ${delay}ms`);
-            await sleep(delay);
-        }
-    }
     await _playIndex(currentIndex, 0);
     return { success: true, message: 'เริ่มเล่นเพลย์ลิสต์' };
 }
@@ -347,8 +338,6 @@ async function stopPlaylist() {
     emitStatus({ event: 'playlist-stopped' });
     return { success: true, message: 'หยุดเพลย์ลิสต์' };
 }
-
-
 
 function wireChildLogging(child, tag) {
     child.stderr.on('data', (d) => {
@@ -613,41 +602,6 @@ function getStatus() {
     return status;
 }
 
-async function uploadSongYT(youtubeUrl, filename) {
-    const uploadDir = path.join(__dirname, '../uploads');
-    if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
-
-    const safeName = filename
-        ? filename.replace(/[^a-zA-Z0-9ก-๙\-_ ]/g, '')
-        : `song-${Date.now()}`;
-
-    const outputName = `${safeName}-${Math.random().toString(36).slice(2)}.mp3`;
-    const outputPath = path.join(uploadDir, outputName);
-    const tempFile = path.join(uploadDir, `temp-${Date.now()}.m4a`);
-
-    await ytdlp(youtubeUrl, {
-        output: tempFile,
-        extractAudio: true,
-        audioFormat: 'm4a',
-        audioQuality: 0,
-    });
-
-    await new Promise((resolve, reject) => {
-        ffmpeg(tempFile)
-            .audioCodec('libmp3lame')
-            .audioBitrate(192)
-            .save(outputPath)
-            .on('end', resolve)
-            .on('error', reject);
-    });
-
-    fs.unlinkSync(tempFile);
-
-    const song = new Song({ name: safeName, url: outputName });
-    await song.save();
-    return outputName;
-}
-
 async function startMicStream(ws) {
     // ปิด client เก่าก่อน (ถ้ามี)
     if (activeWs && activeWs !== ws) {
@@ -770,17 +724,16 @@ async function stopMicStream() {
 module.exports = {
     start,
     stopAll,
-    pause,
-    resume,
     getStatus,
-    uploadSongYT,
     startLocalFile,
     startMicStream,
     stopMicStream,
     playPlaylist,
+    stopPlaylist,
     nextTrack,
     prevTrack,
-    stopPlaylist,
+    pause,
+    resume,
 
     _internals: { isAlive: (p) => isAlive(p) }
 };
