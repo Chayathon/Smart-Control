@@ -83,7 +83,7 @@ class _SongUploadScreenState extends State<SongUploadScreen>
 
       final api = await ApiService.public();
       await api.post<Map<String, dynamic>>(
-        "/stream/uploadSongFile",
+        "/song/uploadSongFile",
         data: formData,
         options: Options(headers: {"Content-Type": "multipart/form-data"}),
       );
