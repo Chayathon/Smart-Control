@@ -72,7 +72,7 @@ async function deleteSong(req, res) {
     try {
         const { songId } = req.params;
         console.log("id:", songId);
-        
+
         if (!songId) {
             return res.status(400).json({ status: 'error', message: 'songId is required' });
         }
@@ -81,8 +81,11 @@ async function deleteSong(req, res) {
 
         return res.json({ status: 'success', ...result });
     } catch (e) {
-        console.error('Error deleteSong:', e);
-        return res.status(500).json({ status: 'error', message: e.message || 'delete song failed' });
+        const status = e.status || e.statusCode || 500;
+        return res.status(status).json({
+            status: 'error',
+            message: e.message || 'delete song failed'
+        });
     }
 }
 

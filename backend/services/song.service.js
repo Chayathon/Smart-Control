@@ -130,24 +130,23 @@ async function uploadSongYT(youtubeUrl, filename) {
 }
 
 async function deleteSong(id) {
-  try {
-    const isPlaylisted = await Playlist.exists({ id_song: id });
-    if (isPlaylisted) {
-      throw new Error('ไม่สามารถลบเพลงนี้ได้ เนื่องจากมีการใช้งานในเพลย์ลิสต์');
-    }
+  const isPlaylisted = await Playlist.exists({ id_song: id });
 
-    const song = await Song.findById(id);
-    if (!song) return;
-
-    const filePath = path.join(UPLOAD_DIR, song.url);
-    await Song.findByIdAndDelete(id);
-
-    fs.unlink(filePath, err => {
-      if (err) console.error('Error deleting file:', err);
-    });
-  } catch (err) {
-    throw new Error('ลบเพลงไม่สำเร็จ: ' + err.message);
+  if (isPlaylisted) {
+    const err = new Error('ไม่สามารถลบเพลงนี้ได้ เนื่องจากมีการใช้งานในเพลย์ลิสต์');
+    err.status = 400;
+    throw err;
   }
+
+  const doc = await Song.findById(id);
+  if (!doc) return;
+
+  const filePath = path.join(UPLOAD_DIR, doc.url);
+  await Song.findByIdAndDelete(id);
+
+  fs.unlink(filePath, err => {
+    if (err) console.error('Error deleting file:', err);
+  });
 }
 
 module.exports = {
