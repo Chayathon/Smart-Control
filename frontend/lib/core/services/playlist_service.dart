@@ -69,6 +69,9 @@ class PlaylistService with ChangeNotifier {
   final StreamStatusService _sse = StreamStatusService();
   bool _sseConnected = false;
 
+  // Prevent duplicate stop requests when playlist naturally ends
+  bool _autoStopScheduled = false;
+
   Timer? _controlsCooldownTimer;
   DateTime? _lastButtonPress;
 
@@ -112,8 +115,26 @@ class PlaylistService with ChangeNotifier {
         );
       }
 
+      // When playlist finishes all songs and loop is off, request stop
+      if (event == 'playlist-ended') {
+        // Reset active flag since backend sets mode back to single
+        state.value = state.value.copyWith(active: false);
+
+        if (!loopState && !_autoStopScheduled) {
+          _autoStopScheduled = true;
+          // Fire and forget; SSE will emit 'playlist-stopped' afterwards
+          stop().catchError((_) {});
+        }
+      }
+
+      // Reset guard when a new playlist session starts
+      if (event == 'playlist-started') {
+        _autoStopScheduled = false;
+      }
+
       if (event == 'playlist-stopped') {
         state.value = const PlaylistState();
+        _autoStopScheduled = false;
       }
     };
 
