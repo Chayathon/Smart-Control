@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:http_parser/http_parser.dart';
 import 'package:smart_control/core/alert/app_snackbar.dart';
+import 'package:smart_control/core/network/api_exceptions.dart';
 import 'package:smart_control/core/network/api_service.dart';
 import 'package:smart_control/widgets/loading_overlay.dart';
 import 'package:smart_control/widgets/song_upload/song_item.dart';
@@ -426,13 +427,8 @@ class _SongUploadScreenState extends State<SongUploadScreen>
         getSongList();
         return;
       }
-    } on DioException catch (e) {
-      final msg = e.response?.data is Map<String, dynamic>
-          ? (e.response!.data['message']?.toString() ?? 'ลบเพลงไม่สำเร็จ')
-          : 'ลบเพลงไม่สำเร็จ';
-      AppSnackbar.error('แจ้งเตือน', msg);
-    } catch (e) {
-      AppSnackbar.error('แจ้งเตือน', 'ลบเพลงไม่สำเร็จ');
+    } on ApiException catch (e) {
+      AppSnackbar.error('แจ้งเตือน', e.message ?? 'ลบเพลงไม่สำเร็จ');
     } finally {
       if (context.mounted) LoadingOverlay.hide();
       _isDeletingSong = false;
@@ -472,27 +468,43 @@ class _SongUploadScreenState extends State<SongUploadScreen>
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         backgroundColor: Colors.white,
         title: Text(
           "แจ้งเตือน",
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
         ),
         content: Text(
-          "คุณยืนยันที่จะลบเพลง ${song.name} นี้ไหม?",
-          style: TextStyle(fontSize: 14),
+          "ยืนยันที่จะลบเพลง ${song.name} หรือไม่?",
+          style: TextStyle(fontSize: 16),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text("ยกเลิก", style: TextStyle(color: Colors.grey[600])),
+            style: ButtonStyle(
+              backgroundColor: WidgetStateProperty.all(Colors.grey[200]),
+            ),
+            child: Text(
+              "ยกเลิก",
+              style: TextStyle(color: Colors.grey[600], fontSize: 16),
+            ),
           ),
           TextButton(
             onPressed: () {
               Navigator.pop(context);
               deleteSong(song.id);
             },
-            child: Text("ลบ", style: TextStyle(color: Colors.redAccent)),
+            style: ButtonStyle(
+              backgroundColor: WidgetStateProperty.all(Colors.red[50]),
+            ),
+            child: Text(
+              "ยืนยัน",
+              style: TextStyle(
+                color: Colors.redAccent,
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ),
         ],
       ),
