@@ -18,7 +18,7 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
   void getSong() async {
     try {
       final api = await ApiService.private();
-      var res = await api.get("/song/");
+      var res = await api.get("/song");
       setState(() {
         _library = res['data'];
       });
@@ -30,7 +30,7 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
   void getPlaylist() async {
     try {
       final api = await ApiService.private();
-      var res = await api.get('/playlist/');
+      var res = await api.get('/playlist');
 
       final list = res['list'] as List;
 
@@ -54,8 +54,8 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
 
       final api = await ApiService.private();
       final res = await api.post(
-        "/playlist/setup",
-        data: {"playlist": mapPlaylist},
+        "/playlist/save",
+        data: {"songList": mapPlaylist},
       );
 
       LoadingOverlay.show(context);
@@ -160,10 +160,20 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
       ),
       body: _playlist.isEmpty
           ? Center(
-              child: Text(
-                "ยังไม่มีเพลงใน Playlist\nกดปุ่ม ➕ เพื่อเพิ่มจาก Library",
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey[600], fontSize: 16),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.music_off_rounded, color: Colors.grey, size: 64),
+                  const SizedBox(height: 16),
+                  Text(
+                    "ยังไม่มีเพลงใน Playlist",
+                    style: TextStyle(color: Colors.grey, fontSize: 24),
+                  ),
+                  Text(
+                    "กดปุ่ม ➕ เพื่อเพิ่มเพลง",
+                    style: TextStyle(color: Colors.grey, fontSize: 16),
+                  ),
+                ],
               ),
             )
           : ReorderableListView.builder(
