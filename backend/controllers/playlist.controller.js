@@ -1,19 +1,19 @@
-const { setupPlaylist, getPlaylist } = require('../services/playlist.service');
+const playlist = require('../services/playlist.service');
 const stream = require('../services/stream.service')
 
-async function postSetupPlaylist(req, res) {
+async function savePlaylist(req, res) {
     try {
-        const { playlist } = req.body;
-        const result = await setupPlaylist(playlist);
+        const { songList } = req.body;
+        const result = await playlist.savePlaylist(songList);
         res.json({ ok: true, result });
     } catch (e) {
         res.status(400).json({ ok: false, error: e.message });
     }
 }
 
-async function getPlaylistSong(req, res) {
+async function getPlaylist(req, res) {
     try {
-        const list = await getPlaylist();
+        const list = await playlist.getPlaylist();
         res.json({ ok: true, list });
     } catch (e) {
         res.status(400).json({ ok: false, error: e.message });
@@ -41,7 +41,7 @@ async function getPlaylistStatus(_req, res) {
 }
 
 module.exports = {
-    postSetupPlaylist,
-    getPlaylistSong,
+    savePlaylist,
+    getPlaylist,
     getPlaylistStatus,
 };

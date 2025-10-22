@@ -3,8 +3,8 @@ const ctrl = require("../controllers/playlist.controller");
 const { authenticateToken } = require("../middleware/auth");
 const bus = require('../services/bus')
 
-router.post("/setup", authenticateToken, ctrl.postSetupPlaylist);
-router.get("/", authenticateToken, ctrl.getPlaylistSong);
+router.post("/save", authenticateToken, ctrl.savePlaylist);
+router.get("/", authenticateToken, ctrl.getPlaylist);
 router.get('/status', authenticateToken, ctrl.getPlaylistStatus);
 
 router.get('/stream/status-sse', (req, res) => {
