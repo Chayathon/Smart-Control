@@ -19,6 +19,15 @@ async function getSongList(req, res) {
     }
 }
 
+async function getSongExceptInPlaylist(req, res) {
+    try {
+        const list = await song.getSongExceptInPlaylist();
+        res.json({ status: 'success', data: list });
+    } catch (e) {
+        res.status(500).json({ status: 'error', message: e.message || 'get songs failed' });
+    }
+}
+
 async function uploadSongFile(req, res) {
     try {
         const { filename } = req.body;
@@ -89,4 +98,4 @@ async function deleteSong(req, res) {
     }
 }
 
-module.exports = { getSongList, uploadSongFile, uploadSongYT, deleteSong }
+module.exports = { getSongList, getSongExceptInPlaylist, uploadSongFile, uploadSongYT, deleteSong }

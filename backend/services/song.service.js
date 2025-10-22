@@ -55,6 +55,11 @@ async function getSongList() {
     return await Song.find().sort({ no: 1 }).lean();
 }
 
+async function getSongExceptInPlaylist() {
+    const playlistSongs = await Playlist.find().distinct('id_song');
+    return await Song.find({ _id: { $nin: playlistSongs } }).sort({ no: 1 }).lean();
+}
+
 async function uploadSongFile(file, givenName) {
   const safeDisplayName = sanitizeBaseName(givenName || path.parse(file.originalname).name);
   const fileNameOnDisk = file.filename;
@@ -152,6 +157,7 @@ async function deleteSong(id) {
 module.exports = {
     upload, UPLOAD_DIR,
     getSongList,
+    getSongExceptInPlaylist,
     uploadSongFile,
     uploadSongYT,
     deleteSong
