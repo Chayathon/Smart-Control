@@ -72,6 +72,7 @@ async function deleteSong(req, res) {
     try {
         const { songId } = req.params;
         console.log("id:", songId);
+        
         if (!songId) {
             return res.status(400).json({ status: 'error', message: 'songId is required' });
         }
