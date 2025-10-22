@@ -530,11 +530,15 @@ class _SongUploadScreenState extends State<SongUploadScreen>
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.music_off, size: 64, color: Colors.grey),
+                  Icon(Icons.music_off_rounded, size: 64, color: Colors.grey),
                   SizedBox(height: 16),
                   Text(
                     "ยังไม่มีเพลง",
                     style: TextStyle(color: Colors.grey, fontSize: 24),
+                  ),
+                  Text(
+                    "กดปุ่ม ➕ เพื่ออัปโหลดเพลง",
+                    style: TextStyle(color: Colors.grey, fontSize: 16),
                   ),
                 ],
               ),
