@@ -11,6 +11,17 @@ async function startFile(req, res) {
     }
 }
 
+async function startYoutube(req, res) {
+    const youtubeUrl = req.query.url || req.body?.url;
+    try {
+        await stream.startYoutubeUrl(youtubeUrl);
+        res.json({ status: 'success', youtubeUrl });
+    } catch (e) {
+        console.error('Error starting YouTube stream:', e);
+        res.status(500).json({ status: 'error', message: e.message || 'start failed' });
+    }
+}
+
 function status(_req, res) {
     res.json({ status: 'success', data: stream.getStatus() });
 }
@@ -94,8 +105,9 @@ async function resumePlaylist(_req, res) {
 
 module.exports = { 
     status,
-    startFile,
     stopMic,
+    startFile,
+    startYoutube,
     playPlaylist,
     stopPlaylist,
     nextTrack,

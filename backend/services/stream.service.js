@@ -415,14 +415,14 @@ function resolveDirectUrl(youtubeUrl) {
     });
 }
 
-async function start(youtubeUrl) {
+async function startYoutubeUrl(url) {
     while (starting) await sleep(50);
     starting = true;
     try {
         await stopAll();
-        console.log(`▶️ เริ่มสตรีม YouTube: ${youtubeUrl}`);
+        console.log(`▶️ เริ่มสตรีม YouTube: ${url}`);
 
-        const { mediaUrl, headerLines } = await resolveDirectUrl(youtubeUrl);
+        const { mediaUrl, headerLines } = await resolveDirectUrl(url);
 
         const icecastUrl = `icecast://${cfg.icecast.username}:${cfg.icecast.password}` +
             `@${cfg.icecast.host}:${cfg.icecast.port}${cfg.icecast.mount}`;
@@ -466,8 +466,8 @@ async function start(youtubeUrl) {
         });
 
         isPaused = false;
-        currentStreamUrl = youtubeUrl;
-        bus.emit('status', { event: 'started', url: youtubeUrl });
+        currentStreamUrl = url;
+        bus.emit('status', { event: 'started', url });
     } finally {
         starting = false;
     }
@@ -722,18 +722,18 @@ async function stopMicStream() {
 }
 
 module.exports = {
-    start,
-    stopAll,
     getStatus,
-    startLocalFile,
     startMicStream,
     stopMicStream,
+    startLocalFile,
+    startYoutubeUrl,
     playPlaylist,
     stopPlaylist,
     nextTrack,
     prevTrack,
     pause,
     resume,
+    stopAll,
 
     _internals: { isAlive: (p) => isAlive(p) }
 };

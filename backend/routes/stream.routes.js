@@ -8,12 +8,13 @@ router.get('/status', ctrl.status);
 router.post('/mic/stop', authenticateToken, ctrl.stopMic);
 
 router.get('/start-playlist', authenticateToken, ctrl.playPlaylist);
+router.get('/stop-playlist', authenticateToken, ctrl.stopPlaylist);
 router.get('/next-track', authenticateToken, ctrl.nextTrack);
 router.get('/prev-track', authenticateToken, ctrl.prevTrack);
-router.get('/stop-playlist', authenticateToken, ctrl.stopPlaylist);
 router.get('/pause-playlist', authenticateToken, ctrl.pausePlaylist);
 router.get('/resume-playlist', authenticateToken, ctrl.resumePlaylist);
 
-router.get('/startFile', ctrl.startFile);
+router.get('/start-file', ctrl.startFile);
+router.get('/start-youtube', ctrl.startYoutube);
 
 module.exports = router;
