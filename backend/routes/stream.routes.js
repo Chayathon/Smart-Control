@@ -8,11 +8,11 @@ router.get('/status', ctrl.status);
 router.post('/mic/stop', authenticateToken, ctrl.stopMic);
 
 router.get('/start-playlist', authenticateToken, ctrl.playPlaylist);
-router.get('/stop-playlist', authenticateToken, ctrl.stopPlaylist);
+router.get('/stop', authenticateToken, ctrl.stopAll);
 router.get('/next-track', authenticateToken, ctrl.nextTrack);
 router.get('/prev-track', authenticateToken, ctrl.prevTrack);
-router.get('/pause-playlist', authenticateToken, ctrl.pausePlaylist);
-router.get('/resume-playlist', authenticateToken, ctrl.resumePlaylist);
+router.get('/pause', authenticateToken, ctrl.pause);
+router.get('/resume', authenticateToken, ctrl.resume);
 
 router.get('/start-file', ctrl.startFile);
 router.get('/start-youtube', ctrl.startYoutube);

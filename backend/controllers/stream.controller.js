@@ -7,7 +7,8 @@ async function startFile(req, res) {
         res.json({ status: 'success', filePath });
     } catch (e) {
         console.error('Error starting stream:', e);
-        res.status(500).json({ status: 'error', message: e.message || 'start failed' });
+        const status = e.code === 'MODE_BUSY' ? 409 : 500;
+        res.status(status).json({ status: 'error', message: e.message || 'start failed', code: e.code });
     }
 }
 
@@ -18,7 +19,8 @@ async function startYoutube(req, res) {
         res.json({ status: 'success', youtubeUrl });
     } catch (e) {
         console.error('Error starting YouTube stream:', e);
-        res.status(500).json({ status: 'error', message: e.message || 'start failed' });
+        const status = e.code === 'MODE_BUSY' ? 409 : 500;
+        res.status(status).json({ status: 'error', message: e.message || 'start failed', code: e.code });
     }
 }
 
@@ -43,13 +45,14 @@ async function playPlaylist(req, res) {
         return res.json({ status: 'success', message: result.message });
     } catch (e) {
         console.error('Error playPlaylist:', e);
-        return res.status(500).json({ status: 'error', message: e.message || 'play playlist failed' });
+        const status = e.code === 'MODE_BUSY' ? 409 : 500;
+        return res.status(status).json({ status: 'error', message: e.message || 'play playlist failed', code: e.code });
     }
 }
 
-async function stopPlaylist(_req, res) {
+async function stopAll(_req, res) {
     try {
-        const result = await stream.stopPlaylist();
+        const result = await stream.stop();
         return res.json({ status: 'success', message: result.message });
     } catch (e) {
         console.error('Error stopPlaylist:', e);
@@ -83,7 +86,7 @@ async function prevTrack(_req, res) {
     }
 }
 
-async function pausePlaylist(_req, res) {
+async function pause(_req, res) {
     try {
         stream.pause();
         return res.json({ status: 'success', message: 'หยุดชั่วคราว' });
@@ -93,7 +96,7 @@ async function pausePlaylist(_req, res) {
     }
 }
 
-async function resumePlaylist(_req, res) {
+async function resume(_req, res) {
     try {
         stream.resume();
         return res.json({ status: 'success', message: 'เล่นต่อ' });
@@ -109,9 +112,9 @@ module.exports = {
     startFile,
     startYoutube,
     playPlaylist,
-    stopPlaylist,
+    stopAll,
     nextTrack,
     prevTrack,
-    pausePlaylist,
-    resumePlaylist
+    pause,
+    resume
 };
