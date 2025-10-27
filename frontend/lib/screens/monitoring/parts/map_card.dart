@@ -48,8 +48,10 @@ class MapCard extends StatelessWidget {
           ),
           children: [
             TileLayer(
-              urlTemplate: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-              subdomains: const ['a', 'b', 'c'],
+              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', // ไม่ใช้ a/b/c subdomains
+              userAgentPackageName: 'com.mass.smart_city.smart_control',      // <-- ใส่ package จริงของแอป
+              // หากไม่ได้ตั้ง package name ใน pubspec ให้ใช้ headers แทน:
+              // additionalOptions: const {'User-Agent': 'SmartControl/1.0 (contact: you@example.com)'},
             ),
             MarkerLayer(
               markers: items.map((e) {

@@ -1,10 +1,13 @@
+// lib/screens/monitoring/monitoring_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart' as latlng;
 
 import 'monitoring_mock.dart';
 import 'parts/map_card.dart';
-import 'parts/list_card.dart'; // มี TypeFilter/StatusFilter
+import 'parts/list_card.dart';
+import 'parts/metric_line_chart.dart';
+import 'parts/mini_stats.dart';
 
 class MonitoringScreen extends StatefulWidget {
   const MonitoringScreen({super.key});
@@ -29,24 +32,35 @@ class _MonitoringScreenState extends State<MonitoringScreen>
   final _listController = ScrollController();
   static const double _focusZoom = 19.5;
 
+  final ScrollController _pageScroll = ScrollController();
+
+  MetricKey? _metricKey;
+
   @override
   void initState() {
     super.initState();
-    items = _assignOrder(List.of(monitoringMoukup));
+    items = _assignOrder(List.of(MonitoringMock.items));
     _currentCenter = _avgCenter(items);
     _currentZoom = 18.0;
+
+    if (items.isNotEmpty) {
+      selectedId = items.first.id;
+      _metricKey = _defaultMetricFor(items.first);
+    }
   }
 
   List<MonitoringEntry> _assignOrder(List<MonitoringEntry> src) {
     int lightingNo = 1;
     int wirelessNo = 1;
-    return src.map((e) {
-      if (e.kind == MonitoringKind.lighting) {
-        return e.copyWith(order: lightingNo++);
-      } else {
-        return e.copyWith(order: wirelessNo++);
-      }
-    }).toList();
+    return src
+        .map<MonitoringEntry>((e) {
+          if (e.kind == MonitoringKind.lighting) {
+            return e.copyWith(order: lightingNo++);
+          } else {
+            return e.copyWith(order: wirelessNo++);
+          }
+        })
+        .toList(growable: false);
   }
 
   bool _isOnline(MonitoringEntry e) {
@@ -57,8 +71,25 @@ class _MonitoringScreenState extends State<MonitoringScreen>
     }
   }
 
+  MetricKey _defaultMetricFor(MonitoringEntry e) {
+    return e.kind == MonitoringKind.lighting ? MetricKey.acV : MetricKey.dcV;
+  }
+
+  MonitoringEntry? get _current {
+    if (items.isEmpty) return null;
+    if (selectedId == null) return items.first;
+    try {
+      return items.firstWhere((e) => e.id == selectedId);
+    } catch (_) {
+      return items.first;
+    }
+  }
+
   void _selectEntry(MonitoringEntry e) {
-    setState(() => selectedId = e.id);
+    setState(() {
+      selectedId = e.id;
+      _metricKey = _defaultMetricFor(e);
+    });
     _smoothFocusMapOn(e);
   }
 
@@ -140,6 +171,10 @@ class _MonitoringScreenState extends State<MonitoringScreen>
       }
     }).toList();
 
+    final double mapHeight = isNarrow ? 200 : 220;
+    final double listHeight = isNarrow ? 320 : 360;
+    final double chartHeight = isNarrow ? 340 : 420;
+
     return Scaffold(
       backgroundColor: bg,
       appBar: AppBar(
@@ -164,63 +199,31 @@ class _MonitoringScreenState extends State<MonitoringScreen>
           const SizedBox(width: 8),
         ],
       ),
-      body: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-        child: isNarrow
-            // จอแคบ: Map บน + List ล่าง
-            ? Column(
-                children: [
-                  SizedBox(
-                    height: 320,
-                    child: MapCard(
-                      mapController: _mapController,
-                      items: filtered,
-                      center: _currentCenter,
-                      border: border,
-                      onMarkerTap: (e, list) {
-                        setState(() => selectedId = e.id);
-                        _smoothFocusMapOn(e);
-                        _scrollToEntry(e, list);
-                      },
-                      isOnline: _isOnline,
-                      selectedId: selectedId,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Expanded(
-                    child: MonitoringListPanel(
-                      items: filtered,
-                      selectedId: selectedId,
-                      cardBg: cardBg,
-                      border: border,
-                      accent: accent,
-                      textColor: textColor,
-                      listController: _listController,
-                      onToggleLighting: _toggleLighting,
-                      onSelectEntry: _selectEntry,
-                      typeFilter: typeFilterEnum,
-                      onChangeTypeFilter: (v) => setState(() => typeFilterEnum = v),
-                      statusFilter: statusFilterEnum,
-                      onChangeStatusFilter: (v) => setState(() => statusFilterEnum = v),
-                      totalCount: totalCount,
-                      onlineCount: onlineCount,
-                      offlineCount: offlineCount,
-                    ),
-                  ),
-                ],
-              )
-            // จอกว้าง: Map ซ้าย + List ขวา (Row มี constraint ชัดเจน)
-            : SizedBox.expand(
-                child: Row(
+      body: Scrollbar(
+        controller: _pageScroll,
+        thumbVisibility: true,
+        child: SingleChildScrollView(
+          controller: _pageScroll,
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // ===== Map + List =====
+              if (isNarrow)
+                Column(
                   children: [
-                    Expanded(
+                    SizedBox(
+                      height: mapHeight,
                       child: MapCard(
                         mapController: _mapController,
                         items: filtered,
                         center: _currentCenter,
                         border: border,
                         onMarkerTap: (e, list) {
-                          setState(() => selectedId = e.id);
+                          setState(() {
+                            selectedId = e.id;
+                            _metricKey = _defaultMetricFor(e);
+                          });
                           _smoothFocusMapOn(e);
                           _scrollToEntry(e, list);
                         },
@@ -228,8 +231,9 @@ class _MonitoringScreenState extends State<MonitoringScreen>
                         selectedId: selectedId,
                       ),
                     ),
-                    const SizedBox(width: 16),
-                    Expanded(
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      height: listHeight,
                       child: MonitoringListPanel(
                         items: filtered,
                         selectedId: selectedId,
@@ -250,8 +254,94 @@ class _MonitoringScreenState extends State<MonitoringScreen>
                       ),
                     ),
                   ],
+                )
+              else
+                SizedBox(
+                  height: mapHeight + 12 + listHeight,
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: MapCard(
+                          mapController: _mapController,
+                          items: filtered,
+                          center: _currentCenter,
+                          border: border,
+                          onMarkerTap: (e, list) {
+                            setState(() {
+                              selectedId = e.id;
+                              _metricKey = _defaultMetricFor(e);
+                            });
+                            _smoothFocusMapOn(e);
+                            _scrollToEntry(e, list);
+                          },
+                          isOnline: _isOnline,
+                          selectedId: selectedId,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: MonitoringListPanel(
+                          items: filtered,
+                          selectedId: selectedId,
+                          cardBg: cardBg,
+                          border: border,
+                          accent: accent,
+                          textColor: textColor,
+                          listController: _listController,
+                          onToggleLighting: _toggleLighting,
+                          onSelectEntry: _selectEntry,
+                          typeFilter: typeFilterEnum,
+                          onChangeTypeFilter: (v) => setState(() => typeFilterEnum = v),
+                          statusFilter: statusFilterEnum,
+                          onChangeStatusFilter: (v) => setState(() => statusFilterEnum = v),
+                          totalCount: totalCount,
+                          onlineCount: onlineCount,
+                          offlineCount: offlineCount,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
+
+              // ===== Chart + Right cards =====
+              const SizedBox(height: 16),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    flex: 6,
+                    child: SizedBox(
+                      height: chartHeight,
+                      child: MetricLineChart(
+                        items: filtered,
+                        selectedId: selectedId,
+                        metric: _metricKey ??
+                            ((_current?.kind == MonitoringKind.lighting)
+                                ? MetricKey.acV
+                                : MetricKey.dcV),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    flex: 4,
+                    child: SizedBox(
+                      height: chartHeight,
+                      child: MiniStats(
+                        current: _current,
+                        activeMetric: _metricKey ??
+                            ((_current?.kind == MonitoringKind.lighting)
+                                ? MetricKey.acV
+                                : MetricKey.dcV),
+                        onSelectMetric: (m) => setState(() => _metricKey = m),
+                      ),
+                    ),
+                  ),
+                ],
               ),
+            ],
+          ),
+        ),
       ),
     );
   }

@@ -1,3 +1,4 @@
+// lib/screens/monitoring/parts/list_card.dart
 import 'package:flutter/material.dart';
 import '../monitoring_mock.dart';
 
@@ -11,7 +12,10 @@ class MonitoringListPanel extends StatelessWidget {
   final String? selectedId;
   final Color cardBg, border, accent, textColor;
   final ScrollController listController;
+
+  /// เรียกเมื่อผู้ใช้กดเปิด/ปิดไฟบนไอเท็ม (จะถูกเรียกหลังจากอัปเดต mock แล้ว)
   final void Function(MonitoringEntry) onToggleLighting;
+
   final void Function(MonitoringEntry) onSelectEntry;
 
   final TypeFilter typeFilter;
@@ -84,6 +88,7 @@ class MonitoringListPanel extends StatelessWidget {
                   Expanded(
                     child: SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
+                      primary: false,
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
@@ -122,6 +127,7 @@ class MonitoringListPanel extends StatelessWidget {
                 thumbVisibility: true,
                 child: ListView.separated(
                   controller: listController,
+                  primary: false,
                   padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
                   itemCount: items.length,
                   separatorBuilder: (_, __) => const SizedBox(height: 8),
@@ -211,11 +217,10 @@ class TypeDropdown extends StatelessWidget {
   }
 
   List<PopupMenuEntry<TypeFilter>> _buildItems(double w) {
-    // ✅ เมนูมีช่องไฟซ้าย/ขวา และความสูงแถวพอดี
-    const innerLeftText = 12.0;  // เดิม 6
-    const innerRightText = 10.0; // เดิม 4
-    const v = 12.0;              // เดิม 10
-    const edge = 10.0;           // เดิม 8
+    const innerLeftText = 12.0;
+    const innerRightText = 10.0;
+    const v = 12.0;
+    const edge = 10.0;
 
     PopupMenuEntry<TypeFilter> _item(
       TypeFilter val,
@@ -227,7 +232,7 @@ class TypeDropdown extends StatelessWidget {
         value: val,
         padding: EdgeInsets.zero,
         child: SizedBox(
-          width: w, // เมนูกว้างเท่าปุ่ม
+          width: w,
           child: Padding(
             padding: EdgeInsets.fromLTRB(
               innerLeftText,
@@ -254,16 +259,14 @@ class TypeDropdown extends StatelessWidget {
     return _TypeDropdownButton3D(
       label: _labelOf(value),
       onTap: (boxContext) async {
-        // เปิดเมนูหลังเฟรมปัจจุบัน เพื่อเลี่ยง assert mouse tracker
         WidgetsBinding.instance.addPostFrameCallback((_) async {
           final box = boxContext.findRenderObject() as RenderBox;
-          final overlay =
-              Overlay.of(boxContext).context.findRenderObject() as RenderBox;
+          final overlay = Overlay.of(boxContext).context.findRenderObject() as RenderBox;
           final offset = box.localToGlobal(Offset.zero, ancestor: overlay);
 
           final buttonW = box.size.width;
-          final menuW = buttonW; // เมนู = ปุ่ม
-          final left = offset.dx; // ชิดซ้ายปุ่ม
+          final menuW = buttonW;
+          final left = offset.dx;
           final top = offset.dy + box.size.height + 4.0;
           final right = overlay.size.width - left - menuW;
 
@@ -271,10 +274,8 @@ class TypeDropdown extends StatelessWidget {
             context: boxContext,
             color: Colors.white,
             elevation: 8,
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            position: RelativeRect.fromLTRB(
-                left, top, right, overlay.size.height - top),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            position: RelativeRect.fromLTRB(left, top, right, overlay.size.height - top),
             items: _buildItems(menuW),
           );
 
@@ -285,7 +286,7 @@ class TypeDropdown extends StatelessWidget {
   }
 }
 
-/// ปุ่ม 3D แบบเดิม (กว้าง 180 และเพิ่มช่องไฟซ้าย–ขวาให้ข้อความ)
+/// ปุ่ม 3D แบบเดิม
 class _TypeDropdownButton3D extends StatelessWidget {
   final String label;
   final void Function(BuildContext buttonContext) onTap;
@@ -302,23 +303,14 @@ class _TypeDropdownButton3D extends StatelessWidget {
           child: SizedBox(
             width: 180,
             child: Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 12, // ✅ เพิ่มระยะจากขอบสำหรับข้อความ
-                vertical: 12,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: Colors.grey[300]!),
                 boxShadow: const [
-                  BoxShadow(
-                      color: Color(0x33000000),
-                      offset: Offset(3, 5),
-                      blurRadius: 10),
-                  BoxShadow(
-                      color: Color(0x66FFFFFF),
-                      offset: Offset(-3, -3),
-                      blurRadius: 10),
+                  BoxShadow(color: Color(0x33000000), offset: Offset(3, 5), blurRadius: 10),
+                  BoxShadow(color: Color(0x66FFFFFF), offset: Offset(-3, -3), blurRadius: 10),
                 ],
               ),
               child: Row(
@@ -365,24 +357,12 @@ class Status3DButton extends StatelessWidget {
 
     final shadows = selected
         ? <BoxShadow>[
-            const BoxShadow(
-                color: Color(0x59000000),
-                offset: Offset(2, 3),
-                blurRadius: 8),
-            BoxShadow(
-                color: Colors.white.withOpacity(0.6),
-                offset: const Offset(-2, -2),
-                blurRadius: 6),
+            const BoxShadow(color: Color(0x59000000), offset: Offset(2, 3), blurRadius: 8),
+            BoxShadow(color: Colors.white.withOpacity(0.6), offset: const Offset(-2, -2), blurRadius: 6),
           ]
         : const <BoxShadow>[
-            BoxShadow(
-                color: Color(0x33000000),
-                offset: Offset(3, 5),
-                blurRadius: 10),
-            BoxShadow(
-                color: Color(0xF2FFFFFF),
-                offset: Offset(-3, -3),
-                blurRadius: 10),
+            BoxShadow(color: Color(0x33000000), offset: Offset(3, 5), blurRadius: 10),
+            BoxShadow(color: Color(0xF2FFFFFF), offset: Offset(-3, -3), blurRadius: 10),
           ];
 
     return InkWell(
@@ -396,18 +376,19 @@ class Status3DButton extends StatelessWidget {
           border: Border.all(color: border),
           boxShadow: shadows,
         ),
-        child: Text(label,
-            style: TextStyle(fontWeight: FontWeight.w700, color: txt)),
+        child: Text(label, style: TextStyle(fontWeight: FontWeight.w700, color: txt)),
       ),
     );
   }
 }
 
-/// ===== การ์ดอุปกรณ์ / Badge / Metrics =====
+// ======================= LightingTile =======================
 class LightingTile extends StatelessWidget {
   final MonitoringEntry entry;
   final String title;
   final Color accent, textColor, border;
+
+  /// จะถูกเรียก “หลัง” อัปเดต mock แล้ว เพื่อให้หน้าจอแม่ sync state ถ้าต้องการ
   final void Function(MonitoringEntry) onToggleLighting;
 
   const LightingTile({
@@ -428,97 +409,125 @@ class LightingTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final d = entry.data as LightingData;
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: border),
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 12,
-              offset: const Offset(0, 6))
-        ],
-      ),
-      padding: const EdgeInsets.all(14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(children: [
-            Expanded(
-              child: Text(
-                title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w900,
-                  fontSize: 20,
-                  letterSpacing: .2,
-                  color: Colors.black87,
-                  shadows: [
-                    Shadow(
-                        blurRadius: 6,
-                        color: Color(0x22000000),
-                        offset: Offset(0, 1))
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            OnlineGlowBadge(isOnline: d.online),
-          ]),
-          const SizedBox(height: 6),
-          Text(
-            'Lat ${entry.lat.toStringAsFixed(6)}, Lng ${entry.lng.toStringAsFixed(6)} · อัปเดตล่าสุด ${_hhmmss(entry.updatedAt)}',
-            style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+    return ValueListenableBuilder<List<MonitoringEntry>>(
+      valueListenable: MonitoringMock.itemsNotifier,
+      builder: (context, _, __) {
+        final fresh = MonitoringMock.findById(entry.id) ?? entry;
+        final d = fresh.data as LightingData;
+
+        // ตรรกะของปุ่ม
+        final isLightingOn = d.statusLighting;
+        // ถ้าไฟเปิด (true) -> ปุ่มบอกให้ 'ปิดไฟ' (สีเขียว)
+        final buttonText = isLightingOn ? 'เปิดไฟ' : 'ปิดไฟ';
+        // ถ้าไฟเปิด (true) -> ไอคอนหลอดไฟที่เปิดอยู่ (Outline), ถ้าไฟปิด (false) -> ไอคอนหลอดไฟที่ปิดอยู่ (Solid)
+        final buttonIcon = isLightingOn ? Icons.lightbulb : Icons.lightbulb_outline;
+        // ถ้าไฟเปิด (true) -> สีเขียว, ถ้าไฟปิด (false) -> สีแดง
+        final buttonColor = isLightingOn ? Colors.green[600] : Colors.red[600];
+
+
+        return Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            border: Border.all(color: border),
+            borderRadius: BorderRadius.circular(14),
+            boxShadow: [
+              BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 16, offset: const Offset(0, 8)),
+            ],
           ),
-          const SizedBox(height: 10),
-          MetricList(items: [
-            MetricItem('AC Voltage', '${d.acV.toStringAsFixed(1)} V'),
-            MetricItem('AC Current', '${d.acA.toStringAsFixed(2)} A'),
-            MetricItem('AC Power', '${d.acW.toStringAsFixed(1)} W'),
-            MetricItem('AC Frequency', '${d.acHz.toStringAsFixed(0)} Hz'),
-            MetricItem('AC Energy', '${d.acKWh.toStringAsFixed(2)} kWh'),
-            MetricItem('สถานะไฟ', d.statusLighting ? 'เปิดอยู่' : 'ปิดอยู่'),
-          ]),
-          const SizedBox(height: 10),
-          Align(
-            alignment: Alignment.centerRight,
-            child: ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor:
-                    d.statusLighting ? Colors.red[600] : Colors.green[600],
-                foregroundColor: Colors.white,
-                alignment: Alignment.center,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10)),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                minimumSize: const Size(112, 44),
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(children: [
+                Expanded(
+                  child: Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w900,
+                      fontSize: 20,
+                      letterSpacing: .2,
+                      color: Colors.black87,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                OnlineGlowBadge(isOnline: d.online),
+              ]),
+              const SizedBox(height: 6),
+              Text(
+                'อัปเดตล่าสุด ${_hhmmss(fresh.updatedAt)}',
+                style: TextStyle(fontSize: 12, color: Colors.grey[600]),
               ),
-              onPressed: () => onToggleLighting(entry),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: const [
-                  SizedBox(
-                      width: 22,
-                      height: 22,
-                      child: Center(child: Icon(Icons.lightbulb, size: 20))),
-                  SizedBox(width: 8),
-                  SizedBox(width: 48, child: Center(child: Text('เปิด/ปิด'))),
+              const SizedBox(height: 10),
+              MetricList(items: [
+                MetricItem('AC Voltage', '${d.acV.toStringAsFixed(1)} V'),
+                MetricItem('AC Current', '${d.acA.toStringAsFixed(2)} A'),
+                MetricItem('AC Power', '${d.acW.toStringAsFixed(1)} W'),
+                MetricItem('AC Frequency', '${d.acHz.toStringAsFixed(0)} Hz'),
+                MetricItem('AC Energy', '${d.acKWh.toStringAsFixed(2)} kWh'),
+              ]),
+              const SizedBox(height: 10),
+
+              /// ปุ่ม เปิด/ปิด ไฟ
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  // 1. ข้อความ 'สถานะไฟ' (ปรับ style ให้ตรงกับ Metric Label)
+                  Text(
+                    'สถานะไฟ',
+                    style: TextStyle(
+                      color: Colors.grey[700], 
+                      fontWeight: FontWeight.w600, 
+                    ),
+                  ),
+
+                  // 2. ปุ่ม Elevated Button (กำหนดความกว้าง Text เพื่อป้องกันการขยับ)
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: buttonColor,
+                      foregroundColor: Colors.white,
+                      alignment: Alignment.center,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                      minimumSize: const Size(120, 44),
+                      textStyle: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                    onPressed: () {
+                      final next = !d.statusLighting;
+                      MonitoringMock.updateLightingStatus(entry.id, next);
+                      onToggleLighting(fresh);
+                    },
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // ไอคอนนำหน้า
+                        Icon(buttonIcon, size: 20),
+                        const SizedBox(width: 8),
+                        
+                        // ✅ ล็อกความกว้างของข้อความ (ใช้ SizedBox)
+                        SizedBox(
+                          width: 45,
+                          child: Text(
+                            buttonText,
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
               ),
-            ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
 
+// ======================= WirelessTile =======================
 class WirelessTile extends StatelessWidget {
   final MonitoringEntry entry;
   final String title;
@@ -549,10 +558,7 @@ class WirelessTile extends StatelessWidget {
         border: Border.all(color: border),
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
-          BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 12,
-              offset: const Offset(0, 6))
+          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 12, offset: const Offset(0, 6))
         ],
       ),
       padding: const EdgeInsets.all(14),
@@ -570,12 +576,7 @@ class WirelessTile extends StatelessWidget {
                   fontSize: 20,
                   letterSpacing: .2,
                   color: Colors.black87,
-                  shadows: [
-                    Shadow(
-                        blurRadius: 6,
-                        color: Color(0x22000000),
-                        offset: Offset(0, 1))
-                  ],
+                  shadows: [Shadow(blurRadius: 6, color: Color(0x22000000), offset: Offset(0, 1))],
                 ),
               ),
             ),
@@ -600,7 +601,7 @@ class WirelessTile extends StatelessWidget {
   }
 }
 
-/// ===== แบดจ์ Online/Offline (เอาจุดนำหน้าออกแล้ว) =====
+/// ===== แบดจ์ Online/Offline (ดีไซน์ด้านล่าง) =====
 class OnlineGlowBadge extends StatelessWidget {
   final bool isOnline;
   const OnlineGlowBadge({super.key, required this.isOnline});
@@ -653,11 +654,8 @@ class MetricList extends StatelessWidget {
                   children: [
                     Expanded(
                         child: Text(m.label,
-                            style: TextStyle(
-                                color: Colors.grey[700],
-                                fontWeight: FontWeight.w600))),
-                    Text(m.value,
-                        style: const TextStyle(fontWeight: FontWeight.w700)),
+                            style: TextStyle(color: Colors.grey[700], fontWeight: FontWeight.w600))),
+                    Text(m.value, style: const TextStyle(fontWeight: FontWeight.w700)),
                   ],
                 ),
               ))
