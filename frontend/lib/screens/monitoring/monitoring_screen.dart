@@ -1,4 +1,5 @@
 // lib/screens/monitoring/monitoring_screen.dart
+
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart' as latlng;
@@ -8,6 +9,7 @@ import 'parts/map_card.dart';
 import 'parts/list_card.dart';
 import 'parts/metric_line_chart.dart';
 import 'parts/mini_stats.dart';
+import 'parts/notification.dart'; 
 
 class MonitoringScreen extends StatefulWidget {
   const MonitoringScreen({super.key});
@@ -21,6 +23,12 @@ class _MonitoringScreenState extends State<MonitoringScreen>
 
   TypeFilter typeFilterEnum = TypeFilter.all;
   StatusFilter statusFilterEnum = StatusFilter.all;
+
+  bool _showNotificationCenter = false; 
+
+  // *** เปลี่ยนเป็นตัวแปรที่สามารถเปลี่ยนแปลงได้ (ไม่มี final) ***
+  int _unreadCount = 2; // Mock: ถ้า > 0 จะแสดงจุดสีแดง
+  // **********************************************************
 
   String? selectedId;
 
@@ -48,6 +56,14 @@ class _MonitoringScreenState extends State<MonitoringScreen>
       _metricKey = _defaultMetricFor(items.first);
     }
   }
+  
+  // *** เมธอดสำหรับจัดการเมื่อ Mark All As Read ถูกเรียก ***
+  void _markAllNotifsAsRead() {
+    setState(() {
+      _unreadCount = 0; // เซ็ตให้เป็น 0 เพื่อซ่อน Dot Badge
+    });
+  }
+  // ***************************************************
 
   List<MonitoringEntry> _assignOrder(List<MonitoringEntry> src) {
     int lightingNo = 1;
@@ -187,165 +203,205 @@ class _MonitoringScreenState extends State<MonitoringScreen>
           style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black),
         ),
         actions: [
-          IconButton(
-            tooltip: 'แจ้งเตือน',
-            icon: const Icon(Icons.notifications_active_outlined, size: 28, color: Colors.black),
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('ตั้งค่าการแจ้งเตือน (mock)')),
-              );
-            },
+          // Dot Badge Logic
+          Padding(
+            padding: const EdgeInsets.only(right: 8.0),
+            child: Stack(
+              alignment: Alignment.topRight,
+              children: [
+                IconButton(
+                  tooltip: 'แจ้งเตือน',
+                  icon: const Icon(Icons.notifications_active_outlined, size: 28, color: Colors.black),
+                  onPressed: () {
+                    setState(() {
+                      _showNotificationCenter = !_showNotificationCenter;
+                    });
+                  },
+                ),
+                // *** Badge จะแสดงเมื่อ _unreadCount > 0 เท่านั้น ***
+                if (_unreadCount > 0)
+                  const Positioned( 
+                    right: 8,
+                    top: 8,
+                    child: SizedBox(
+                      width: 8, 
+                      height: 8, 
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: Colors.red,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
           const SizedBox(width: 8),
         ],
       ),
-      body: Scrollbar(
-        controller: _pageScroll,
-        thumbVisibility: true,
-        child: SingleChildScrollView(
-          controller: _pageScroll,
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // ===== Map + List =====
-              if (isNarrow)
-                Column(
-                  children: [
+      body: Stack( 
+        children: [
+          // 1. เนื้อหาหน้าจอหลัก (โค้ดเดิม)
+          Scrollbar(
+            controller: _pageScroll,
+            thumbVisibility: true,
+            child: SingleChildScrollView(
+              controller: _pageScroll,
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // ... (ส่วน Map, List, Chart โค้ดเดิม)
+                  if (isNarrow)
+                    Column(
+                      children: [
+                        SizedBox(
+                          height: mapHeight,
+                          child: MapCard(
+                            mapController: _mapController,
+                            items: filtered,
+                            center: _currentCenter,
+                            border: border,
+                            onMarkerTap: (e, list) {
+                              setState(() {
+                                selectedId = e.id;
+                                _metricKey = _defaultMetricFor(e);
+                              });
+                              _smoothFocusMapOn(e);
+                              _scrollToEntry(e, list);
+                            },
+                            isOnline: _isOnline,
+                            selectedId: selectedId,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          height: listHeight,
+                          child: MonitoringListPanel(
+                            items: filtered,
+                            selectedId: selectedId,
+                            cardBg: cardBg,
+                            border: border,
+                            accent: accent,
+                            textColor: textColor,
+                            listController: _listController,
+                            onToggleLighting: _toggleLighting,
+                            onSelectEntry: _selectEntry,
+                            typeFilter: typeFilterEnum,
+                            onChangeTypeFilter: (v) => setState(() => typeFilterEnum = v),
+                            statusFilter: statusFilterEnum,
+                            onChangeStatusFilter: (v) => setState(() => statusFilterEnum = v),
+                            totalCount: totalCount,
+                            onlineCount: onlineCount,
+                            offlineCount: offlineCount,
+                          ),
+                        ),
+                      ],
+                    )
+                  else
                     SizedBox(
-                      height: mapHeight,
-                      child: MapCard(
-                        mapController: _mapController,
-                        items: filtered,
-                        center: _currentCenter,
-                        border: border,
-                        onMarkerTap: (e, list) {
-                          setState(() {
-                            selectedId = e.id;
-                            _metricKey = _defaultMetricFor(e);
-                          });
-                          _smoothFocusMapOn(e);
-                          _scrollToEntry(e, list);
-                        },
-                        isOnline: _isOnline,
-                        selectedId: selectedId,
+                      height: mapHeight + 12 + listHeight,
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: MapCard(
+                              mapController: _mapController,
+                              items: filtered,
+                              center: _currentCenter,
+                              border: border,
+                              onMarkerTap: (e, list) {
+                                setState(() {
+                                  selectedId = e.id;
+                                  _metricKey = _defaultMetricFor(e);
+                                });
+                                _smoothFocusMapOn(e);
+                                _scrollToEntry(e, list);
+                              },
+                              isOnline: _isOnline,
+                              selectedId: selectedId,
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: MonitoringListPanel(
+                              items: filtered,
+                              selectedId: selectedId,
+                              cardBg: cardBg,
+                              border: border,
+                              accent: accent,
+                              textColor: textColor,
+                              listController: _listController,
+                              onToggleLighting: _toggleLighting,
+                              onSelectEntry: _selectEntry,
+                              typeFilter: typeFilterEnum,
+                              onChangeTypeFilter: (v) => setState(() => typeFilterEnum = v),
+                              statusFilter: statusFilterEnum,
+                              onChangeStatusFilter: (v) => setState(() => statusFilterEnum = v),
+                              totalCount: totalCount,
+                              onlineCount: onlineCount,
+                              offlineCount: offlineCount,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      height: listHeight,
-                      child: MonitoringListPanel(
-                        items: filtered,
-                        selectedId: selectedId,
-                        cardBg: cardBg,
-                        border: border,
-                        accent: accent,
-                        textColor: textColor,
-                        listController: _listController,
-                        onToggleLighting: _toggleLighting,
-                        onSelectEntry: _selectEntry,
-                        typeFilter: typeFilterEnum,
-                        onChangeTypeFilter: (v) => setState(() => typeFilterEnum = v),
-                        statusFilter: statusFilterEnum,
-                        onChangeStatusFilter: (v) => setState(() => statusFilterEnum = v),
-                        totalCount: totalCount,
-                        onlineCount: onlineCount,
-                        offlineCount: offlineCount,
-                      ),
-                    ),
-                  ],
-                )
-              else
-                SizedBox(
-                  height: mapHeight + 12 + listHeight,
-                  child: Row(
+                  const SizedBox(height: 16),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Expanded(
-                        child: MapCard(
-                          mapController: _mapController,
-                          items: filtered,
-                          center: _currentCenter,
-                          border: border,
-                          onMarkerTap: (e, list) {
-                            setState(() {
-                              selectedId = e.id;
-                              _metricKey = _defaultMetricFor(e);
-                            });
-                            _smoothFocusMapOn(e);
-                            _scrollToEntry(e, list);
-                          },
-                          isOnline: _isOnline,
-                          selectedId: selectedId,
+                        flex: 6,
+                        child: SizedBox(
+                          height: chartHeight,
+                          child: MetricLineChart(
+                            items: filtered,
+                            selectedId: selectedId,
+                            metric: _metricKey ??
+                                ((_current?.kind == MonitoringKind.lighting)
+                                    ? MetricKey.acV
+                                    : MetricKey.dcV),
+                          ),
                         ),
                       ),
                       const SizedBox(width: 16),
                       Expanded(
-                        child: MonitoringListPanel(
-                          items: filtered,
-                          selectedId: selectedId,
-                          cardBg: cardBg,
-                          border: border,
-                          accent: accent,
-                          textColor: textColor,
-                          listController: _listController,
-                          onToggleLighting: _toggleLighting,
-                          onSelectEntry: _selectEntry,
-                          typeFilter: typeFilterEnum,
-                          onChangeTypeFilter: (v) => setState(() => typeFilterEnum = v),
-                          statusFilter: statusFilterEnum,
-                          onChangeStatusFilter: (v) => setState(() => statusFilterEnum = v),
-                          totalCount: totalCount,
-                          onlineCount: onlineCount,
-                          offlineCount: offlineCount,
+                        flex: 4,
+                        child: SizedBox(
+                          height: chartHeight,
+                          child: MiniStats(
+                            current: _current,
+                            activeMetric: _metricKey ??
+                                ((_current?.kind == MonitoringKind.lighting)
+                                    ? MetricKey.acV
+                                    : MetricKey.dcV),
+                            onSelectMetric: (m) => setState(() => _metricKey = m),
+                          ),
                         ),
                       ),
                     ],
                   ),
-                ),
-
-              // ===== Chart + Right cards =====
-              const SizedBox(height: 16),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    flex: 6,
-                    child: SizedBox(
-                      height: chartHeight,
-                      child: MetricLineChart(
-                        items: filtered,
-                        selectedId: selectedId,
-                        metric: _metricKey ??
-                            ((_current?.kind == MonitoringKind.lighting)
-                                ? MetricKey.acV
-                                : MetricKey.dcV),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    flex: 4,
-                    child: SizedBox(
-                      height: chartHeight,
-                      child: MiniStats(
-                        current: _current,
-                        activeMetric: _metricKey ??
-                            ((_current?.kind == MonitoringKind.lighting)
-                                ? MetricKey.acV
-                                : MetricKey.dcV),
-                        onSelectMetric: (m) => setState(() => _metricKey = m),
-                      ),
-                    ),
-                  ),
                 ],
               ),
-            ],
+            ),
           ),
-        ),
+          
+          // 2. กล่องแจ้งเตือน (Notification Center)
+          if (_showNotificationCenter)
+            Positioned(
+              top: 0, 
+              right: 16, 
+              child: NotificationCenter(
+                onClose: () => setState(() => _showNotificationCenter = false),
+                onMarkAllAsRead: _markAllNotifsAsRead, // *** ส่งฟังก์ชันนี้ไปให้ NotificationCenter ***
+              ),
+            ),
+        ],
       ),
     );
   }
-
+  
+  // (โค้ดเมธอดอื่นๆ เดิม)
   void _toggleLighting(MonitoringEntry entry) {
     if (entry.kind != MonitoringKind.lighting) return;
     setState(() {
