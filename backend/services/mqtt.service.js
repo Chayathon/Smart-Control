@@ -202,6 +202,7 @@ async function checkOfflineZones() {
                         'status.stream_enabled': false,
                         'status.volume': 0,
                         'status.is_playing': false,
+                        'status.playback_mode': 'none',
                         lastSeen: new Date()
                     }
                 }
@@ -246,6 +247,7 @@ async function checkOfflineZones() {
                         'status.stream_enabled': false,
                         'status.volume': 0,
                         'status.is_playing': false,
+                        'status.playback_mode': 'none',
                         lastSeen: new Date()
                     }
                 }

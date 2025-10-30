@@ -170,7 +170,6 @@ class _ControlPanelState extends State<ControlPanel> {
       final devices = await api.get('/device') as List<dynamic>;
       String mode = playbackMode;
       if (devices.isNotEmpty) {
-        // playing_mode is centrally synced, so any device carries it
         final first = devices.first;
         final m = (first['status']?['playback_mode'] ?? 'none').toString();
         if (m.isNotEmpty) mode = m;
@@ -617,7 +616,6 @@ class _ControlPanelState extends State<ControlPanel> {
                   ),
                   const SizedBox(width: 24),
                   _buildCircularToggleButton(
-                    // Show as active (stop) whenever any playback mode is active or paused.
                     isActive: hasActiveMode,
                     activeIcon: isLoading ? Icons.hourglass_empty : Icons.stop,
                     inactiveIcon: isLoading
@@ -627,8 +625,6 @@ class _ControlPanelState extends State<ControlPanel> {
                     inactiveLabel: isLoading ? 'กำลังโหลด...' : 'เล่นเพลง',
                     activeColor: Colors.red[600]!,
                     inactiveColor: Colors.green[600]!,
-                    // When loading, disable interaction. Otherwise, if any mode is active or paused -> stop;
-                    // else open the play options sheet.
                     onTap: () {
                       if (isLoading) return;
                       if (hasActiveMode) {

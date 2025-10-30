@@ -42,14 +42,12 @@ function createWSServer(server) {
             }
         }
 
-        // Update devices' playing_mode in DB using the authoritative stream status
         try {
             const s = stream.getStatus();
             const mode = s.activeMode || 'none';
-            // Only update playing_mode to reflect current central play mode; do not touch lastSeen
             await Device.updateMany({}, { $set: { 'status.playback_mode': mode } });
         } catch (e) {
-            console.error('⚠️ Failed to update devices playing_mode:', e.message || e);
+            console.error('⚠️ Failed to update devices playback_mode:', e.message || e);
         }
     };
     bus.on('status', onStatus);
