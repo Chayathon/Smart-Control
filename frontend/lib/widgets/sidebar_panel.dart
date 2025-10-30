@@ -29,6 +29,11 @@ class SidebarPanel extends StatelessWidget {
       'อัปโหลดเพลง',
       () => Get.toNamed(AppRoutes.song_upload),
     ),
+    _MenuItem(
+      Icons.monitor_rounded,
+      'ตรวจสอบสถานะ',
+      () => Get.toNamed(AppRoutes.monitoring),
+    ),
     _MenuItem(Icons.mic, 'ทดสอบไมค์', () => Get.toNamed(AppRoutes.test)),
     _MenuItem(Icons.logout, 'ออกจากระบบ', onLogout),
   ];
