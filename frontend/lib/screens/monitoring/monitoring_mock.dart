@@ -188,6 +188,7 @@ class MonitoringMock {
         acV: 220.6,
         acA: 0.81,
         acW: 173.0,
+  
         acHz: 50.0,
         acKWh: 12.4,
         statusLighting: true,
@@ -202,6 +203,7 @@ class MonitoringMock {
       updatedAt: DateTime.now(),
       data: WirelessData(
         online: true,
+   
         dcV: 12.4,
         dcA: 0.34,
         dcW: 4.2,
@@ -216,6 +218,7 @@ class MonitoringMock {
       lng: 100.6607566958419,
       updatedAt: DateTime.now(),
       data: WirelessData(
+    
         online: false,
         dcV: 11.8,
         dcA: 0.21,
