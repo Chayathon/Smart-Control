@@ -7,6 +7,9 @@ import 'package:smart_control/core/alert/app_snackbar.dart';
 import 'package:smart_control/widgets/loading_overlay.dart';
 import 'package:smart_control/core/services/StreamStatusService.dart';
 
+// Strongly-typed playback mode for clarity and safety
+enum PlaybackMode { none, playlist, file, youtube }
+
 class ControlPanel extends StatefulWidget {
   const ControlPanel({Key? key}) : super(key: key);
 
@@ -33,8 +36,8 @@ class _ControlPanelState extends State<ControlPanel> {
   String currentSongTitle = '';
   int currentSongIndex = 0;
   int totalSongs = 0;
-  // Local playback mode: 'none' | 'playlist' | 'file' | 'youtube'
-  String playbackMode = 'none';
+  // Strongly-typed local playback mode
+  PlaybackMode playbackMode = PlaybackMode.none;
   // bool _isFetchingSongs = false; (not used)
   Timer? _localControlsCooldownTimer;
 
@@ -52,87 +55,7 @@ class _ControlPanelState extends State<ControlPanel> {
     _initStatusFromDb();
 
     // Realtime sync via SSE: reflect backend status regardless of local actions
-    _statusSse.onStatusUpdate = (data) {
-      try {
-        final String event = (data['event'] ?? '').toString();
-        final String mode =
-            (data['activeMode'] ??
-                    data['requestedMode'] ??
-                    (data['mode'] == 'playlist' ? 'playlist' : playbackMode))
-                .toString();
-        final bool? playingMaybe = data.containsKey('isPlaying')
-            ? (data['isPlaying'] == true)
-            : null;
-        final bool? pausedMaybe = data.containsKey('isPaused')
-            ? (data['isPaused'] == true)
-            : null;
-
-        String title = currentSongTitle;
-        int idx = currentSongIndex;
-        int tot = totalSongs;
-
-        if (mode == 'playlist') {
-          if (data['title'] != null) {
-            title = data['title'].toString();
-          } else if (data['extra'] != null && data['extra']['title'] != null) {
-            title = data['extra']['title'].toString();
-          }
-          final int? iFromData = data['index'] is int
-              ? (data['index'] as int)
-              : (data['extra'] != null && data['extra']['index'] is int
-                    ? data['extra']['index'] as int
-                    : null);
-          if (iFromData != null) idx = iFromData + 1;
-          final int? tFromData = data['total'] is int
-              ? (data['total'] as int)
-              : (data['extra'] != null && data['extra']['total'] is int
-                    ? data['extra']['total'] as int
-                    : (data['totalSongs'] is int
-                          ? data['totalSongs'] as int
-                          : null));
-          if (tFromData != null) tot = tFromData;
-        } else if (mode == 'file') {
-          // Prefer provided name, fallback to url-derived filename
-          final nameField = data['name'] ?? data['title'];
-          if (nameField != null && nameField.toString().isNotEmpty) {
-            title = nameField.toString();
-          } else {
-            final url = (data['url'] ?? data['currentUrl'])?.toString();
-            if (url != null && url.isNotEmpty) {
-              final parts = url.replaceAll('\\', '/').split('/');
-              if (parts.isNotEmpty) title = parts.last;
-            }
-          }
-        } else if (mode == 'youtube') {
-          final url = (data['url'] ?? data['currentUrl'])?.toString();
-          if (url != null && url.isNotEmpty) title = url;
-        }
-
-        if (!mounted) return;
-        setState(() {
-          playbackMode = mode;
-          if (playingMaybe != null) isPlaying = playingMaybe;
-          if (pausedMaybe != null) isPaused = pausedMaybe;
-          playlistActive = mode == 'playlist';
-          currentSongTitle = title;
-          currentSongIndex = idx;
-          totalSongs = tot;
-        });
-
-        // For events that don't include full state (e.g., mic-started/ended), fetch authoritative status
-        if (playingMaybe == null ||
-            event == 'mic-started' ||
-            event == 'mic-stopped' ||
-            event == 'stopped' ||
-            event == 'stopped-all' ||
-            event == 'ended') {
-          _refreshFromDb();
-        }
-      } catch (_) {
-        // Fallback to a full refresh if parsing fails
-        _refreshFromDb();
-      }
-    };
+    _statusSse.onStatusUpdate = (data) => _applySseStatus(data);
     _statusSse.connect();
 
     _micService.onStatusChanged = (isRecording) {
@@ -144,6 +67,111 @@ class _ControlPanelState extends State<ControlPanel> {
       if (!mounted) return;
       AppSnackbar.error('ข้อผิดพลาด', error);
     };
+  }
+
+  // ----------------------------
+  // Types and helpers
+  // ----------------------------
+
+  PlaybackMode _parseMode(dynamic value) {
+    final s = value?.toString().toLowerCase() ?? '';
+    switch (s) {
+      case 'playlist':
+        return PlaybackMode.playlist;
+      case 'file':
+      case 'single':
+        return PlaybackMode.file;
+      case 'youtube':
+        return PlaybackMode.youtube;
+      default:
+        return PlaybackMode.none;
+    }
+  }
+
+  String _titleFromUrl(String? url) {
+    if (url == null || url.isEmpty) return '';
+    final parts = url.replaceAll('\\', '/').split('/');
+    return parts.isNotEmpty ? parts.last : '';
+  }
+
+  void _applySseStatus(Map<String, dynamic> data) {
+    try {
+      final String event = (data['event'] ?? '').toString();
+      // Derive mode preference order
+      final PlaybackMode mode = _parseMode(
+        data['activeMode'] ?? data['requestedMode'] ?? data['mode'],
+      );
+
+      final bool? playingMaybe = data.containsKey('isPlaying')
+          ? (data['isPlaying'] == true)
+          : null;
+      final bool? pausedMaybe = data.containsKey('isPaused')
+          ? (data['isPaused'] == true)
+          : null;
+
+      String title = currentSongTitle;
+      int idx = currentSongIndex;
+      int tot = totalSongs;
+
+      if (mode == PlaybackMode.playlist) {
+        final extra = data['extra'];
+        if (data['title'] != null) {
+          title = data['title'].toString();
+        } else if (extra is Map && extra['title'] != null) {
+          title = extra['title'].toString();
+        }
+
+        final int? iFromData = data['index'] is int
+            ? data['index'] as int
+            : (extra is Map && extra['index'] is int
+                  ? extra['index'] as int
+                  : null);
+        if (iFromData != null) idx = iFromData + 1;
+
+        final int? tFromData = data['total'] is int
+            ? data['total'] as int
+            : (extra is Map && extra['total'] is int
+                  ? extra['total'] as int
+                  : (data['totalSongs'] is int
+                        ? data['totalSongs'] as int
+                        : null));
+        if (tFromData != null) tot = tFromData;
+      } else if (mode == PlaybackMode.file) {
+        final nameField = data['name'] ?? data['title'];
+        if (nameField != null && nameField.toString().isNotEmpty) {
+          title = nameField.toString();
+        } else {
+          title = _titleFromUrl(
+            (data['url'] ?? data['currentUrl'])?.toString(),
+          );
+        }
+      } else if (mode == PlaybackMode.youtube) {
+        title = (data['url'] ?? data['currentUrl'])?.toString() ?? title;
+      }
+
+      if (!mounted) return;
+      setState(() {
+        playbackMode = mode;
+        if (playingMaybe != null) isPlaying = playingMaybe;
+        if (pausedMaybe != null) isPaused = pausedMaybe;
+        playlistActive = mode == PlaybackMode.playlist;
+        currentSongTitle = title;
+        currentSongIndex = idx;
+        totalSongs = tot;
+      });
+
+      // For events that may not include full state, fetch authoritative status
+      if (playingMaybe == null ||
+          event == 'mic-started' ||
+          event == 'mic-stopped' ||
+          event == 'stopped' ||
+          event == 'stopped-all' ||
+          event == 'ended') {
+        _refreshFromDb();
+      }
+    } catch (_) {
+      _refreshFromDb();
+    }
   }
 
   void _syncFromPlaylistState() {
@@ -168,11 +196,11 @@ class _ControlPanelState extends State<ControlPanel> {
       final api = await ApiService.private();
       // Fetch devices to get status.playback_mode
       final devices = await api.get('/device') as List<dynamic>;
-      String mode = playbackMode;
+      PlaybackMode mode = playbackMode;
       if (devices.isNotEmpty) {
         final first = devices.first;
         final m = (first['status']?['playback_mode'] ?? 'none').toString();
-        if (m.isNotEmpty) mode = m;
+        if (m.isNotEmpty) mode = _parseMode(m);
       }
 
       // Fetch engine status for isPlaying/isPaused and playlist info
@@ -182,10 +210,11 @@ class _ControlPanelState extends State<ControlPanel> {
           engine; // controller returns {status:'success', data: ...}
       final bool engIsPlaying = data['isPlaying'] == true;
       final bool engIsPaused = data['isPaused'] == true;
-      final String activeMode = (data['activeMode'] ?? data['mode'] ?? 'none')
-          .toString();
+      final PlaybackMode activeMode = _parseMode(
+        data['activeMode'] ?? data['mode'] ?? 'none',
+      );
       final bool engPlaylistMode =
-          activeMode == 'playlist' || data['playlistMode'] == true;
+          activeMode == PlaybackMode.playlist || data['playlistMode'] == true;
 
       String title = currentSongTitle;
       int idx = currentSongIndex;
@@ -195,7 +224,7 @@ class _ControlPanelState extends State<ControlPanel> {
         title = (cs['title'] ?? '').toString();
         idx = ((cs['index'] ?? 0) as int) + 1;
         tot = (cs['total'] ?? data['totalSongs'] ?? 0) as int;
-      } else if (activeMode == 'file') {
+      } else if (activeMode == PlaybackMode.file) {
         // Prefer name from engine status (backend now provides it)
         if (data['name'] != null && data['name'].toString().isNotEmpty) {
           title = data['name'].toString();
@@ -203,13 +232,11 @@ class _ControlPanelState extends State<ControlPanel> {
             data['title'].toString().isNotEmpty) {
           title = data['title'].toString();
         } else {
-          final url = (data['currentUrl'] ?? data['url'])?.toString();
-          if (url != null && url.isNotEmpty) {
-            final parts = url.replaceAll('\\', '/').split('/');
-            if (parts.isNotEmpty) title = parts.last;
-          }
+          title = _titleFromUrl(
+            (data['currentUrl'] ?? data['url'])?.toString(),
+          );
         }
-      } else if (activeMode == 'youtube') {
+      } else if (activeMode == PlaybackMode.youtube) {
         // For YouTube, we keep a friendly label in UI; no need to set title here
       }
 
@@ -256,6 +283,10 @@ class _ControlPanelState extends State<ControlPanel> {
   void dispose() {
     _localControlsCooldownTimer?.cancel();
     _playlist.state.removeListener(_syncFromPlaylistState);
+    // Ensure mic streaming is stopped when leaving this widget
+    if (micOn && !_micService.isStopping) {
+      _micService.stopStreaming();
+    }
     // Do not dispose singletons globally here; only stop streaming if active
     super.dispose();
   }
@@ -503,7 +534,7 @@ class _ControlPanelState extends State<ControlPanel> {
     if (!(isPlaying || isPaused)) return;
 
     try {
-      if (playbackMode == 'playlist') {
+      if (playbackMode == PlaybackMode.playlist) {
         if (_playlist.state.value.isControlsCoolingDown) return;
         await _playlist.togglePauseResume();
         if (mounted) setState(() => isPaused = _playlist.state.value.isPaused);
@@ -513,7 +544,7 @@ class _ControlPanelState extends State<ControlPanel> {
         );
         // mirror playlist cooldown visually
         _startLocalControlsCooldown();
-      } else if (playbackMode == 'file') {
+      } else if (playbackMode == PlaybackMode.file) {
         // For local file, call pause/resume endpoints
         final api = await ApiService.private();
         if (isPaused) {
@@ -526,7 +557,7 @@ class _ControlPanelState extends State<ControlPanel> {
           AppSnackbar.success('สำเร็จ', 'หยุดชั่วคราว');
         }
         _startLocalControlsCooldown();
-      } else if (playbackMode == 'youtube') {
+      } else if (playbackMode == PlaybackMode.youtube) {
         // YouTube only supports stop
         await _stopActive();
       }
@@ -554,48 +585,8 @@ class _ControlPanelState extends State<ControlPanel> {
   Widget build(BuildContext context) {
     final accent = Colors.blue[700]!;
 
-    Widget _buildCircularToggleButton({
-      required bool isActive,
-      required IconData activeIcon,
-      required IconData inactiveIcon,
-      required String activeLabel,
-      required String inactiveLabel,
-      required Color activeColor,
-      required Color inactiveColor,
-      required VoidCallback onTap,
-      bool enabled = true,
-    }) {
-      return InkWell(
-        onTap: enabled ? onTap : null,
-        borderRadius: BorderRadius.circular(25),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: (isActive ? activeColor : inactiveColor).withOpacity(
-                  0.15,
-                ),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                isActive ? activeIcon : inactiveIcon,
-                color: isActive ? activeColor : inactiveColor,
-                size: 28,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              isActive ? activeLabel : inactiveLabel,
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-            ),
-          ],
-        ),
-      );
-    }
-
-    final bool hasActiveMode = playbackMode != 'none' || isPlaying || isPaused;
+    final bool hasActiveMode =
+        playbackMode != PlaybackMode.none || isPlaying || isPaused;
 
     return Column(
       children: [
@@ -685,7 +676,8 @@ class _ControlPanelState extends State<ControlPanel> {
                 ],
               ),
 
-              if ((playbackMode == 'playlist' || playbackMode == 'file') &&
+              if ((playbackMode == PlaybackMode.playlist ||
+                      playbackMode == PlaybackMode.file) &&
                   !isLoading) ...[
                 const SizedBox(height: 12),
                 Container(
@@ -705,7 +697,7 @@ class _ControlPanelState extends State<ControlPanel> {
                       Builder(
                         builder: (context) {
                           final prevDisabled =
-                              playbackMode != 'playlist' ||
+                              playbackMode != PlaybackMode.playlist ||
                               (currentSongIndex <= 1 && !isLoopEnabled) ||
                               isControlsCoolingDown;
                           return Opacity(
@@ -755,7 +747,7 @@ class _ControlPanelState extends State<ControlPanel> {
                       Builder(
                         builder: (context) {
                           final nextDisabled =
-                              playbackMode != 'playlist' ||
+                              playbackMode != PlaybackMode.playlist ||
                               (currentSongIndex >= totalSongs &&
                                   !isLoopEnabled) ||
                               isControlsCoolingDown;
@@ -787,9 +779,10 @@ class _ControlPanelState extends State<ControlPanel> {
 
         const SizedBox(height: 12),
 
-        if ((playbackMode == 'playlist' && totalSongs > 0) ||
-            (playbackMode == 'file' && currentSongTitle.isNotEmpty) ||
-            (playbackMode == 'youtube'))
+        if ((playbackMode == PlaybackMode.playlist && totalSongs > 0) ||
+            (playbackMode == PlaybackMode.file &&
+                currentSongTitle.isNotEmpty) ||
+            (playbackMode == PlaybackMode.youtube))
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
@@ -823,7 +816,7 @@ class _ControlPanelState extends State<ControlPanel> {
                     children: [
                       const SizedBox(height: 4),
                       Text(
-                        playbackMode == 'youtube'
+                        playbackMode == PlaybackMode.youtube
                             ? 'กำลังเล่นจาก YouTube'
                             : (currentSongTitle.isNotEmpty
                                   ? currentSongTitle
@@ -836,7 +829,7 @@ class _ControlPanelState extends State<ControlPanel> {
                         overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 4),
-                      if (playbackMode == 'playlist')
+                      if (playbackMode == PlaybackMode.playlist)
                         Text(
                           'เพลงที่ $currentSongIndex จาก $totalSongs',
                           style: const TextStyle(
@@ -884,6 +877,64 @@ class _ControlPanelState extends State<ControlPanel> {
             ),
           ),
       ],
+    );
+  }
+}
+
+// ============================
+// UI widgets
+// ============================
+class _buildCircularToggleButton extends StatelessWidget {
+  final bool isActive;
+  final IconData activeIcon;
+  final IconData inactiveIcon;
+  final String activeLabel;
+  final String inactiveLabel;
+  final Color activeColor;
+  final Color inactiveColor;
+  final VoidCallback onTap;
+  final bool enabled;
+
+  const _buildCircularToggleButton({
+    Key? key,
+    required this.isActive,
+    required this.activeIcon,
+    required this.inactiveIcon,
+    required this.activeLabel,
+    required this.inactiveLabel,
+    required this.activeColor,
+    required this.inactiveColor,
+    required this.onTap,
+    this.enabled = true,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: enabled ? onTap : null,
+      borderRadius: BorderRadius.circular(25),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: (isActive ? activeColor : inactiveColor).withOpacity(0.15),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              isActive ? activeIcon : inactiveIcon,
+              color: isActive ? activeColor : inactiveColor,
+              size: 28,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            isActive ? activeLabel : inactiveLabel,
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+          ),
+        ],
+      ),
     );
   }
 }
