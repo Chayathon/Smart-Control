@@ -1,13 +1,10 @@
 const Playlist = require('../models/Playlist');
-const Song = require('../models/Song')
 
-async function setupPlaylist(playlist) {
+async function savePlaylist(playlist) {
     try {
-
         if (!Array.isArray(playlist)) {
             throw new Error('Body ต้องเป็น array ของรายการเพลง');
         }
-
 
         const docs = playlist.map((item, idx) => {
 
@@ -24,18 +21,15 @@ async function setupPlaylist(playlist) {
             return { order, id_song: String(id_song) };
         });
 
-
         const del = await Playlist.deleteMany({});
-
-
         const inserted = await Playlist.insertMany(docs, { ordered: true });
 
         return {
             success: true,
-            message: `Setup playlist สำเร็จ (ลบ ${del.deletedCount} แถว, เพิ่ม ${inserted.length} แถว)`,
+            message: `Save playlist สำเร็จ (ลบ ${del.deletedCount} แถว, เพิ่ม ${inserted.length} แถว)`,
         };
     } catch (err) {
-        console.error('Error in setupPlaylist:', err);
+        console.error('Error in savePlaylist:', err);
         throw err;
     }
 }
@@ -45,9 +39,4 @@ async function getPlaylist() {
     return list;
 }
 
-async function getSongList() {
-    const list = await Song.find()
-    return list;
-}
-
-module.exports = { setupPlaylist, getPlaylist, getSongList };
+module.exports = { savePlaylist, getPlaylist };

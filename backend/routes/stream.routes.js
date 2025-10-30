@@ -2,18 +2,19 @@ const router = require('express').Router();
 const ctrl = require('../controllers/stream.controller');
 const { authenticateToken } = require('../middleware/auth');
 
-router.get('/start', ctrl.start);
-router.post('/start', ctrl.start);
-router.get('/stop', ctrl.stop);
 router.get('/status', ctrl.status);
-router.get('/pause', ctrl.pause);
-router.get('/resume', ctrl.resume);
 
 // Mic control endpoint
 router.post('/mic/stop', authenticateToken, ctrl.stopMic);
 
-router.post('/uploadSongYT', ctrl.uploadSongYT);
-router.post('/uploadSongFile', authenticateToken, ctrl.upload.single('song'), ctrl.uploadSongFile);
-router.get('/startFile', ctrl.startFile);
+router.get('/start-playlist', authenticateToken, ctrl.playPlaylist);
+router.get('/stop', authenticateToken, ctrl.stopAll);
+router.get('/next-track', authenticateToken, ctrl.nextTrack);
+router.get('/prev-track', authenticateToken, ctrl.prevTrack);
+router.get('/pause', authenticateToken, ctrl.pause);
+router.get('/resume', authenticateToken, ctrl.resume);
+
+router.get('/start-file', ctrl.startFile);
+router.get('/start-youtube', ctrl.startYoutube);
 
 module.exports = router;

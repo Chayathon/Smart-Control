@@ -1,8 +1,8 @@
-
 const WebSocket = require('ws');
 const { URL } = require('url');
-const { startMicStream } = require('../services/stream.service');
+const stream = require('../services/stream.service');
 const bus = require('../services/bus');
+const Device = require('../models/Device');
 
 let wssMic;
 let wssStatus;
@@ -16,7 +16,7 @@ function createWSServer(server) {
 
     wssMic.on('connection', (ws) => {
         console.log('🔌 [mic] client connected');
-        startMicStream(ws).catch(err => {
+        stream.startMicStream(ws).catch(err => {
             console.error('[mic] startMicStream error:', err);
             try { ws.close(1011, 'internal error'); } catch { }
         });
@@ -34,12 +34,20 @@ function createWSServer(server) {
         ws.on('error', (err) => console.error('⚠️ [status] error:', err.message));
     });
 
-    const onStatus = (payload) => {
+    const onStatus = async (payload) => {
         const msg = JSON.stringify({ type: 'status', ...payload });
         for (const client of statusClients) {
             if (client.readyState === WebSocket.OPEN) {
                 try { client.send(msg); } catch { }
             }
+        }
+
+        try {
+            const s = stream.getStatus();
+            const mode = s.activeMode || 'none';
+            await Device.updateMany({}, { $set: { 'status.playback_mode': mode } });
+        } catch (e) {
+            console.error('⚠️ Failed to update devices playback_mode:', e.message || e);
         }
     };
     bus.on('status', onStatus);
