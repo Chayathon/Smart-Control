@@ -1,10 +1,29 @@
 const stream = require('../services/stream.service');
+const Song = require('../models/Song');
+const path = require('path');
 
 async function startFile(req, res) {
-    const filePath = req.query.path || req.body?.path;
+    let filePath = req.query.path || req.body?.path;
+    const songId = req.query.songId || req.body?.songId;
     try {
-        await stream.startLocalFile(filePath);
-        res.json({ status: 'success', filePath });
+        let displayName = null;
+        if (songId) {
+            const song = await Song.findById(songId).lean();
+            if (!song) return res.status(404).json({ status: 'error', message: 'Song not found' });
+            // Resolve to uploads path
+            filePath = path.join(__dirname, '../uploads', song.url || song.file || '');
+            displayName = song.name || song.title || (song.url || song.file || '');
+        }
+
+        if (!filePath) return res.status(400).json({ status: 'error', message: 'path or songId is required' });
+
+        if (!displayName) {
+            // Derive a friendly display name from path if none provided
+            displayName = path.basename(filePath);
+        }
+
+        await stream.startLocalFile(filePath, 0, { displayName });
+        res.json({ status: 'success', filePath, name: displayName });
     } catch (e) {
         console.error('Error starting stream:', e);
         const status = e.code === 'MODE_BUSY' ? 409 : 500;
