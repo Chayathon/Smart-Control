@@ -5,6 +5,7 @@ import 'package:smart_control/screens/login/login_screen.dart';
 import 'package:smart_control/screens/playlist/playlist_screen.dart';
 import 'package:smart_control/screens/song/song_screen.dart';
 import 'package:smart_control/screens/splash_screen/splash_screen.dart';
+import 'package:smart_control/screens/monitoring/monitoring_screen.dart';
 
 import 'app_routes.dart';
 
@@ -16,5 +17,6 @@ class AppPages {
     GetPage(name: AppRoutes.song_upload, page: () => const SongUploadScreen()),
     GetPage(name: AppRoutes.splash, page: () => const SplashScreen()),
     GetPage(name: AppRoutes.login, page: () => const LoginScreen()),
+    GetPage(name: AppRoutes.monitoring, page: () => const MonitoringScreen()),
   ];
 }
