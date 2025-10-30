@@ -13,6 +13,7 @@ let ffmpegProcess = null;
 let isPaused = false;
 let currentStreamUrl = null;
 let activeMode = 'none';
+let currentDisplayName = null;
 
 let stopping = false;
 let starting = false;
@@ -214,12 +215,14 @@ async function _quickStop() {
     if (!ffmpegProcess || ffmpegProcess.exitCode !== null) {
         ffmpegProcess = null;
         currentStreamUrl = null;
+        currentDisplayName = null;
         return;
     }
     console.log('🛑 Quick stop: ปิด ffmpeg process...');
     await stopProcess(ffmpegProcess, 800);
     ffmpegProcess = null;
     currentStreamUrl = null;
+    currentDisplayName = null;
 }
 
 async function playPlaylist({ loop = false } = {}) {
@@ -533,6 +536,8 @@ async function startLocalFile(filePath, seekMs = 0, opts = {}) {
         console.log(`▶️ เริ่มสตรีมไฟล์ในเครื่อง: ${filePath}`);
 
         const absPath = path.resolve(filePath);
+        const providedName = (opts && (opts.displayName || opts.name)) || null;
+        currentDisplayName = providedName || path.basename(absPath);
 
         const icecastUrl = getIcecastUrl();
 
@@ -580,7 +585,7 @@ async function startLocalFile(filePath, seekMs = 0, opts = {}) {
         activeMode = 'file';
         trackBaseOffsetMs = Math.max(0, seekMs | 0);
         trackStartMonotonic = nowMs();
-        bus.emit('status', { event: 'started', url: absPath });
+        bus.emit('status', { event: 'started', url: absPath, name: currentDisplayName });
     } finally {
         starting = false;
     }
@@ -680,6 +685,7 @@ function getStatus() {
         loop: playlistLoop,
         resumeMs: lastKnownElapsedMs,
         activeMode,
+        name: currentDisplayName,
     };
     
     if (playlistMode && currentIndex >= 0 && currentIndex < playlistQueue.length) {
