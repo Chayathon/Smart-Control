@@ -8,6 +8,11 @@ const deviceSchema = new mongoose.Schema(
             stream_enabled: { type: Boolean, default: false },
             volume: { type: Number, default: 0 },
             is_playing: { type: Boolean, default: false },
+            playback_mode: {
+                type: String,
+                enum: ['none', 'playlist', 'file', 'youtube', 'mic'],
+                default: 'none',
+            },
         },
         lastSeen: { type: Date, index: true },
 
