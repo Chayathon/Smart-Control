@@ -246,6 +246,7 @@ class _ControlPanelState extends State<ControlPanel> {
         isPlaying = engIsPlaying;
         isPaused = engIsPaused;
         playlistActive = engPlaylistMode;
+        isLoading = false;
         currentSongTitle = title;
         currentSongIndex = idx;
         totalSongs = tot;
