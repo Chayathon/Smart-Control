@@ -169,11 +169,9 @@ async function updateDeviceInDB(no, data) {
             { no },
             {
                 $set: {
-                    status: {
-                        is_playing: !!data.is_playing,
-                        stream_enabled: !!data.stream_enabled,
-                        volume: data.volume ?? 0,
-                    },
+                    'status.is_playing': !!data.is_playing,
+                    'status.stream_enabled': !!data.stream_enabled,
+                    'status.volume': data.volume ?? 0,
                     lastSeen: new Date()
                 }
             },

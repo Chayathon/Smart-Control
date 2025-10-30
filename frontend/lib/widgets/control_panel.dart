@@ -48,8 +48,8 @@ class _ControlPanelState extends State<ControlPanel> {
     _syncFromPlaylistState();
     _playlist.state.addListener(_syncFromPlaylistState);
 
-    // Initialize playback mode and engine status from backend/DB
-    _refreshFromDb();
+    // Initialize playback mode and engine status from backend/DB (with retries)
+    _initStatusFromDb();
 
     // Realtime sync via SSE: reflect backend status regardless of local actions
     _statusSse.onStatusUpdate = (data) {
@@ -163,7 +163,7 @@ class _ControlPanelState extends State<ControlPanel> {
     });
   }
 
-  Future<void> _refreshFromDb() async {
+  Future<bool> _refreshFromDb() async {
     try {
       final api = await ApiService.private();
       // Fetch devices to get status.playback_mode
@@ -213,7 +213,7 @@ class _ControlPanelState extends State<ControlPanel> {
         // For YouTube, we keep a friendly label in UI; no need to set title here
       }
 
-      if (!mounted) return;
+      if (!mounted) return true;
       setState(() {
         playbackMode = mode;
         isPlaying = engIsPlaying;
@@ -223,9 +223,25 @@ class _ControlPanelState extends State<ControlPanel> {
         currentSongIndex = idx;
         totalSongs = tot;
       });
+      return true;
     } catch (_) {
-      // ignore errors silently for now
+      return false;
     }
+  }
+
+  /// Called once during init to ensure we fetch DB status asap.
+  /// Retries a few times if ApiService.private() or backend isn't ready yet.
+  Future<void> _initStatusFromDb({
+    int maxRetries = 6,
+    int delayMs = 500,
+  }) async {
+    for (int attempt = 0; attempt < maxRetries; attempt++) {
+      final ok = await _refreshFromDb();
+      if (ok) return;
+      await Future.delayed(Duration(milliseconds: delayMs));
+    }
+    // final attempt without catching so any persistent error surfaces in logs
+    await _refreshFromDb();
   }
 
   void _startLocalControlsCooldown() {
