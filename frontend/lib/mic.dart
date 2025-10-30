@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:smart_control/core/mic/mic_stream_service.dart';
+import 'package:smart_control/services/mic_stream_service.dart';
 
 class MicPage extends StatefulWidget {
   const MicPage({super.key});
