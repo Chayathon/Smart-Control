@@ -58,7 +58,7 @@ function emitStatus({ event, extra = {} }) {
         index: currentIndex,
         total: playlistQueue.length,
         loop: playlistLoop,
-        isPlaying: isAlive(ffmpegProcess),
+        isPlaying: isAlive(ffmpegProcess) && currentStreamUrl !== 'flutter-mic',
         isPaused,
         currentUrl: currentStreamUrl,
         activeMode,
@@ -675,7 +675,7 @@ function resume() {
 
 function getStatus() {
     const status = {
-        isPlaying: isAlive(ffmpegProcess),
+        isPlaying: isAlive(ffmpegProcess) && currentStreamUrl !== 'flutter-mic',
         isPaused,
         currentUrl: currentStreamUrl,
         mode: playlistMode ? 'playlist' : 'single',
@@ -701,22 +701,12 @@ function getStatus() {
 }
 
 async function startMicStream(ws) {
-    if (activeMode !== 'none' && activeMode !== 'mic') {
-        try {
-            if (activeMode === 'youtube') {
-                await stopAll();
-                isPaused = false; pausePendingResume = false; pausedState = null;
-            } else if (activeMode === 'playlist' || activeMode === 'file') {
-                if (!isPaused) {
-                    try { pause(); } catch (e) { console.error('pause before mic error:', e); }
-                }
-                let tries = 0;
-                while (isAlive(ffmpegProcess) && tries < 60) { await sleep(50); tries++; }
-            } else {
-                await _quickStop();
-            }
-        } catch (e) { console.error('preempt handling error', e); }
-        activeMode = 'none';
+    // Do not control or change current playback mode here.
+    // If another non-mic stream is still active, reject mic start to avoid clobbering.
+    if (isAlive(ffmpegProcess) && currentStreamUrl !== 'flutter-mic') {
+        console.warn('Mic start requested while another stream is active; rejecting without altering playback.');
+        try { ws.close(1013, 'stream-busy'); } catch { }
+        return;
     }
 
     if (activeWs && activeWs !== ws) {
@@ -789,7 +779,14 @@ async function startMicStream(ws) {
             } catch { }
             
             await sleep(200);
-            await stopAll();
+            // Only stop the mic stream; do not alter playback_mode or other streams.
+            if (ffmpegProcess && currentStreamUrl === 'flutter-mic') {
+                await stopProcess(ffmpegProcess);
+                ffmpegProcess = null;
+                currentStreamUrl = null;
+                // preserve paused state
+                emitStatus({ event: 'mic-stopped' });
+            }
             
             if (activeWs === ws) activeWs = null;
         };
@@ -803,12 +800,11 @@ async function startMicStream(ws) {
         ffmpegProcess.on('close', (code) => {
             console.log(`🎵 ffmpeg closed (${code})`);
             if (activeWs === ws) activeWs = null;
-            activeMode = 'none';
+            // Do not change activeMode/playback_mode here.
         });
 
-        isPaused = false;
         currentStreamUrl = "flutter-mic";
-        activeMode = 'mic';
+        // Do not set activeMode to 'mic'; keep playback_mode unchanged.
         bus.emit('status', { event: 'mic-started', url: currentStreamUrl });
     } finally {
         starting = false;
@@ -827,8 +823,14 @@ async function stopMicStream() {
         activeWs = null;
     }
     
-    await stopAll();
-    bus.emit('status', { event: 'mic-stopped' });
+    // Only stop mic ffmpeg if it's the active mic stream; do not modify playback_mode.
+    if (ffmpegProcess && currentStreamUrl === 'flutter-mic') {
+        await stopProcess(ffmpegProcess);
+        ffmpegProcess = null;
+        currentStreamUrl = null;
+        // preserve paused state
+        bus.emit('status', { event: 'mic-stopped' });
+    }
 }
 
 module.exports = {

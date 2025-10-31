@@ -25,6 +25,9 @@ class _ControlPanelState extends State<ControlPanel> {
   bool micOn = false;
   bool liveOn = false;
   double micVolume = 0.5;
+  // When mic is on, disable all music control buttons; keep disabled 6s after mic stops
+  bool _micUiDisabled = false;
+  Timer? _micUiCooldownTimer;
 
   // Playlist state
   bool isPlaying = false;
@@ -60,7 +63,15 @@ class _ControlPanelState extends State<ControlPanel> {
 
     _micService.onStatusChanged = (isRecording) {
       if (!mounted) return;
-      setState(() => micOn = isRecording);
+      setState(() {
+        micOn = isRecording;
+        if (isRecording) {
+          _micUiCooldownTimer?.cancel();
+          _micUiDisabled = true;
+        } else {
+          _startMicControlsCooldown();
+        }
+      });
     };
 
     _micService.onError = (error) {
@@ -97,6 +108,7 @@ class _ControlPanelState extends State<ControlPanel> {
   void _applySseStatus(Map<String, dynamic> data) {
     try {
       final String event = (data['event'] ?? '').toString();
+      final bool micEvent = event == 'mic-started' || event == 'mic-stopped';
       // Derive mode preference order
       final PlaybackMode mode = _parseMode(
         data['activeMode'] ?? data['requestedMode'] ?? data['mode'],
@@ -137,13 +149,20 @@ class _ControlPanelState extends State<ControlPanel> {
                         : null));
         if (tFromData != null) tot = tFromData;
       } else if (mode == PlaybackMode.file) {
-        final nameField = data['name'] ?? data['title'];
-        if (nameField != null && nameField.toString().isNotEmpty) {
-          title = nameField.toString();
-        } else {
-          title = _titleFromUrl(
-            (data['url'] ?? data['currentUrl'])?.toString(),
-          );
+        // Avoid overriding file title with the mic sentinel or on mic events
+        if (!micEvent) {
+          final nameField = data['name'] ?? data['title'];
+          if (nameField != null && nameField.toString().isNotEmpty) {
+            title = nameField.toString();
+          } else {
+            final candidate = _titleFromUrl(
+              (data['url'] ?? data['currentUrl'])?.toString(),
+            );
+            if (candidate.toLowerCase() != 'flutter-mic' &&
+                candidate.isNotEmpty) {
+              title = candidate;
+            }
+          }
         }
       } else if (mode == PlaybackMode.youtube) {
         title = (data['url'] ?? data['currentUrl'])?.toString() ?? title;
@@ -232,9 +251,14 @@ class _ControlPanelState extends State<ControlPanel> {
             data['title'].toString().isNotEmpty) {
           title = data['title'].toString();
         } else {
-          title = _titleFromUrl(
+          final candidate = _titleFromUrl(
             (data['currentUrl'] ?? data['url'])?.toString(),
           );
+          // Ignore microphone sentinel so UI continues showing song name
+          if (candidate.toLowerCase() != 'flutter-mic' &&
+              candidate.isNotEmpty) {
+            title = candidate;
+          }
         }
       } else if (activeMode == PlaybackMode.youtube) {
         // For YouTube, we keep a friendly label in UI; no need to set title here
@@ -283,6 +307,7 @@ class _ControlPanelState extends State<ControlPanel> {
   @override
   void dispose() {
     _localControlsCooldownTimer?.cancel();
+    _micUiCooldownTimer?.cancel();
     _playlist.state.removeListener(_syncFromPlaylistState);
     // Ensure mic streaming is stopped when leaving this widget
     if (micOn && !_micService.isStopping) {
@@ -294,20 +319,79 @@ class _ControlPanelState extends State<ControlPanel> {
 
   Future<void> _toggleMic() async {
     if (_micService.isStopping) return;
-
-    if (micOn) {
-      await _micService.stopStreaming();
-      if (mounted) setState(() => micOn = false);
-      AppSnackbar.success('ไมโครโฟน', 'ปิดไมโครโฟนแล้ว');
-    } else {
-      final success = await _micService.startStreaming(_micServerUrl);
-      if (success) {
-        if (mounted) setState(() => micOn = true);
-        AppSnackbar.success('ไมโครโฟน', 'เปิดไมโครโฟนแล้ว');
+    // Show 10s loading for opening/closing mic
+    final start = DateTime.now();
+    LoadingOverlay.show(context);
+    try {
+      if (micOn) {
+        // Closing mic: just stop streaming, keep loading visible until 10s total
+        await _micService.stopStreaming();
+        final elapsed = DateTime.now().difference(start).inMilliseconds;
+        final remain = 10000 - elapsed;
+        if (remain > 0) {
+          await Future.delayed(Duration(milliseconds: remain));
+        }
+        if (mounted) {
+          setState(() {
+            micOn = false;
+            _startMicControlsCooldown();
+          });
+        }
+        AppSnackbar.success('ไมโครโฟน', 'ปิดไมโครโฟนแล้ว');
       } else {
-        AppSnackbar.error('ข้อผิดพลาด', 'ไม่สามารถเปิดไมโครโฟนได้');
+        // Opening mic: pre-handle current playback mode
+        try {
+          final api = await ApiService.private();
+          if (playbackMode == PlaybackMode.playlist ||
+              playbackMode == PlaybackMode.file) {
+            await api.get('/stream/pause');
+          } else if (playbackMode == PlaybackMode.youtube) {
+            await api.get('/stream/stop');
+          }
+        } catch (_) {
+          // Continue attempting to open mic even if pre-action fails
+        }
+
+        // Wait 5 seconds after pause/stop before opening mic
+        await Future.delayed(const Duration(seconds: 8));
+
+        final success = await _micService.startStreaming(_micServerUrl);
+
+        // Keep loading for total of 10 seconds from the beginning
+        final elapsed = DateTime.now().difference(start).inMilliseconds;
+        final remain = 10000 - elapsed;
+        if (remain > 0) {
+          await Future.delayed(Duration(milliseconds: remain));
+        }
+
+        if (success) {
+          if (mounted) {
+            setState(() {
+              micOn = true;
+              _micUiCooldownTimer?.cancel();
+              _micUiDisabled = true;
+            });
+          }
+          AppSnackbar.success('ไมโครโฟน', 'เปิดไมโครโฟนแล้ว');
+        } else {
+          AppSnackbar.error('ข้อผิดพลาด', 'ไม่สามารถเปิดไมโครโฟนได้');
+        }
       }
+    } finally {
+      LoadingOverlay.hide();
     }
+  }
+
+  void _startMicControlsCooldown() {
+    // Keep controls disabled for 6 seconds after mic stops
+    _micUiCooldownTimer?.cancel();
+    _micUiDisabled = true;
+    _micUiCooldownTimer = Timer(const Duration(seconds: 2), () {
+      if (!mounted) return;
+      setState(() {
+        _micUiDisabled = false;
+      });
+    });
   }
 
   void _toggleLive() => setState(() => liveOn = !liveOn);
@@ -588,6 +672,7 @@ class _ControlPanelState extends State<ControlPanel> {
 
     final bool hasActiveMode =
         playbackMode != PlaybackMode.none || isPlaying || isPaused;
+    final bool controlsDisabled = _micUiDisabled; // mic on or in cooldown
 
     return Column(
       children: [
@@ -621,10 +706,11 @@ class _ControlPanelState extends State<ControlPanel> {
                     activeColor: Colors.red[600]!,
                     inactiveColor: Colors.grey[700]!,
                     onTap: _toggleLive,
+                    enabled: !controlsDisabled,
                   ),
                   const SizedBox(width: 24),
                   _buildCircularToggleButton(
-                    isActive: hasActiveMode,
+                    isActive: controlsDisabled ? false : hasActiveMode,
                     activeIcon: isLoading ? Icons.hourglass_empty : Icons.stop,
                     inactiveIcon: isLoading
                         ? Icons.hourglass_empty
@@ -635,13 +721,14 @@ class _ControlPanelState extends State<ControlPanel> {
                     inactiveColor: Colors.green[600]!,
                     onTap: () {
                       if (isLoading) return;
+                      if (controlsDisabled) return;
                       if (hasActiveMode) {
                         _stopActive();
                       } else {
                         _onPlayPressed();
                       }
                     },
-                    enabled: !isLoading,
+                    enabled: !isLoading && !controlsDisabled,
                   ),
                   const SizedBox(width: 24),
                   Expanded(
@@ -694,28 +781,25 @@ class _ControlPanelState extends State<ControlPanel> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      // Previous button (only enabled for playlist)
                       Builder(
                         builder: (context) {
                           final prevDisabled =
                               playbackMode != PlaybackMode.playlist ||
                               (currentSongIndex <= 1 && !isLoopEnabled) ||
-                              isControlsCoolingDown;
-                          return Opacity(
-                            opacity: prevDisabled ? 0.3 : 1.0,
-                            child: _buildCircularToggleButton(
-                              isActive: false,
-                              activeIcon: Icons.skip_previous,
-                              inactiveIcon: Icons.skip_previous,
-                              activeLabel: 'เพลงก่อนหน้า',
-                              inactiveLabel: 'เพลงก่อนหน้า',
-                              activeColor: Colors.blue[700]!,
-                              inactiveColor: prevDisabled
-                                  ? Colors.grey
-                                  : Colors.blue[700]!,
-                              onTap: _prevSong,
-                              enabled: !prevDisabled,
-                            ),
+                              isControlsCoolingDown ||
+                              controlsDisabled;
+                          return _buildCircularToggleButton(
+                            isActive: false,
+                            activeIcon: Icons.skip_previous,
+                            inactiveIcon: Icons.skip_previous,
+                            activeLabel: 'เพลงก่อนหน้า',
+                            inactiveLabel: 'เพลงก่อนหน้า',
+                            activeColor: Colors.blue[700]!,
+                            inactiveColor: prevDisabled
+                                ? Colors.grey
+                                : Colors.blue[700]!,
+                            onTap: _prevSong,
+                            enabled: !prevDisabled,
                           );
                         },
                       ),
@@ -725,7 +809,6 @@ class _ControlPanelState extends State<ControlPanel> {
                       Opacity(
                         opacity: isControlsCoolingDown ? 0.3 : 1.0,
                         child: () {
-                          // playlist or file -> pause/resume
                           return _buildCircularToggleButton(
                             isActive: isPaused,
                             activeIcon: Icons.play_circle,
@@ -737,36 +820,34 @@ class _ControlPanelState extends State<ControlPanel> {
                                 ? Colors.grey
                                 : Colors.orange[700]!,
                             onTap: _togglePause,
-                            enabled: !isControlsCoolingDown,
+                            enabled:
+                                !isControlsCoolingDown && !controlsDisabled,
                           );
                         }(),
                       ),
 
                       const SizedBox(width: 32),
 
-                      // Next button (only enabled for playlist)
                       Builder(
                         builder: (context) {
                           final nextDisabled =
                               playbackMode != PlaybackMode.playlist ||
                               (currentSongIndex >= totalSongs &&
                                   !isLoopEnabled) ||
-                              isControlsCoolingDown;
-                          return Opacity(
-                            opacity: nextDisabled ? 0.3 : 1.0,
-                            child: _buildCircularToggleButton(
-                              isActive: false,
-                              activeIcon: Icons.skip_next,
-                              inactiveIcon: Icons.skip_next,
-                              activeLabel: 'เพลงถัดไป',
-                              inactiveLabel: 'เพลงถัดไป',
-                              activeColor: Colors.blue[700]!,
-                              inactiveColor: nextDisabled
-                                  ? Colors.grey
-                                  : Colors.blue[700]!,
-                              onTap: _nextSong,
-                              enabled: !nextDisabled,
-                            ),
+                              isControlsCoolingDown ||
+                              controlsDisabled;
+                          return _buildCircularToggleButton(
+                            isActive: false,
+                            activeIcon: Icons.skip_next,
+                            inactiveIcon: Icons.skip_next,
+                            activeLabel: 'เพลงถัดไป',
+                            inactiveLabel: 'เพลงถัดไป',
+                            activeColor: Colors.blue[700]!,
+                            inactiveColor: nextDisabled
+                                ? Colors.grey
+                                : Colors.blue[700]!,
+                            onTap: _nextSong,
+                            enabled: !nextDisabled,
                           );
                         },
                       ),
@@ -911,30 +992,37 @@ class _buildCircularToggleButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: enabled ? onTap : null,
-      borderRadius: BorderRadius.circular(25),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: (isActive ? activeColor : inactiveColor).withOpacity(0.15),
-              shape: BoxShape.circle,
+    return Opacity(
+      // reduce opacity when the button is disabled so callers that
+      // pass `enabled: false` will automatically appear faded
+      opacity: enabled ? 1.0 : 0.35,
+      child: InkWell(
+        onTap: enabled ? onTap : null,
+        borderRadius: BorderRadius.circular(25),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: (isActive ? activeColor : inactiveColor).withOpacity(
+                  0.15,
+                ),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                isActive ? activeIcon : inactiveIcon,
+                color: isActive ? activeColor : inactiveColor,
+                size: 28,
+              ),
             ),
-            child: Icon(
-              isActive ? activeIcon : inactiveIcon,
-              color: isActive ? activeColor : inactiveColor,
-              size: 28,
+            const SizedBox(height: 8),
+            Text(
+              isActive ? activeLabel : inactiveLabel,
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            isActive ? activeLabel : inactiveLabel,
-            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
