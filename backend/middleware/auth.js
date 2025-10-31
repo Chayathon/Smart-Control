@@ -9,9 +9,18 @@ async function authenticateToken(req, res, next) {
             req.headers.authorization?.replace('Bearer ', '');
 
         if (!accessToken) {
+            // กรณีไม่มี access token ให้ลอง refresh โดยใช้ refresh token
+            const refreshResult = await autoRefreshToken(req, res);
+
+            if (refreshResult.success) {
+                req.user = refreshResult.user;
+                return next();
+            }
+
             return res.status(401).json({
                 error: true,
-                message: 'ไม่พบ access token'
+                message: refreshResult.message || 'ไม่พบ access token',
+                requireLogin: true
             });
         }
 
@@ -140,7 +149,13 @@ async function optionalAuth(req, res, next) {
             req.headers.authorization?.replace('Bearer ', '');
 
         if (!accessToken) {
-            req.user = null;
+            // ถ้าไม่มี access token ให้ลอง refresh โดยอัตโนมัติ
+            const refreshResult = await autoRefreshToken(req, res);
+            if (refreshResult.success) {
+                req.user = refreshResult.user;
+            } else {
+                req.user = null;
+            }
             return next();
         }
 
