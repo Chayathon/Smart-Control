@@ -66,6 +66,42 @@ function emitStatus({ event, extra = {} }) {
     });
 }
 
+// -------------------------------------------------
+// DRY helpers for spawning FFmpeg to Icecast
+// -------------------------------------------------
+function icecastOutputArgs({
+    bitrate = '128k',
+    sampleRate = '44100',
+    channels = '2',
+    addLowLatency = false,
+    extra = [],
+} = {}) {
+    const out = [
+        '-c:a', 'libmp3lame',
+        '-b:a', bitrate,
+        '-ar', sampleRate,
+        '-ac', channels,
+        '-content_type', 'audio/mpeg',
+        '-f', 'mp3',
+    ];
+    if (addLowLatency) {
+        out.push('-fflags', '+nobuffer', '-flush_packets', '1');
+    }
+    out.push(...extra);
+    out.push(getIcecastUrl());
+    return out;
+}
+
+function baseFfmpegArgs({ loglevel = 'error' } = {}) {
+    return ['-hide_banner', '-loglevel', loglevel, '-nostdin'];
+}
+
+function spawnFfmpeg(args, tag = 'ffmpeg') {
+    const proc = spawn('ffmpeg', args, { stdio: ['ignore', 'ignore', 'pipe'] });
+    wireChildLogging(proc, tag);
+    return proc;
+}
+
 function toSourceFromSong(songDoc) {
     const url = songDoc.url || '';
     const isHttp = /^https?:\/\//i.test(url);
@@ -123,33 +159,22 @@ async function _playIndex(i, seekMs = 0) {
         console.log(`▶️ [${i + 1}/${playlistQueue.length}] ${name}`);
         console.log(`📂 Source: ${source}`);
 
-        const icecastUrl = getIcecastUrl();
-
         // ปรับแต่งสำหรับ transition ที่นุ่มนวล
         const ffArgs = [
-            '-hide_banner', '-loglevel', 'error', '-nostdin',
+            ...baseFfmpegArgs({ loglevel: 'error' }),
             '-re',
             ...(seekMs > 0 ? ['-ss', String(seekMs / 1000)] : []),
             '-i', source,
             '-vn',
             // Audio fade in ช้าขึ้นเพื่อให้เนียนขึ้น
             '-af', 'afade=t=in:st=0:d=0.8',
-            '-c:a', 'libmp3lame',
-            '-b:a', '128k',
-            '-ar', '44100',
-            '-ac', '2',
-            // Optimize for smooth transitions
-            '-write_xing', '0',
-            '-id3v2_version', '0',
-            '-fflags', '+flush_packets+nobuffer',
-            '-flush_packets', '1',
-            '-content_type', 'audio/mpeg',
-            '-f', 'mp3',
-            icecastUrl
+            ...icecastOutputArgs({
+                bitrate: '128k', sampleRate: '44100', channels: '2', addLowLatency: true,
+                extra: ['-write_xing', '0', '-id3v2_version', '0', '-fflags', '+flush_packets+nobuffer']
+            }),
         ];
 
-    ffmpegProcess = spawn('ffmpeg', ffArgs, { stdio: ['ignore', 'ignore', 'pipe'] });
-        wireChildLogging(ffmpegProcess, 'ffmpeg');
+        ffmpegProcess = spawnFfmpeg(ffArgs, 'ffmpeg');
     trackBaseOffsetMs = Math.max(0, seekMs | 0);
     trackStartMonotonic = nowMs();
 
@@ -432,15 +457,14 @@ async function startYoutubeUrl(url, seekMs = 0, opts = {}) {
     while (starting) await sleep(50);
     starting = true;
     try {
-        await stopAll();
+        // Stop only the active FFmpeg process fast to reduce extra events
+        await _quickStop();
         console.log(`▶️ เริ่มสตรีม YouTube: ${url}`);
 
         const { mediaUrl, headerLines } = await resolveDirectUrl(url);
 
-        const icecastUrl = getIcecastUrl();
-
         const ffArgs = [
-            '-hide_banner', '-nostats', '-loglevel', 'error', '-nostdin',
+            ...baseFfmpegArgs({ loglevel: 'error' }), '-nostats',
             // Faster start-up probing
             '-analyzeduration', '0', '-probesize', '32k',
             // Improve stability on flaky networks
@@ -467,18 +491,9 @@ async function startYoutubeUrl(url, seekMs = 0, opts = {}) {
             }
         }
 
-        ffArgs.push(
-            '-vn',
-            '-dn',
-            '-c:a', 'libmp3lame',
-            '-b:a', '128k',
-            '-content_type', 'audio/mpeg',
-            '-f', 'mp3',
-            icecastUrl
-        );
+        ffArgs.push('-vn', '-dn', ...icecastOutputArgs({ bitrate: '128k' }));
 
-        ffmpegProcess = spawn('ffmpeg', ffArgs, { stdio: ['ignore', 'ignore', 'pipe'] });
-        wireChildLogging(ffmpegProcess, 'ffmpeg');
+        ffmpegProcess = spawnFfmpeg(ffArgs, 'ffmpeg');
 
         ffmpegProcess.on('close', (code) => {
             console.log(`🎵 สตรีม YouTube จบการทำงาน (รหัส ${code})`);
@@ -532,30 +547,23 @@ async function startLocalFile(filePath, seekMs = 0, opts = {}) {
     while (starting) await sleep(50);
     starting = true;
     try {
-        await stopAll();
+        // Stop only current FFmpeg to avoid extra stop events
+        await _quickStop();
         console.log(`▶️ เริ่มสตรีมไฟล์ในเครื่อง: ${filePath}`);
 
         const absPath = path.resolve(filePath);
         const providedName = (opts && (opts.displayName || opts.name)) || null;
         currentDisplayName = providedName || path.basename(absPath);
 
-        const icecastUrl = getIcecastUrl();
-
         const ffArgs = [
-            '-hide_banner', '-loglevel', 'warning', '-nostdin',
-            '-re',
+            ...baseFfmpegArgs({ loglevel: 'warning' }), '-re',
             ...(seekMs > 0 ? ['-ss', String(seekMs / 1000)] : []),
             '-i', absPath,
             '-vn',
-            '-c:a', 'libmp3lame',
-            '-b:a', '128k',
-            '-content_type', 'audio/mpeg',
-            '-f', 'mp3',
-            icecastUrl
+            ...icecastOutputArgs({ bitrate: '128k' })
         ];
 
-        ffmpegProcess = spawn('ffmpeg', ffArgs, { stdio: ['ignore', 'ignore', 'pipe'] });
-        wireChildLogging(ffmpegProcess, 'ffmpeg');
+        ffmpegProcess = spawnFfmpeg(ffArgs, 'ffmpeg');
 
         ffmpegProcess.on('close', (code) => {
             console.log(`🎵 สตรีมไฟล์ในเครื่องจบการทำงาน (รหัส ${code})`);

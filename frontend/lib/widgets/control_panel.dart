@@ -28,6 +28,11 @@ class _ControlPanelState extends State<ControlPanel> {
   // When mic is on, disable all music control buttons; keep disabled 6s after mic stops
   bool _micUiDisabled = false;
   Timer? _micUiCooldownTimer;
+  // Debounced/throttled status refresh helpers
+  Timer? _refreshDebounce;
+  bool _refreshInFlight = false;
+  bool _refreshQueued = false;
+  DateTime? _lastRefreshAt;
 
   // Playlist state
   bool isPlaying = false;
@@ -186,10 +191,10 @@ class _ControlPanelState extends State<ControlPanel> {
           event == 'stopped' ||
           event == 'stopped-all' ||
           event == 'ended') {
-        _refreshFromDb();
+        _scheduleRefreshFromDb(const Duration(milliseconds: 200));
       }
     } catch (_) {
-      _refreshFromDb();
+      _scheduleRefreshFromDb(const Duration(milliseconds: 200));
     }
   }
 
@@ -210,7 +215,29 @@ class _ControlPanelState extends State<ControlPanel> {
     });
   }
 
+  void _scheduleRefreshFromDb([
+    Duration delay = const Duration(milliseconds: 300),
+  ]) {
+    // Debounce frequent refresh triggers
+    _refreshDebounce?.cancel();
+    _refreshDebounce = Timer(delay, () {
+      _refreshFromDb();
+    });
+  }
+
   Future<bool> _refreshFromDb() async {
+    final now = DateTime.now();
+    // Throttle if refreshes are happening too frequently (<150ms)
+    if (_lastRefreshAt != null &&
+        now.difference(_lastRefreshAt!) < const Duration(milliseconds: 150)) {
+      _scheduleRefreshFromDb(const Duration(milliseconds: 150));
+      return true;
+    }
+    if (_refreshInFlight) {
+      _refreshQueued = true;
+      return true;
+    }
+    _refreshInFlight = true;
     try {
       final api = await ApiService.private();
       // Fetch devices to get status.playback_mode
@@ -278,6 +305,14 @@ class _ControlPanelState extends State<ControlPanel> {
       return true;
     } catch (_) {
       return false;
+    } finally {
+      _lastRefreshAt = DateTime.now();
+      _refreshInFlight = false;
+      if (_refreshQueued) {
+        _refreshQueued = false;
+        // Schedule another refresh shortly to pick up any missed state
+        _scheduleRefreshFromDb(const Duration(milliseconds: 120));
+      }
     }
   }
 
@@ -308,6 +343,7 @@ class _ControlPanelState extends State<ControlPanel> {
   void dispose() {
     _localControlsCooldownTimer?.cancel();
     _micUiCooldownTimer?.cancel();
+    _refreshDebounce?.cancel();
     _playlist.state.removeListener(_syncFromPlaylistState);
     // Ensure mic streaming is stopped when leaving this widget
     if (micOn && !_micService.isStopping) {
@@ -352,7 +388,7 @@ class _ControlPanelState extends State<ControlPanel> {
           // Continue attempting to open mic even if pre-action fails
         }
 
-        // Wait 5 seconds after pause/stop before opening mic
+        // Wait 8 seconds after pause/stop before opening mic
         await Future.delayed(const Duration(seconds: 8));
 
         final success = await _micService.startStreaming(_micServerUrl);
@@ -383,7 +419,6 @@ class _ControlPanelState extends State<ControlPanel> {
   }
 
   void _startMicControlsCooldown() {
-    // Keep controls disabled for 6 seconds after mic stops
     _micUiCooldownTimer?.cancel();
     _micUiDisabled = true;
     _micUiCooldownTimer = Timer(const Duration(seconds: 2), () {
@@ -686,7 +721,7 @@ class _ControlPanelState extends State<ControlPanel> {
             children: [
               Row(
                 children: [
-                  _buildCircularToggleButton(
+                  _CircularToggleButton(
                     isActive: micOn,
                     activeIcon: Icons.mic,
                     inactiveIcon: Icons.mic_off,
@@ -697,7 +732,7 @@ class _ControlPanelState extends State<ControlPanel> {
                     onTap: _toggleMic,
                   ),
                   const SizedBox(width: 24),
-                  _buildCircularToggleButton(
+                  _CircularToggleButton(
                     isActive: liveOn,
                     activeIcon: Icons.live_tv,
                     inactiveIcon: Icons.live_tv_outlined,
@@ -709,7 +744,7 @@ class _ControlPanelState extends State<ControlPanel> {
                     enabled: !controlsDisabled,
                   ),
                   const SizedBox(width: 24),
-                  _buildCircularToggleButton(
+                  _CircularToggleButton(
                     isActive: controlsDisabled ? false : hasActiveMode,
                     activeIcon: isLoading ? Icons.hourglass_empty : Icons.stop,
                     inactiveIcon: isLoading
@@ -966,7 +1001,32 @@ class _ControlPanelState extends State<ControlPanel> {
 // ============================
 // UI widgets
 // ============================
-class _buildCircularToggleButton extends StatelessWidget {
+// Backwards-compatible factory function to keep existing call sites working
+Widget _buildCircularToggleButton({
+  required bool isActive,
+  required IconData activeIcon,
+  required IconData inactiveIcon,
+  required String activeLabel,
+  required String inactiveLabel,
+  required Color activeColor,
+  required Color inactiveColor,
+  required VoidCallback onTap,
+  bool enabled = true,
+}) {
+  return _CircularToggleButton(
+    isActive: isActive,
+    activeIcon: activeIcon,
+    inactiveIcon: inactiveIcon,
+    activeLabel: activeLabel,
+    inactiveLabel: inactiveLabel,
+    activeColor: activeColor,
+    inactiveColor: inactiveColor,
+    onTap: onTap,
+    enabled: enabled,
+  );
+}
+
+class _CircularToggleButton extends StatelessWidget {
   final bool isActive;
   final IconData activeIcon;
   final IconData inactiveIcon;
@@ -977,7 +1037,7 @@ class _buildCircularToggleButton extends StatelessWidget {
   final VoidCallback onTap;
   final bool enabled;
 
-  const _buildCircularToggleButton({
+  const _CircularToggleButton({
     Key? key,
     required this.isActive,
     required this.activeIcon,
