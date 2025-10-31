@@ -726,28 +726,35 @@ async function startMicStream(ws) {
     starting = true;
 
     try {
-        console.log("🎤 Starting mic stream (Optimized for RPi4)");
+        console.log("🎤 Starting mic stream (Optimized for low latency)");
         activeWs = ws;
 
         const icecastUrl = getIcecastUrl();
 
         const ffArgs = [
-            '-hide_banner', '-loglevel', 'warning', '-nostdin',
-            
-            // Input: PCM 16-bit stereo 44.1kHz
+            // General
+            '-hide_banner', '-loglevel', 'error', '-nostdin',
+            // try to minimize internal buffering
+            '-fflags', '+nobuffer',
+            // Input: raw PCM 16-bit stereo 44.1kHz from stdin
             '-f', 's16le', '-ar', '44100', '-ac', '2', '-i', 'pipe:0',
-            
-            // Audio processing
-            '-af', 'volume=2.0,highpass=f=80,lowpass=f=15000',
-            
-            // Output: MP3 128k
+
+            // Audio processing kept light for CPU; keep basic HP/LP filtering
+            // Increase loudness and add a simple compressor + limiter to reduce clipping
+            // '-af', 'highpass=f=80,lowpass=f=15000,acompressor=threshold=-12dB:ratio=2:attack=5:release=50,volume=3.5,alimiter=limit=0.95',
+            '-af', 'highpass=f=100,lowpass=f=12000,afftdn,agate=threshold=0.02:ratio=2:attack=5:release=80,acompressor=threshold=-18dB:ratio=2:attack=6:release=90,volume=3.0,alimiter=limit=0.97',
+
+            // Encoder: MP3 CBR 128k at 44.1kHz stereo
             '-c:a', 'libmp3lame', '-b:a', '128k', '-ar', '44100', '-ac', '2',
-            
-            // Low-latency optimization
+            // Low latency mux/IO
             '-write_xing', '0', '-id3v2_version', '0',
-            '-fflags', '+nobuffer', '-flush_packets', '1',
-            
-            '-content_type', 'audio/mpeg', '-f', 'mp3', icecastUrl
+            '-flush_packets', '1',
+            '-max_interleave_delta', '0',
+            '-muxpreload', '0',
+            '-muxdelay', '0',
+            // HTTP/Icecast output meta
+            '-content_type', 'audio/mpeg',
+            '-f', 'mp3', icecastUrl,
         ];
 
         ffmpegProcess = spawn('ffmpeg', ffArgs, { 
@@ -758,12 +765,28 @@ async function startMicStream(ws) {
 
         let bytesReceived = 0;
         let lastLog = Date.now();
+        // backpressure coordination to avoid node buffering
+        const netSocket = ws && ws._socket && typeof ws._socket.pause === 'function' ? ws._socket : null;
+        let wsPausedForBackpressure = false;
+
+        if (ffmpegProcess.stdin) {
+            ffmpegProcess.stdin.on('drain', () => {
+                if (wsPausedForBackpressure && netSocket && typeof netSocket.resume === 'function') {
+                    wsPausedForBackpressure = false;
+                    try { netSocket.resume(); } catch {}
+                }
+            });
+        }
 
         ws.on('message', (msg) => {
             if (!ffmpegProcess || ffmpegProcess.exitCode !== null || !Buffer.isBuffer(msg)) return;
             
             try {
-                ffmpegProcess.stdin.write(msg);
+                const canWrite = ffmpegProcess.stdin.write(msg);
+                if (!canWrite && netSocket && typeof netSocket.pause === 'function') {
+                    // Apply backpressure to the incoming socket briefly
+                    try { netSocket.pause(); wsPausedForBackpressure = true; } catch {}
+                }
                 bytesReceived += msg.length;
                 
                 const now = Date.now();

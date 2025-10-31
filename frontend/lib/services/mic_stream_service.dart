@@ -21,10 +21,11 @@ class MicStreamService {
   bool _isRecording = false;
   bool _isStopping = false;
 
-  // Audio configuration - Optimized for RPi4
+  // Audio configuration – tuned for low latency
   static const int sampleRate = 44100;
   static const int channels = 2;
-  static const int flushTailMs = 400; // Silence tail duration
+  // Keep the post-stop silence short to flush server/ffmpeg buffers quickly
+  static const int flushTailMs = 200; // ms
 
   // Callbacks
   void Function(bool isRecording)? onStatusChanged;
@@ -64,6 +65,8 @@ class MicStreamService {
           encoder: AudioEncoder.pcm16bits,
           sampleRate: sampleRate,
           numChannels: channels,
+          // Note: These DSP features improve audio quality but can cost CPU on low-end devices.
+          // If you see high CPU or latency, consider turning off one or more of them.
           autoGain: true,
           echoCancel: true,
           noiseSuppress: true,
