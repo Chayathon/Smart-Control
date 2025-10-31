@@ -375,27 +375,32 @@ class _ControlPanelState extends State<ControlPanel> {
         }
         AppSnackbar.success('ไมโครโฟน', 'ปิดไมโครโฟนแล้ว');
       } else {
-        // Opening mic: pre-handle current playback mode
-        try {
-          final api = await ApiService.private();
-          if (playbackMode == PlaybackMode.playlist ||
-              playbackMode == PlaybackMode.file) {
-            await api.get('/stream/pause');
-          } else if (playbackMode == PlaybackMode.youtube) {
-            await api.get('/stream/stop');
+        if (playbackMode == PlaybackMode.none) {
+          // No pre-action required; open mic immediately
+        } else {
+          try {
+            final api = await ApiService.private();
+            if (playbackMode == PlaybackMode.playlist ||
+                playbackMode == PlaybackMode.file) {
+              await api.get('/stream/pause');
+            } else if (playbackMode == PlaybackMode.youtube) {
+              await api.get('/stream/stop');
+            }
+          } catch (_) {
+            // Continue attempting to open mic even if pre-action fails
           }
-        } catch (_) {
-          // Continue attempting to open mic even if pre-action fails
-        }
 
-        // Wait 8 seconds after pause/stop before opening mic
-        await Future.delayed(const Duration(seconds: 8));
+          await Future.delayed(const Duration(seconds: 8));
+        }
 
         final success = await _micService.startStreaming(_micServerUrl);
 
-        // Keep loading for total of 10 seconds from the beginning
+        // Keep loading for a total time from the beginning depending on mode:
+        // - PlaybackMode.none: 5 seconds total
+        // - Other modes: 10 seconds total (legacy behaviour)
         final elapsed = DateTime.now().difference(start).inMilliseconds;
-        final remain = 10000 - elapsed;
+        final int targetMs = playbackMode == PlaybackMode.none ? 5000 : 10000;
+        final remain = targetMs - elapsed;
         if (remain > 0) {
           await Future.delayed(Duration(milliseconds: remain));
         }
