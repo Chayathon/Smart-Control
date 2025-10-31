@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:smart_control/services/mic_stream_service.dart';
+import 'package:smart_control/core/config/app_config.dart';
 
 class MicPage extends StatefulWidget {
   const MicPage({super.key});
@@ -13,7 +14,7 @@ class _MicPageState extends State<MicPage> {
   bool _isRecording = false;
   String _statusMessage = 'พร้อมใช้งาน';
 
-  static const String _serverUrl = "ws://192.168.1.83:8080/ws/mic";
+  static const String _serverUrl = AppConfig.wsMic;
 
   @override
   void initState() {

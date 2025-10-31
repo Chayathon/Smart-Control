@@ -10,7 +10,7 @@ class LoadingOverlay {
     _overlayEntry = OverlayEntry(
       builder: (context) => Stack(
         children: [
-          Container(color: Colors.black.withOpacity(0.5)),
+          Container(color: Colors.black.withValues(alpha: 0.5)),
           Center(
             child: Container(
               padding: EdgeInsets.all(16),

@@ -6,6 +6,7 @@ import 'package:smart_control/services/mic_stream_service.dart';
 import 'package:smart_control/core/alert/app_snackbar.dart';
 import 'package:smart_control/widgets/loading_overlay.dart';
 import 'package:smart_control/core/services/StreamStatusService.dart';
+import 'package:smart_control/core/config/app_config.dart';
 
 // Strongly-typed playback mode for clarity and safety
 enum PlaybackMode { none, playlist, file, youtube }
@@ -49,7 +50,7 @@ class _ControlPanelState extends State<ControlPanel> {
   // bool _isFetchingSongs = false; (not used)
   Timer? _localControlsCooldownTimer;
 
-  static const String _micServerUrl = "ws://192.168.1.83:8080/ws/mic";
+  static const String _micServerUrl = AppConfig.wsMic;
 
   @override
   void initState() {
@@ -910,8 +911,8 @@ class _ControlPanelState extends State<ControlPanel> {
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [
-                  Colors.blue[700]!.withOpacity(0.1),
-                  Colors.blue[500]!.withOpacity(0.05),
+                  Colors.blue[700]!.withValues(alpha: 0.1),
+                  Colors.blue[500]!.withValues(alpha: 0.05),
                 ],
               ),
               borderRadius: BorderRadius.circular(100),
@@ -1070,8 +1071,8 @@ class _CircularToggleButton extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: (isActive ? activeColor : inactiveColor).withOpacity(
-                  0.15,
+                color: (isActive ? activeColor : inactiveColor).withValues(
+                  alpha: 0.15,
                 ),
                 shape: BoxShape.circle,
               ),

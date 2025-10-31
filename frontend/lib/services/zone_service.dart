@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:smart_control/core/network/api_service.dart';
+import 'package:smart_control/core/config/app_config.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 class ZoneService {
@@ -9,7 +10,7 @@ class ZoneService {
   static final ZoneService instance = ZoneService._internal();
 
   WebSocketChannel? _channel;
-  String statusWsUrl = 'ws://192.168.1.83:8080/ws/status';
+  String statusWsUrl = AppConfig.wsStatus;
 
   Future<List<dynamic>> fetchAllZones() async {
     final api = await ApiService.private();

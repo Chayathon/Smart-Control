@@ -1,6 +1,8 @@
+// ignore_for_file: avoid_print, file_names
 import 'dart:convert';
 import 'package:flutter_client_sse/constants/sse_request_type_enum.dart';
 import 'package:flutter_client_sse/flutter_client_sse.dart';
+import 'package:smart_control/core/config/app_config.dart';
 
 class StreamStatusService {
   Function(Map<String, dynamic>)? onStatusUpdate;
@@ -8,7 +10,7 @@ class StreamStatusService {
   void connect() {
     SSEClient.subscribeToSSE(
       method: SSERequestType.GET,
-      url: 'http://192.168.1.83:8080/playlist/stream/status-sse',
+      url: AppConfig.ssePlaylistStatus,
       header: {
         "Accept": "text/event-stream",
         "Cache-Control": "no-cache",

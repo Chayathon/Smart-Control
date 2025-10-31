@@ -4,7 +4,7 @@ import 'package:cookie_jar/cookie_jar.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:get/get.dart'; // เพิ่ม GetX
 import 'package:smart_control/core/alert/app_snackbar.dart';
-import 'package:smart_control/widgets/loading_overlay.dart';
+import 'package:smart_control/core/config/app_config.dart';
 import 'api_exceptions.dart';
 import 'dio_client.dart';
 import 'token_storage.dart';
@@ -13,57 +13,75 @@ typedef Json = Map<String, dynamic>;
 typedef FromJson<T> = T Function(dynamic data);
 
 class ApiService {
-  static const String _baseUrl =
-      'http://192.168.1.83:8080'; // สำหรับอุปกรณ์จริง
-
   final Dio _dio;
   final TokenStorage _storage;
   final PersistCookieJar _cookieJar;
 
   ApiService._(this._dio, this._storage, this._cookieJar);
 
-  static Future<ApiService> public() async {
-    final dio = createBaseDio(baseUrl: _baseUrl);
+  // Strict creators
+  // public(): no cookies, no auth header
+  static Future<ApiService> _createPublic() async {
+    final dio = createBaseDio(
+      baseUrl: AppConfig.baseUrl,
+      connectTimeout: AppConfig.connectTimeout,
+      receiveTimeout: AppConfig.receiveTimeout,
+    );
     final storage = TokenStorage();
     final directory = await getApplicationDocumentsDirectory();
     final cookieJar = PersistCookieJar(
-      storage: FileStorage(directory.path + '/cookies'),
+      storage: FileStorage('${directory.path}/cookies'),
     );
 
-    dio.interceptors.add(CookieManager(cookieJar));
-    dio.interceptors.add(
-      LogInterceptor(
-        responseBody: true,
-        requestBody: true,
-        requestHeader: true,
-      ),
-    );
+    // No CookieManager here => no automatic cookie attach/persist
+
+    assert(() {
+      dio.interceptors.add(
+        LogInterceptor(
+          responseBody: true,
+          requestBody: true,
+          requestHeader: true,
+        ),
+      );
+      return true;
+    }());
 
     dio.options.extra['dio'] = dio;
     return ApiService._(dio, storage, cookieJar);
   }
 
-  static Future<ApiService> private() async {
-    final dio = createBaseDio(baseUrl: _baseUrl);
+  // private(): include cookies (and ready for tokens if added later)
+  static Future<ApiService> _createPrivate() async {
+    final dio = createBaseDio(
+      baseUrl: AppConfig.baseUrl,
+      connectTimeout: AppConfig.connectTimeout,
+      receiveTimeout: AppConfig.receiveTimeout,
+    );
     final storage = TokenStorage();
     final directory = await getApplicationDocumentsDirectory();
     final cookieJar = PersistCookieJar(
-      storage: FileStorage(directory.path + '/cookies'),
+      storage: FileStorage('${directory.path}/cookies'),
     );
 
     dio.interceptors.add(CookieManager(cookieJar));
-    dio.interceptors.add(
-      LogInterceptor(
-        responseBody: true,
-        requestBody: true,
-        requestHeader: true,
-      ),
-    );
+
+    assert(() {
+      dio.interceptors.add(
+        LogInterceptor(
+          responseBody: true,
+          requestBody: true,
+          requestHeader: true,
+        ),
+      );
+      return true;
+    }());
 
     dio.options.extra['dio'] = dio;
-
     return ApiService._(dio, storage, cookieJar);
   }
+
+  static Future<ApiService> public() => _createPublic();
+  static Future<ApiService> private() => _createPrivate();
 
   Future<T> _request<T>(
     String path, {
@@ -184,6 +202,6 @@ class ApiService {
   Future<void> clearTokens() => _storage.clear();
 
   Future<List<Cookie>> getCookies() async {
-    return await _cookieJar.loadForRequest(Uri.parse(_baseUrl));
+    return await _cookieJar.loadForRequest(Uri.parse(AppConfig.baseUrl));
   }
 }

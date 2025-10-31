@@ -69,9 +69,8 @@ class AuthInterceptor extends Interceptor {
   }
 
   Future<Response<dynamic>> _retry(RequestOptions req) async {
-    final dio = req.cancelToken?.requestOptions?.extra?['dio'] as Dio? ?? Dio();
-    // สร้าง Dio ใหม่จาก req.extra ถ้ามี
-    final retryDio = dio ?? Dio();
+    // Prefer the original Dio instance if passed via request options
+    final retryDio = (req.extra['dio'] as Dio?) ?? Dio();
     final token = await storage.accessToken;
     final options = Options(
       method: req.method,

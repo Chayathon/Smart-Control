@@ -6,9 +6,7 @@ import 'package:smart_control/core/alert/app_snackbar.dart';
 import 'package:smart_control/core/network/api_exceptions.dart';
 import 'package:smart_control/core/network/api_service.dart';
 import 'package:smart_control/widgets/loading_overlay.dart';
-import 'package:smart_control/widgets/song_upload/song_item.dart';
 import 'package:smart_control/widgets/song_upload/song_model.dart';
-import 'package:toastification/toastification.dart';
 
 enum UploadSource { file, youtube }
 
@@ -428,7 +426,7 @@ class _SongUploadScreenState extends State<SongUploadScreen>
         return;
       }
     } on ApiException catch (e) {
-      AppSnackbar.error('แจ้งเตือน', e.message ?? 'ลบเพลงไม่สำเร็จ');
+      AppSnackbar.error('แจ้งเตือน', e.message);
     } finally {
       if (context.mounted) LoadingOverlay.hide();
       _isDeletingSong = false;
