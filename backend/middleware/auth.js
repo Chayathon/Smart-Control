@@ -80,8 +80,13 @@ async function autoRefreshToken(req, res) {
             };
         }
 
-        // หาผู้ใช้ที่มี refresh token นี้
-        const findUser = await User.findOne({ refreshToken });
+        // หาผู้ใช้ที่มี refresh token นี้ (รองรับทั้งฟิลด์เก่าและแบบหลายตัว)
+        const findUser = await User.findOne({
+            $or: [
+                { refreshToken },
+                { refreshTokens: refreshToken }
+            ]
+        });
         if (!findUser) {
             return {
                 success: false,
@@ -191,10 +196,13 @@ async function logout(req, res, next) {
         const refreshToken = req.cookies?.refreshToken;
 
         if (refreshToken) {
-            // ลบ refresh token จากฐานข้อมูล
+            // ลบ refresh token ออกจากฐานข้อมูล (รองรับหลาย session)
             await User.updateOne(
-                { refreshToken },
-                { $unset: { refreshToken: "" } }
+                { $or: [ { refreshToken }, { refreshTokens: refreshToken } ] },
+                {
+                    $unset: { refreshToken: "" },
+                    $pull: { refreshTokens: refreshToken }
+                }
             );
         }
 

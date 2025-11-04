@@ -46,7 +46,12 @@ async function refreshToken(req, res) {
         .json({ error: true, message: "ไม่มี refresh token" });
     }
 
-    const findUser = await User.findOne({ refreshToken });
+    const findUser = await User.findOne({
+      $or: [
+        { refreshToken },
+        { refreshTokens: refreshToken },
+      ]
+    });
     if (!findUser) {
       return res
         .status(403)
@@ -96,16 +101,19 @@ async function logout(req, res) {
     const refreshToken = req.cookies?.refreshToken;
 
     if (refreshToken) {
-      // ลบ refresh token จากฐานข้อมูล
+      // ลบเฉพาะ refresh token นี้ ออกจากฐานข้อมูล (รองรับหลาย session)
       await User.updateOne(
-        { refreshToken },
-        { $unset: { refreshToken: "" } }
+        { $or: [ { refreshToken }, { refreshTokens: refreshToken } ] },
+        {
+          $unset: { refreshToken: "" },
+          $pull: { refreshTokens: refreshToken }
+        }
       );
     }
 
     // ลบ cookies
-    res.clearCookie('accessToken');
-    res.clearCookie('refreshToken');
+  res.clearCookie('accessToken');
+  res.clearCookie('refreshToken');
 
     res.json({
       ok: true,
