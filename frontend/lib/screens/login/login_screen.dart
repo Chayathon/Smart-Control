@@ -26,31 +26,40 @@ class _LoginScreenState extends State<LoginScreen> {
     });
     if (_adminController.text.isNotEmpty &&
         _passwordController.text.isNotEmpty) {
-      final api = await ApiService.public();
+      try {
+        ApiService.resetSessionGuard();
+        final api = await ApiService.private();
 
-      final result = await api.post(
-        "/auth/login",
-        data: {
-          "username": _adminController.text,
-          "password": _passwordController.text,
-        },
-      );
-
-      setState(() {
-        _isLoading = false;
-      });
-
-      if (result['result']["message"] == "เข้าสู่ระบบสำเร็จ") {
-        await SecureStorageService.saveToken(
-          "data",
-          result['result']['username'],
+        final result = await api.post(
+          "/auth/login",
+          data: {
+            "username": _adminController.text,
+            "password": _passwordController.text,
+          },
         );
-        AppSnackbar.success("แจ้งเตือน", "เข้าสู่ระบบสำเร็จ");
-        Get.offAllNamed(AppRoutes.home);
-        return;
-      }
 
-      AppSnackbar.error("แจ้งเตือน", "เข้าสู่ระบบไม่สำเร็จ");
+        setState(() {
+          _isLoading = false;
+        });
+
+        if (result['result']?["message"] == "เข้าสู่ระบบสำเร็จ") {
+          await SecureStorageService.saveToken(
+            "data",
+            result['result']['username'],
+          );
+          ApiService.resetSessionGuard();
+          AppSnackbar.success("แจ้งเตือน", "เข้าสู่ระบบสำเร็จ");
+          Get.offAllNamed(AppRoutes.home);
+          return;
+        }
+
+        AppSnackbar.error("แจ้งเตือน", "เข้าสู่ระบบไม่สำเร็จ");
+      } catch (e) {
+        setState(() {
+          _isLoading = false;
+        });
+        AppSnackbar.error("แจ้งเตือน", "เข้าสู่ระบบไม่สำเร็จ");
+      }
     } else {
       setState(() {
         _isLoading = false;

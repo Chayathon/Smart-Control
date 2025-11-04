@@ -17,9 +17,13 @@ class ApiService {
   final TokenStorage _storage;
   final PersistCookieJar _cookieJar;
 
+  static bool _sessionExpiredHandled = false;
+  static void resetSessionGuard() {
+    _sessionExpiredHandled = false;
+  }
+
   ApiService._(this._dio, this._storage, this._cookieJar);
 
-  // Strict creators
   // public(): no cookies, no auth header
   static Future<ApiService> _createPublic() async {
     final dio = createBaseDio(
@@ -32,8 +36,6 @@ class ApiService {
     final cookieJar = PersistCookieJar(
       storage: FileStorage('${directory.path}/cookies'),
     );
-
-    // No CookieManager here => no automatic cookie attach/persist
 
     assert(() {
       dio.interceptors.add(
@@ -93,6 +95,16 @@ class ApiService {
     CancelToken? cancelToken,
   }) async {
     try {
+      final String p = path.toLowerCase();
+      final bool isAuthEndpoint =
+          p.contains('/auth/login') ||
+          p.contains('/auth/register') ||
+          p.contains('/auth/refresh');
+
+      if (_sessionExpiredHandled && !isAuthEndpoint) {
+        throw ApiException('ต้องล็อกอินใหม่', statusCode: 401);
+      }
+
       final res = await _dio.request(
         path,
         queryParameters: query,
@@ -110,16 +122,27 @@ class ApiService {
       final code = e.response?.statusCode;
       final responseData = e.response?.data;
 
-      // ตรวจสอบ 401 และ requireLogin
       if (code == 401 &&
           responseData is Map &&
           responseData['requireLogin'] == true) {
-        AppSnackbar.info("แจ้งเตือน", "Session หมดอายุ");
+        final String p = (e.requestOptions.path).toLowerCase();
+        final bool isAuthEndpoint =
+            p.contains('/auth/login') ||
+            p.contains('/auth/register') ||
+            p.contains('/auth/refresh');
 
-        await _cookieJar.deleteAll();
-        await _storage.clear();
+        if (!_sessionExpiredHandled && !isAuthEndpoint) {
+          _sessionExpiredHandled = true;
+          AppSnackbar.error(
+            "แจ้งเตือน",
+            "หมดเวลาในการเข้าสู่ระบบ กรุณาเข้าสู่ระบบใหม่",
+          );
 
-        Get.offAllNamed('/login');
+          await _cookieJar.deleteAll();
+          await _storage.clear();
+
+          Get.offAllNamed('/login');
+        }
 
         throw ApiException(
           responseData['message']?.toString() ?? 'ต้องล็อกอินใหม่',

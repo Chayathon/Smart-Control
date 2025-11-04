@@ -27,11 +27,9 @@ async function authenticateToken(req, res, next) {
         // ตรวจสอบ access token
         jwt.verify(accessToken, process.env.ACCESS_TOKEN_SECRET, async (err, decoded) => {
             if (err) {
-                // ถ้า access token หมดอายุ
                 if (err.name === 'TokenExpiredError') {
                     console.log('Access token expired, trying to refresh...');
 
-                    // พยายาม refresh token อัตโนมัติ
                     const refreshResult = await autoRefreshToken(req, res);
 
                     if (refreshResult.success) {
@@ -39,7 +37,6 @@ async function authenticateToken(req, res, next) {
                         req.user = refreshResult.user;
                         return next();
                     } else {
-                        // ถ้า refresh ไม่สำเร็จ
                         return res.status(401).json({
                             error: true,
                             message: refreshResult.message,
@@ -47,7 +44,6 @@ async function authenticateToken(req, res, next) {
                         });
                     }
                 } else {
-                    // ถ้า token ไม่ valid
                     return res.status(403).json({
                         error: true,
                         message: 'Access token ไม่ถูกต้อง'
@@ -97,7 +93,7 @@ async function autoRefreshToken(req, res) {
         return new Promise((resolve) => {
             jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET, (err, decoded) => {
                 if (err) {
-                    console.error('Refresh token verification failed:', err);
+                    console.warn('Refresh token verification failed:', err?.message || err);
                     resolve({
                         success: false,
                         message: 'Refresh token หมดอายุ กรุณาเข้าสู่ระบบใหม่'
@@ -115,9 +111,9 @@ async function autoRefreshToken(req, res) {
                 // ตั้งค่า cookie ใหม่
                 res.cookie("accessToken", newAccessToken, {
                     httpOnly: true,
-                    secure: false, // ตั้งเป็น true ถ้าใช้ HTTPS
+                    secure: false,
                     sameSite: "Strict",
-                    maxAge: 15 * 60 * 1000, // 15 minutes
+                    maxAge: 15 * 60 * 1000,
                 });
 
                 console.log(`Auto refreshed token for user: ${decoded.username}`);
@@ -142,7 +138,7 @@ async function autoRefreshToken(req, res) {
     }
 }
 
-// Middleware สำหรับ optional authentication (ไม่บังคับต้องล็อกอิน)
+// Middleware สำหรับ optional authentication
 async function optionalAuth(req, res, next) {
     try {
         let accessToken = req.cookies?.accessToken ||
