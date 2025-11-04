@@ -34,6 +34,11 @@ class SidebarPanel extends StatelessWidget {
       'ตรวจสอบสถานะ',
       () => Get.toNamed(AppRoutes.monitoring),
     ),
+    _MenuItem(
+      Icons.settings,
+      'การตั้งค่า',
+      () => Get.toNamed(AppRoutes.settings),
+    ),
     _MenuItem(Icons.mic, 'ทดสอบไมค์', () => Get.toNamed(AppRoutes.test)),
     _MenuItem(Icons.logout, 'ออกจากระบบ', onLogout),
   ];
