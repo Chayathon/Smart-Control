@@ -11,5 +11,6 @@ router.use('/auth', require('./user.routes'))
 router.use('/playlist', require('./playlist.routes'))
 router.use('/song', require('./song.routes'))
 router.use('/deviceData', require('./deviceData.routes'));
+router.use('/settings', require('./settings.routes'));
 
 module.exports = router;
