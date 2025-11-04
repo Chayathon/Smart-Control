@@ -90,75 +90,74 @@ class _SettingScreenState extends State<SettingScreen> {
     }
   }
 
-  /// รีเซ็ตการตั้งค่าเป็นค่าเริ่มต้น
-  Future<void> _resetSettings() async {
-    // แสดง dialog ยืนยัน
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        backgroundColor: Colors.white,
-        title: const Text(
-          'ยืนยันการรีเซ็ต',
-          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
-        ),
-        content: const Text(
-          'คุณต้องการรีเซ็ตการตั้งค่ากลับเป็นค่าเริ่มต้นหรือไม่?',
-          style: TextStyle(fontSize: 16),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            style: ButtonStyle(
-              backgroundColor: WidgetStateProperty.all(Colors.grey[200]),
-            ),
-            child: Text(
-              'ยกเลิก',
-              style: TextStyle(color: Colors.grey[600], fontSize: 16),
-            ),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ButtonStyle(
-              backgroundColor: WidgetStateProperty.all(Colors.orange[50]),
-            ),
-            child: const Text(
-              'ยืนยัน',
-              style: TextStyle(
-                color: Colors.deepOrange,
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
+  // Future<void> _resetSettings() async {
+  //   // แสดง dialog ยืนยัน
+  //   final confirmed = await showDialog<bool>(
+  //     context: context,
+  //     builder: (context) => AlertDialog(
+  //       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+  //       backgroundColor: Colors.white,
+  //       title: const Text(
+  //         'ยืนยันการรีเซ็ต',
+  //         style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
+  //       ),
+  //       content: const Text(
+  //         'คุณต้องการรีเซ็ตการตั้งค่ากลับเป็นค่าเริ่มต้นหรือไม่?',
+  //         style: TextStyle(fontSize: 16),
+  //       ),
+  //       actions: [
+  //         TextButton(
+  //           onPressed: () => Navigator.pop(context, false),
+  //           style: ButtonStyle(
+  //             backgroundColor: WidgetStateProperty.all(Colors.grey[200]),
+  //           ),
+  //           child: Text(
+  //             'ยกเลิก',
+  //             style: TextStyle(color: Colors.grey[600], fontSize: 16),
+  //           ),
+  //         ),
+  //         TextButton(
+  //           onPressed: () => Navigator.pop(context, true),
+  //           style: ButtonStyle(
+  //             backgroundColor: WidgetStateProperty.all(Colors.orange[50]),
+  //           ),
+  //           child: const Text(
+  //             'ยืนยัน',
+  //             style: TextStyle(
+  //               color: Colors.deepOrange,
+  //               fontSize: 16,
+  //               fontWeight: FontWeight.bold,
+  //             ),
+  //           ),
+  //         ),
+  //       ],
+  //     ),
+  //   );
 
-    if (confirmed != true) return;
+  //   if (confirmed != true) return;
 
-    LoadingOverlay.show(context);
+  //   LoadingOverlay.show(context);
 
-    try {
-      final api = await ApiService.private();
-      final response = await api.post('/settings/reset');
+  //   try {
+  //     final api = await ApiService.private();
+  //     final response = await api.post('/settings/reset');
 
-      if (response['status'] == 'success') {
-        final data = response['data'];
-        setState(() {
-          _selectedSampleRate = data['sampleRate'] ?? 44100;
-          _loopPlaylist = data['loopPlaylist'] ?? false;
-          _hasChanges = false;
-        });
-        AppSnackbar.success('สำเร็จ', 'รีเซ็ตการตั้งค่าเรียบร้อยแล้ว');
-      }
-    } catch (error) {
-      print('❌ Error resetting settings: $error');
-      AppSnackbar.error('ผิดพลาด', 'ไม่สามารถรีเซ็ตการตั้งค่าได้');
-    } finally {
-      LoadingOverlay.hide();
-    }
-  }
+  //     if (response['status'] == 'success') {
+  //       final data = response['data'];
+  //       setState(() {
+  //         _selectedSampleRate = data['sampleRate'] ?? 44100;
+  //         _loopPlaylist = data['loopPlaylist'] ?? false;
+  //         _hasChanges = false;
+  //       });
+  //       AppSnackbar.success('สำเร็จ', 'รีเซ็ตการตั้งค่าเรียบร้อยแล้ว');
+  //     }
+  //   } catch (error) {
+  //     print('❌ Error resetting settings: $error');
+  //     AppSnackbar.error('ผิดพลาด', 'ไม่สามารถรีเซ็ตการตั้งค่าได้');
+  //   } finally {
+  //     LoadingOverlay.hide();
+  //   }
+  // }
 
   @override
   Widget build(BuildContext context) {
@@ -166,7 +165,7 @@ class _SettingScreenState extends State<SettingScreen> {
       backgroundColor: Colors.grey[50],
       appBar: AppBar(
         title: const Text(
-          "การตั้งค่าระบบ",
+          "ตั้งค่าระบบ",
           style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
         ),
         backgroundColor: Colors.white,
@@ -189,27 +188,24 @@ class _SettingScreenState extends State<SettingScreen> {
               child: ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
-                  // การตั้งค่า Sample Rate
                   _buildSettingCard(
-                    title: 'Sample Rate (ความถี่การสุ่มสัญญาณ)',
-                    subtitle: 'ความละเอียดของเสียงที่บันทึก (Hz)',
+                    title: 'Sample Rate (kHz)',
+                    subtitle: 'ความละเอียดของเสียง',
                     icon: Icons.graphic_eq,
                     child: _buildSampleRateSelector(),
                   ),
                   const SizedBox(height: 12),
 
-                  // การตั้งค่า Loop Playlist
                   _buildSettingCard(
-                    title: 'Loop Playlist',
+                    title: 'วนซ้ำรายการเพลง',
                     subtitle: 'เล่นเพลงซ้ำเมื่อเล่นครบทุกเพลง',
                     icon: Icons.repeat,
                     child: _buildLoopSwitch(),
                   ),
-                  const SizedBox(height: 24),
+                  // const SizedBox(height: 24),
 
-                  // ปุ่มรีเซ็ต
-                  _buildResetButton(),
-                  const SizedBox(height: 16),
+                  // _buildResetButton(),
+                  // const SizedBox(height: 16),
                 ],
               ),
             ),
@@ -289,7 +285,6 @@ class _SettingScreenState extends State<SettingScreen> {
     );
   }
 
-  /// Card สำหรับการตั้งค่าแต่ละรายการ
   Widget _buildSettingCard({
     required String title,
     required String subtitle,
@@ -345,7 +340,6 @@ class _SettingScreenState extends State<SettingScreen> {
     );
   }
 
-  /// ตัวเลือก Sample Rate
   Widget _buildSampleRateSelector() {
     return Wrap(
       spacing: 8,
@@ -378,7 +372,6 @@ class _SettingScreenState extends State<SettingScreen> {
     );
   }
 
-  /// สวิตช์ Loop Playlist
   Widget _buildLoopSwitch() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -422,28 +415,27 @@ class _SettingScreenState extends State<SettingScreen> {
     );
   }
 
-  /// ปุ่มรีเซ็ต
-  Widget _buildResetButton() {
-    return SizedBox(
-      width: double.infinity,
-      child: ElevatedButton.icon(
-        onPressed: _resetSettings,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.orange[50],
-          foregroundColor: Colors.deepOrange,
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-            side: BorderSide(color: Colors.deepOrange, width: 2),
-          ),
-          elevation: 0,
-        ),
-        icon: const Icon(Icons.restore),
-        label: const Text(
-          'รีเซ็ตเป็นค่าเริ่มต้น',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-        ),
-      ),
-    );
-  }
+  // Widget _buildResetButton() {
+  //   return SizedBox(
+  //     width: double.infinity,
+  //     child: ElevatedButton.icon(
+  //       onPressed: _resetSettings,
+  //       style: ElevatedButton.styleFrom(
+  //         backgroundColor: Colors.orange[50],
+  //         foregroundColor: Colors.deepOrange,
+  //         padding: const EdgeInsets.symmetric(vertical: 16),
+  //         shape: RoundedRectangleBorder(
+  //           borderRadius: BorderRadius.circular(12),
+  //           side: BorderSide(color: Colors.deepOrange, width: 2),
+  //         ),
+  //         elevation: 0,
+  //       ),
+  //       icon: const Icon(Icons.restore),
+  //       label: const Text(
+  //         'รีเซ็ตเป็นค่าเริ่มต้น',
+  //         style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+  //       ),
+  //     ),
+  //   );
+  // }
 }
