@@ -1,28 +1,39 @@
 // D:\mass_smart_city\Smart-Control\backend\controllers\deviceData.controller.js
 
-const { listDeviceData } = require('../services/deviceData.service');
-const bus = require('../services/bus'); // **<<< เพิ่มบรรทัดนี้: นำเข้า Event Bus**
+const deviceDataService = require('../services/deviceData.service'); // ดึง Service มาใช้งาน
 
-/**
- * ฟังก์ชันสำหรับจัดการ Request GET เพื่อดึงข้อมูล DeviceData
- */
+// Controller สำหรับดึงรายการข้อมูล DeviceData (ล่าสุด 50 รายการ)
 async function getDeviceDataList(req, res) {
     try {
-        const data = await listDeviceData();
-        
-        // --- 📢 ส่วนปล่อย Event Bus ---
-        // ปล่อย Event 'status' เพื่อให้ WebSocket (wsServer.js) ส่งข้อมูล
-        bus.emit('status', { 
-            type: 'deviceData_list', // กำหนดประเภทข้อมูลเพื่อแยกแยะในฝั่ง Client
-            payload: data            // ข้อมูล DeviceData ที่ดึงมา
+        const list = await deviceDataService.getDeviceDataList();
+        res.json({ status: 'success', data: list });
+    } catch (error) {
+        console.error('Error getting device data list:', error);
+        res.status(500).json({ 
+            status: 'error', 
+            message: error.message || 'get device data list failed' 
         });
-        console.log("[Bus] Emitted 'status' event with deviceData.");
-        // -----------------------------
-        
-        res.json(data);
-    } catch (e) {
-        res.status(500).json({ ok: false, error: e.message });
     }
 }
 
-module.exports = { getDeviceDataList };
+// Controller สำหรับดึงข้อมูล DeviceData ล่าสุด 1 รายการ
+async function getLatestDeviceData(req, res) {
+    try {
+        const data = await deviceDataService.getLatestDeviceData();
+        if (!data) {
+             return res.status(404).json({
+                status: 'error',
+                message: 'Device data not found'
+            });
+        }
+        res.json({ status: 'success', data: data });
+    } catch (error) {
+        console.error('Error getting latest device data:', error);
+        res.status(500).json({ 
+            status: 'error', 
+            message: error.message || 'get latest device data failed' 
+        });
+    }
+}
+
+module.exports = { getDeviceDataList, getLatestDeviceData }

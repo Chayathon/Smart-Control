@@ -2,11 +2,9 @@
 
 const express = require('express');
 const router = express.Router();
-const { getDeviceDataList } = require('../controllers/deviceData.controller');
-const { authenticateToken } = require('../middleware/auth');
+const controller = require('../controllers/deviceData.controller');
 
-// ใน deviceData.routes.js
-// router.get('/', authenticateToken, getDeviceDataList); // เดิม
-router.get('/', getDeviceDataList); // <<< แก้ไขเป็นแบบนี้ชั่วคราว
+// GET /deviceData  -> ดึงรายการข้อมูล DeviceData ล่าสุด 50 รายการ
+router.get('/', controller.getDeviceDataList); 
 
 module.exports = router;
