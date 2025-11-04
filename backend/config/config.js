@@ -22,9 +22,6 @@ const cfg = {
         ignoreRetained: String(process.env.MQTT_IGNORE_RETAINED || 'true') === 'true',
     },
     stream: {
-        autoReplayOnEnd: String(process.env.AUTO_REPLAY_ON_END || 'false') === 'true',
-        // หน่วงเวลาก่อนเริ่มเพลงถัดไป (มิลลิวินาที) เพื่อให้ Icecast เคลียร์บัฟเฟอร์
-        // ค่าเริ่มต้น 10 วินาที ตามที่ผู้ใช้ต้องการ
         preStartDelayMs: parseInt(process.env.STREAM_PRE_START_DELAY_MS || '10000', 10),
     },
 };

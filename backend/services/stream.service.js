@@ -7,7 +7,8 @@ const fs = require('fs');
 // Removed heavy, unused imports to reduce startup overhead
 // (we spawn yt-dlp/ffmpeg directly via child_process)
 const Song = require('../models/Song');
-const Playlist = require('../models/Playlist')
+const Playlist = require('../models/Playlist');
+const settingsService = require('./settings.service');
 
 let ffmpegProcess = null;
 let isPaused = false;
@@ -50,6 +51,16 @@ function getPreStartDelayMs() {
 }
 
 function nowMs() { return Date.now(); }
+
+async function getSampleRateFromDb() {
+    try {
+        const sampleRate = await settingsService.getSetting('sampleRate');
+        return sampleRate !== null ? String(sampleRate) : '44100';
+    } catch (error) {
+        console.warn('⚠️ ไม่สามารถดึงค่า sampleRate จาก DB ได้, ใช้ค่าเริ่มต้น 44100:', error.message);
+        return '44100';
+    }
+}
 
 function emitStatus({ event, extra = {} }) {
     bus.emit('status', {
@@ -159,6 +170,10 @@ async function _playIndex(i, seekMs = 0) {
         console.log(`▶️ [${i + 1}/${playlistQueue.length}] ${name}`);
         console.log(`📂 Source: ${source}`);
 
+        // ดึงค่า sampleRate จาก DB
+        const sampleRate = await getSampleRateFromDb();
+        console.log(`🎵 Sample Rate: ${sampleRate} Hz`);
+
         // ปรับแต่งสำหรับ transition ที่นุ่มนวล
         const ffArgs = [
             ...baseFfmpegArgs({ loglevel: 'error' }),
@@ -169,7 +184,7 @@ async function _playIndex(i, seekMs = 0) {
             // Audio fade in ช้าขึ้นเพื่อให้เนียนขึ้น
             '-af', 'afade=t=in:st=0:d=0.8',
             ...icecastOutputArgs({
-                bitrate: '128k', sampleRate: '44100', channels: '2', addLowLatency: true,
+                bitrate: '128k', sampleRate, channels: '2', addLowLatency: true,
                 extra: ['-write_xing', '0', '-id3v2_version', '0', '-fflags', '+flush_packets+nobuffer']
             }),
         ];
@@ -208,6 +223,15 @@ async function _playIndex(i, seekMs = 0) {
                 console.log('⏸️ Pause pending resume, not auto-advancing');
                 return;
             }
+            
+            // ดึงค่า loop ล่าสุดจาก DB ก่อนตัดสินใจเล่นต่อ
+            try {
+                const loopFromDb = await settingsService.getSetting('loopPlaylist');
+                playlistLoop = loopFromDb !== null ? !!loopFromDb : false;
+            } catch (error) {
+                console.warn('⚠️ ไม่สามารถดึงค่า loopPlaylist จาก DB ได้:', error.message);
+            }
+            
             const next = currentIndex + 1;
             if (next < playlistQueue.length) {
                 currentIndex = next;
@@ -258,7 +282,17 @@ async function playPlaylist({ loop = false } = {}) {
         err.requestedMode = 'playlist';
         throw err;
     }
-    playlistLoop = !!loop;
+    
+    // ดึงค่า loop จากฐานข้อมูล Settings แทนการใช้ parameter
+    try {
+        const loopFromDb = await settingsService.getSetting('loopPlaylist');
+        playlistLoop = loopFromDb !== null ? !!loopFromDb : false;
+        console.log(`🔄 Loop Playlist from DB: ${playlistLoop}`);
+    } catch (error) {
+        console.warn('⚠️ ไม่สามารถดึงค่า loopPlaylist จาก DB ได้, ใช้ค่าเริ่มต้น false:', error.message);
+        playlistLoop = false;
+    }
+    
     playlistStopping = false;
 
     await buildQueueFromDb();
@@ -283,6 +317,14 @@ async function playPlaylist({ loop = false } = {}) {
 
 async function nextTrack() {
     if (!playlistMode) return { success: false, message: 'ไม่ได้อยู่ในโหมดเพลย์ลิสต์' };
+    
+    // ดึงค่า loop ล่าสุดจาก DB
+    try {
+        const loopFromDb = await settingsService.getSetting('loopPlaylist');
+        playlistLoop = loopFromDb !== null ? !!loopFromDb : false;
+    } catch (error) {
+        console.warn('⚠️ ไม่สามารถดึงค่า loopPlaylist จาก DB ได้:', error.message);
+    }
     
     if (currentIndex + 1 >= playlistQueue.length && !playlistLoop) {
         return { success: false, message: 'ถึงเพลงสุดท้ายแล้ว' };
@@ -311,6 +353,14 @@ async function nextTrack() {
 
 async function prevTrack() {
     if (!playlistMode) return { success: false, message: 'ไม่ได้อยู่ในโหมดเพลย์ลิสต์' };
+    
+    // ดึงค่า loop ล่าสุดจาก DB
+    try {
+        const loopFromDb = await settingsService.getSetting('loopPlaylist');
+        playlistLoop = loopFromDb !== null ? !!loopFromDb : false;
+    } catch (error) {
+        console.warn('⚠️ ไม่สามารถดึงค่า loopPlaylist จาก DB ได้:', error.message);
+    }
     
     if (currentIndex === 0 && !playlistLoop) {
         return { success: false, message: 'เป็นเพลงแรกแล้ว' };
@@ -462,6 +512,10 @@ async function startYoutubeUrl(url, seekMs = 0, opts = {}) {
         console.log(`▶️ เริ่มสตรีม YouTube: ${url}`);
 
         const { mediaUrl, headerLines } = await resolveDirectUrl(url);
+        
+        // ดึงค่า sampleRate จาก DB
+        const sampleRate = await getSampleRateFromDb();
+        console.log(`🎵 Sample Rate: ${sampleRate} Hz`);
 
         const ffArgs = [
             ...baseFfmpegArgs({ loglevel: 'error' }), '-nostats',
@@ -491,7 +545,7 @@ async function startYoutubeUrl(url, seekMs = 0, opts = {}) {
             }
         }
 
-        ffArgs.push('-vn', '-dn', ...icecastOutputArgs({ bitrate: '128k' }));
+        ffArgs.push('-vn', '-dn', ...icecastOutputArgs({ bitrate: '128k', sampleRate }));
 
         ffmpegProcess = spawnFfmpeg(ffArgs, 'ffmpeg');
 
@@ -555,12 +609,16 @@ async function startLocalFile(filePath, seekMs = 0, opts = {}) {
         const providedName = (opts && (opts.displayName || opts.name)) || null;
         currentDisplayName = providedName || path.basename(absPath);
 
+        // ดึงค่า sampleRate จาก DB
+        const sampleRate = await getSampleRateFromDb();
+        console.log(`🎵 Sample Rate: ${sampleRate} Hz`);
+
         const ffArgs = [
             ...baseFfmpegArgs({ loglevel: 'warning' }), '-re',
             ...(seekMs > 0 ? ['-ss', String(seekMs / 1000)] : []),
             '-i', absPath,
             '-vn',
-            ...icecastOutputArgs({ bitrate: '128k' })
+            ...icecastOutputArgs({ bitrate: '128k', sampleRate })
         ];
 
         ffmpegProcess = spawnFfmpeg(ffArgs, 'ffmpeg');
@@ -730,22 +788,26 @@ async function startMicStream(ws) {
         activeWs = ws;
 
         const icecastUrl = getIcecastUrl();
+        
+        // ดึงค่า sampleRate จาก DB
+        const sampleRate = await getSampleRateFromDb();
+        console.log(`🎵 Mic Sample Rate: ${sampleRate} Hz`);
 
         const ffArgs = [
             // General
             '-hide_banner', '-loglevel', 'error', '-nostdin',
             // try to minimize internal buffering
             '-fflags', '+nobuffer',
-            // Input: raw PCM 16-bit stereo 44.1kHz from stdin
-            '-f', 's16le', '-ar', '44100', '-ac', '2', '-i', 'pipe:0',
+            // Input: raw PCM 16-bit stereo from stdin (sample rate from DB)
+            '-f', 's16le', '-ar', sampleRate, '-ac', '2', '-i', 'pipe:0',
 
             // Audio processing kept light for CPU; keep basic HP/LP filtering
             // Increase loudness and add a simple compressor + limiter to reduce clipping
             // '-af', 'highpass=f=80,lowpass=f=15000,acompressor=threshold=-12dB:ratio=2:attack=5:release=50,volume=3.5,alimiter=limit=0.95',
             '-af', 'highpass=f=100,lowpass=f=12000,afftdn,agate=threshold=0.02:ratio=2:attack=5:release=80,acompressor=threshold=-18dB:ratio=2:attack=6:release=90,volume=3.0,alimiter=limit=0.97',
 
-            // Encoder: MP3 CBR 128k at 44.1kHz stereo
-            '-c:a', 'libmp3lame', '-b:a', '128k', '-ar', '44100', '-ac', '2',
+            // Encoder: MP3 CBR 128k (sample rate from DB) stereo
+            '-c:a', 'libmp3lame', '-b:a', '128k', '-ar', sampleRate, '-ac', '2',
             // Low latency mux/IO
             '-write_xing', '0', '-id3v2_version', '0',
             '-flush_packets', '1',

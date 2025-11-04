@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:typed_data';
 import 'package:record/record.dart';
 import 'package:web_socket_channel/io.dart';
+import 'package:smart_control/core/network/api_service.dart';
 
 /// Singleton service สำหรับจัดการ Microphone Streaming แบบ Real-time
 /// Optimized สำหรับ Raspberry Pi 4 - Low Latency & High Stability
@@ -22,7 +23,7 @@ class MicStreamService {
   bool _isStopping = false;
 
   // Audio configuration – tuned for low latency
-  static const int sampleRate = 44100;
+  int _sampleRate = 44100; // Default value, will be loaded from DB
   static const int channels = 2;
   // Keep the post-stop silence short to flush server/ffmpeg buffers quickly
   static const int flushTailMs = 200; // ms
@@ -34,6 +35,25 @@ class MicStreamService {
   // Getters
   bool get isRecording => _isRecording;
   bool get isStopping => _isStopping;
+  int get sampleRate => _sampleRate;
+
+  /// โหลด Sample Rate จากฐานข้อมูล
+  Future<void> _loadSampleRate() async {
+    try {
+      final api = await ApiService.private();
+      final response = await api.get('/settings/sampleRate');
+
+      if (response['status'] == 'success') {
+        _sampleRate = response['value'] ?? 44100;
+        print('🎵 Sample Rate from DB: $_sampleRate Hz');
+      }
+    } catch (error) {
+      print(
+        '⚠️ ไม่สามารถดึง Sample Rate จาก DB ได้, ใช้ค่าเริ่มต้น 44100: $error',
+      );
+      _sampleRate = 44100;
+    }
+  }
 
   /// เริ่มสตรีมเสียง
   Future<bool> startStreaming(String serverUrl) async {
@@ -45,6 +65,9 @@ class MicStreamService {
     }
 
     try {
+      // โหลด Sample Rate จาก DB ก่อนเริ่มบันทึก
+      await _loadSampleRate();
+
       // Connect WebSocket
       _channel = IOWebSocketChannel.connect(
         serverUrl,
@@ -61,9 +84,9 @@ class MicStreamService {
 
       // Start audio recording
       final stream = await _recorder.startStream(
-        const RecordConfig(
+        RecordConfig(
           encoder: AudioEncoder.pcm16bits,
-          sampleRate: sampleRate,
+          sampleRate: _sampleRate,
           numChannels: channels,
           // Note: These DSP features improve audio quality but can cost CPU on low-end devices.
           // If you see high CPU or latency, consider turning off one or more of them.
@@ -136,7 +159,7 @@ class MicStreamService {
 
     try {
       const int chunkMs = 40;
-      final int bytesPerChunk = (sampleRate * channels * 2 * chunkMs) ~/ 1000;
+      final int bytesPerChunk = (_sampleRate * channels * 2 * chunkMs) ~/ 1000;
       final silence = Uint8List(bytesPerChunk);
       final chunks = flushTailMs ~/ chunkMs;
 
