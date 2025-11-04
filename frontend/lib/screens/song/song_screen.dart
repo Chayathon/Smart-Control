@@ -10,8 +10,8 @@ import 'package:smart_control/widgets/song_upload/song_model.dart';
 
 enum UploadSource { file, youtube }
 
-class _AddSongSheet extends StatefulWidget {
-  const _AddSongSheet({
+class _SongScreen extends StatefulWidget {
+  const _SongScreen({
     required this.source,
     required this.onSubmitFile,
     required this.onSubmitYoutube,
@@ -23,10 +23,10 @@ class _AddSongSheet extends StatefulWidget {
   final void Function(String url, String? name) onSubmitYoutube;
 
   @override
-  State<_AddSongSheet> createState() => _AddSongSheetState();
+  State<_SongScreen> createState() => _SongScreenState();
 }
 
-class _AddSongSheetState extends State<_AddSongSheet> {
+class _SongScreenState extends State<_SongScreen> {
   final _nameCtrl = TextEditingController();
   final _urlCtrl = TextEditingController();
   String? _fileName;
@@ -441,7 +441,7 @@ class _SongUploadScreenState extends State<SongUploadScreen>
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (_) => _AddSongSheet(
+      builder: (_) => _SongScreen(
         source: source,
         onSubmitFile: (path, filename, display) =>
             uploadSongFile(path, filename, display),
