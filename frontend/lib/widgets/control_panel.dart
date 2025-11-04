@@ -25,7 +25,7 @@ class _ControlPanelState extends State<ControlPanel> {
 
   bool micOn = false;
   bool liveOn = false;
-  double micVolume = 0.5;
+  double micVolume = 1.5;
   // When mic is on, disable all music control buttons; keep disabled 6s after mic stops
   bool _micUiDisabled = false;
   Timer? _micUiCooldownTimer;
@@ -63,6 +63,8 @@ class _ControlPanelState extends State<ControlPanel> {
     // Initialize playback mode and engine status from backend/DB (with retries)
     _initStatusFromDb();
 
+    _loadMicVolume();
+
     // Realtime sync via SSE: reflect backend status regardless of local actions
     _statusSse.onStatusUpdate = (data) => _applySseStatus(data);
     _statusSse.connect();
@@ -89,6 +91,42 @@ class _ControlPanelState extends State<ControlPanel> {
   // ----------------------------
   // Types and helpers
   // ----------------------------
+
+  Future<void> _loadMicVolume() async {
+    try {
+      final api = await ApiService.private();
+      final response = await api.get('/settings/micVolume');
+
+      if (response['status'] == 'success' && response['value'] != null) {
+        final value = response['value'];
+        if (mounted) {
+          setState(() {
+            micVolume = (value is num) ? value.toDouble() : 1.5;
+          });
+          print('🎚️ Mic Volume from DB: $micVolume');
+        }
+      }
+    } catch (error) {
+      print('⚠️ ไม่สามารถดึง Mic Volume จาก DB ได้: $error');
+      if (mounted) {
+        setState(() {
+          micVolume = 1.5;
+        });
+      }
+    }
+  }
+
+  /// บันทึกค่า Mic Volume ไปยังฐานข้อมูล
+  Future<void> _saveMicVolume(double value) async {
+    final rounded = (value * 10).round() / 10.0;
+    try {
+      final api = await ApiService.private();
+      await api.put('/settings/micVolume', data: {'value': rounded});
+      print('💾 Mic Volume saved: $rounded');
+    } catch (error) {
+      print('⚠️ ไม่สามารถบันทึก Mic Volume ได้: $error');
+    }
+  }
 
   PlaybackMode _parseMode(dynamic value) {
     final s = value?.toString().toLowerCase() ?? '';
@@ -792,8 +830,13 @@ class _ControlPanelState extends State<ControlPanel> {
                           ),
                           Expanded(
                             child: Slider(
-                              value: micVolume,
-                              onChanged: (v) => setState(() => micVolume = v),
+                              min: 0.0,
+                              max: 3.0,
+                              value: micVolume.clamp(0.0, 3.0),
+                              onChanged: (v) {
+                                setState(() => micVolume = v);
+                                _saveMicVolume(v);
+                              },
                               activeColor: accent,
                             ),
                           ),

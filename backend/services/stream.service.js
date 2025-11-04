@@ -789,9 +789,22 @@ async function startMicStream(ws) {
 
         const icecastUrl = getIcecastUrl();
         
-        // ดึงค่า sampleRate จาก DB
         const sampleRate = await getSampleRateFromDb();
         console.log(`🎵 Mic Sample Rate: ${sampleRate} Hz`);
+
+        let micVolRaw = null;
+        try {
+            micVolRaw = await settingsService.getSetting('micVolume');
+        } catch (err) {
+            console.warn('⚠️ Cannot read micVolume from DB, using default 1.5:', err && err.message ? err.message : err);
+        }
+        let micVol = 1.5;
+        if (micVolRaw !== null && micVolRaw !== undefined) {
+            const parsed = Number(micVolRaw);
+            if (!Number.isNaN(parsed)) micVol = parsed;
+        }
+        // clamp
+        micVol = Math.max(0, Math.min(3.0, micVol));
 
         const ffArgs = [
             // General
@@ -803,8 +816,8 @@ async function startMicStream(ws) {
 
             // Audio processing kept light for CPU; keep basic HP/LP filtering
             // Increase loudness and add a simple compressor + limiter to reduce clipping
-            // '-af', 'highpass=f=80,lowpass=f=15000,acompressor=threshold=-12dB:ratio=2:attack=5:release=50,volume=3.5,alimiter=limit=0.95',
-            '-af', 'highpass=f=100,lowpass=f=12000,afftdn,agate=threshold=0.02:ratio=2:attack=5:release=80,acompressor=threshold=-18dB:ratio=2:attack=6:release=90,volume=3.0,alimiter=limit=0.97',
+            // Build filter string with configured mic volume
+            '-af', `highpass=f=100,lowpass=f=12000,afftdn,agate=threshold=0.02:ratio=2:attack=5:release=80,acompressor=threshold=-18dB:ratio=2:attack=6:release=90,volume=${micVol},alimiter=limit=0.97`,
 
             // Encoder: MP3 CBR 128k (sample rate from DB) stereo
             '-c:a', 'libmp3lame', '-b:a', '128k', '-ar', sampleRate, '-ac', '2',

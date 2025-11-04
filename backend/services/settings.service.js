@@ -3,6 +3,7 @@ const Settings = require('../models/Settings');
 const DEFAULT_SETTINGS = {
     sampleRate: 44100,
     loopPlaylist: false,
+    micVolume: 1.5,
 };
 
 async function getAllSettings() {

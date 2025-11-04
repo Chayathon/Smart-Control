@@ -47,7 +47,15 @@ async function updateSetting(req, res) {
             });
         }
 
-        const result = await settingsService.updateSetting(key, value);
+        let storeValue = value;
+        if (key === 'micVolume') {
+            const num = Number(value);
+            if (!Number.isNaN(num)) {
+                storeValue = Math.round(num * 10) / 10;
+            }
+        }
+
+        const result = await settingsService.updateSetting(key, storeValue);
         res.json({ status: 'success', data: result });
     } catch (error) {
         console.error('Error updating setting:', error);
@@ -67,6 +75,13 @@ async function updateMultipleSettings(req, res) {
                 status: 'error',
                 message: 'Settings data is required'
             });
+        }
+
+        if (Object.prototype.hasOwnProperty.call(settingsData, 'micVolume')) {
+            const num = Number(settingsData.micVolume);
+            if (!Number.isNaN(num)) {
+                settingsData.micVolume = Math.round(num * 10) / 10;
+            }
         }
 
         const result = await settingsService.updateMultipleSettings(settingsData);
