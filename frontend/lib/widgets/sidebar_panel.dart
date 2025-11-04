@@ -27,7 +27,7 @@ class SidebarPanel extends StatelessWidget {
     _MenuItem(
       Icons.music_note,
       'อัปโหลดเพลง',
-      () => Get.toNamed(AppRoutes.song_upload),
+      () => Get.toNamed(AppRoutes.song),
     ),
     _MenuItem(
       Icons.monitor_rounded,

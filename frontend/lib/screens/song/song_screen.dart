@@ -10,8 +10,8 @@ import 'package:smart_control/widgets/song_upload/song_model.dart';
 
 enum UploadSource { file, youtube }
 
-class _SongScreen extends StatefulWidget {
-  const _SongScreen({
+class _SongUploadScreen extends StatefulWidget {
+  const _SongUploadScreen({
     required this.source,
     required this.onSubmitFile,
     required this.onSubmitYoutube,
@@ -23,10 +23,10 @@ class _SongScreen extends StatefulWidget {
   final void Function(String url, String? name) onSubmitYoutube;
 
   @override
-  State<_SongScreen> createState() => _SongScreenState();
+  State<_SongUploadScreen> createState() => _SongUploadScreenState();
 }
 
-class _SongScreenState extends State<_SongScreen> {
+class _SongUploadScreenState extends State<_SongUploadScreen> {
   final _nameCtrl = TextEditingController();
   final _urlCtrl = TextEditingController();
   String? _fileName;
@@ -218,14 +218,14 @@ class _FileSelectBox extends StatelessWidget {
   }
 }
 
-class SongUploadScreen extends StatefulWidget {
-  const SongUploadScreen({super.key});
+class SongScreen extends StatefulWidget {
+  const SongScreen({super.key});
 
   @override
-  State<SongUploadScreen> createState() => _SongUploadScreenState();
+  State<SongScreen> createState() => _SongScreenState();
 }
 
-class _SongUploadScreenState extends State<SongUploadScreen>
+class _SongScreenState extends State<SongScreen>
     with SingleTickerProviderStateMixin {
   List<Song> _songs = [];
   late final AnimationController _fabCtrl;
@@ -441,7 +441,7 @@ class _SongUploadScreenState extends State<SongUploadScreen>
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (_) => _SongScreen(
+      builder: (_) => _SongUploadScreen(
         source: source,
         onSubmitFile: (path, filename, display) =>
             uploadSongFile(path, filename, display),
