@@ -767,12 +767,27 @@ function getStatus() {
 }
 
 async function startMicStream(ws) {
-    // Do not control or change current playback mode here.
-    // If another non-mic stream is still active, reject mic start to avoid clobbering.
     if (isAlive(ffmpegProcess) && currentStreamUrl !== 'flutter-mic') {
         console.warn('Mic start requested while another stream is active; rejecting without altering playback.');
         try { ws.close(1013, 'stream-busy'); } catch { }
         return;
+    }
+
+    try {
+        const Device = require('../models/Device');
+        const any = await Device.findOne({}, { 'status.stream_enabled': 1 }).lean();
+        if (!any || !any.status || !any.status.stream_enabled) {
+            try { ws.close(1013, 'stream-disabled'); } catch { }
+            const err = new Error('Streaming disabled');
+            err.code = 'STREAM_DISABLED';
+            throw err;
+        }
+    } catch (e) {
+        if (e && e.code === 'STREAM_DISABLED') throw e;
+        try { ws.close(1013, 'stream-disabled'); } catch { }
+        const err = new Error('Streaming disabled');
+        err.code = 'STREAM_DISABLED';
+        throw err;
     }
 
     if (activeWs && activeWs !== ws) {

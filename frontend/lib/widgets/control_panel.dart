@@ -8,7 +8,6 @@ import 'package:smart_control/widgets/loading_overlay.dart';
 import 'package:smart_control/core/services/StreamStatusService.dart';
 import 'package:smart_control/core/config/app_config.dart';
 
-// Strongly-typed playback mode for clarity and safety
 enum PlaybackMode { none, playlist, file, youtube }
 
 class ControlPanel extends StatefulWidget {
@@ -26,16 +25,15 @@ class _ControlPanelState extends State<ControlPanel> {
   bool micOn = false;
   bool liveOn = false;
   double micVolume = 1.5;
-  // When mic is on, disable all music control buttons; keep disabled 6s after mic stops
+
   bool _micUiDisabled = false;
   Timer? _micUiCooldownTimer;
-  // Debounced/throttled status refresh helpers
+
   Timer? _refreshDebounce;
   bool _refreshInFlight = false;
   bool _refreshQueued = false;
   DateTime? _lastRefreshAt;
 
-  // Playlist state
   bool isPlaying = false;
   bool isPaused = false;
   bool isLoading = false;
@@ -45,9 +43,8 @@ class _ControlPanelState extends State<ControlPanel> {
   String currentSongTitle = '';
   int currentSongIndex = 0;
   int totalSongs = 0;
-  // Strongly-typed local playback mode
+
   PlaybackMode playbackMode = PlaybackMode.none;
-  // bool _isFetchingSongs = false; (not used)
   Timer? _localControlsCooldownTimer;
 
   static const String _micServerUrl = AppConfig.wsMic;
@@ -60,12 +57,10 @@ class _ControlPanelState extends State<ControlPanel> {
     _syncFromPlaylistState();
     _playlist.state.addListener(_syncFromPlaylistState);
 
-    // Initialize playback mode and engine status from backend/DB (with retries)
     _initStatusFromDb();
 
     _loadMicVolume();
 
-    // Realtime sync via SSE: reflect backend status regardless of local actions
     _statusSse.onStatusUpdate = (data) => _applySseStatus(data);
     _statusSse.connect();
 
@@ -87,10 +82,6 @@ class _ControlPanelState extends State<ControlPanel> {
       AppSnackbar.error('ข้อผิดพลาด', error);
     };
   }
-
-  // ----------------------------
-  // Types and helpers
-  // ----------------------------
 
   Future<void> _loadMicVolume() async {
     try {
@@ -116,7 +107,6 @@ class _ControlPanelState extends State<ControlPanel> {
     }
   }
 
-  /// บันทึกค่า Mic Volume ไปยังฐานข้อมูล
   Future<void> _saveMicVolume(double value) async {
     final rounded = (value * 10).round() / 10.0;
     try {
@@ -153,7 +143,6 @@ class _ControlPanelState extends State<ControlPanel> {
     try {
       final String event = (data['event'] ?? '').toString();
       final bool micEvent = event == 'mic-started' || event == 'mic-stopped';
-      // Derive mode preference order
       final PlaybackMode mode = _parseMode(
         data['activeMode'] ?? data['requestedMode'] ?? data['mode'],
       );
@@ -193,7 +182,6 @@ class _ControlPanelState extends State<ControlPanel> {
                         : null));
         if (tFromData != null) tot = tFromData;
       } else if (mode == PlaybackMode.file) {
-        // Avoid overriding file title with the mic sentinel or on mic events
         if (!micEvent) {
           final nameField = data['name'] ?? data['title'];
           if (nameField != null && nameField.toString().isNotEmpty) {
@@ -223,7 +211,6 @@ class _ControlPanelState extends State<ControlPanel> {
         totalSongs = tot;
       });
 
-      // For events that may not include full state, fetch authoritative status
       if (playingMaybe == null ||
           event == 'mic-started' ||
           event == 'mic-stopped' ||
@@ -250,14 +237,12 @@ class _ControlPanelState extends State<ControlPanel> {
       currentSongIndex = s.index;
       totalSongs = s.total;
       currentSongTitle = s.title;
-      // Do not override playbackMode here; it is sourced from DB/engine status.
     });
   }
 
   void _scheduleRefreshFromDb([
     Duration delay = const Duration(milliseconds: 300),
   ]) {
-    // Debounce frequent refresh triggers
     _refreshDebounce?.cancel();
     _refreshDebounce = Timer(delay, () {
       _refreshFromDb();
@@ -266,7 +251,6 @@ class _ControlPanelState extends State<ControlPanel> {
 
   Future<bool> _refreshFromDb() async {
     final now = DateTime.now();
-    // Throttle if refreshes are happening too frequently (<150ms)
     if (_lastRefreshAt != null &&
         now.difference(_lastRefreshAt!) < const Duration(milliseconds: 150)) {
       _scheduleRefreshFromDb(const Duration(milliseconds: 150));
@@ -279,7 +263,6 @@ class _ControlPanelState extends State<ControlPanel> {
     _refreshInFlight = true;
     try {
       final api = await ApiService.private();
-      // Fetch devices to get status.playback_mode
       final devices = await api.get('/device') as List<dynamic>;
       PlaybackMode mode = playbackMode;
       if (devices.isNotEmpty) {
@@ -288,12 +271,10 @@ class _ControlPanelState extends State<ControlPanel> {
         if (m.isNotEmpty) mode = _parseMode(m);
       }
 
-      // Fetch engine status for isPlaying/isPaused and playlist info
       final engine = await api.get('/stream/status');
-      final data =
-          engine['data'] ??
-          engine; // controller returns {status:'success', data: ...}
+      final data = engine['data'] ?? engine;
       final bool engIsPlaying = data['isPlaying'] == true;
+      liveOn = data['streamEnabled'] == true;
       final bool engIsPaused = data['isPaused'] == true;
       final PlaybackMode activeMode = _parseMode(
         data['activeMode'] ?? data['mode'] ?? 'none',
@@ -310,7 +291,6 @@ class _ControlPanelState extends State<ControlPanel> {
         idx = ((cs['index'] ?? 0) as int) + 1;
         tot = (cs['total'] ?? data['totalSongs'] ?? 0) as int;
       } else if (activeMode == PlaybackMode.file) {
-        // Prefer name from engine status (backend now provides it)
         if (data['name'] != null && data['name'].toString().isNotEmpty) {
           title = data['name'].toString();
         } else if (data['title'] != null &&
@@ -320,7 +300,6 @@ class _ControlPanelState extends State<ControlPanel> {
           final candidate = _titleFromUrl(
             (data['currentUrl'] ?? data['url'])?.toString(),
           );
-          // Ignore microphone sentinel so UI continues showing song name
           if (candidate.toLowerCase() != 'flutter-mic' &&
               candidate.isNotEmpty) {
             title = candidate;
@@ -340,6 +319,7 @@ class _ControlPanelState extends State<ControlPanel> {
         currentSongTitle = title;
         currentSongIndex = idx;
         totalSongs = tot;
+        liveOn = data['streamEnabled'] == true;
       });
       return true;
     } catch (_) {
@@ -349,14 +329,11 @@ class _ControlPanelState extends State<ControlPanel> {
       _refreshInFlight = false;
       if (_refreshQueued) {
         _refreshQueued = false;
-        // Schedule another refresh shortly to pick up any missed state
         _scheduleRefreshFromDb(const Duration(milliseconds: 120));
       }
     }
   }
 
-  /// Called once during init to ensure we fetch DB status asap.
-  /// Retries a few times if ApiService.private() or backend isn't ready yet.
   Future<void> _initStatusFromDb({
     int maxRetries = 6,
     int delayMs = 500,
@@ -366,7 +343,6 @@ class _ControlPanelState extends State<ControlPanel> {
       if (ok) return;
       await Future.delayed(Duration(milliseconds: delayMs));
     }
-    // final attempt without catching so any persistent error surfaces in logs
     await _refreshFromDb();
   }
 
@@ -384,22 +360,22 @@ class _ControlPanelState extends State<ControlPanel> {
     _micUiCooldownTimer?.cancel();
     _refreshDebounce?.cancel();
     _playlist.state.removeListener(_syncFromPlaylistState);
-    // Ensure mic streaming is stopped when leaving this widget
     if (micOn && !_micService.isStopping) {
       _micService.stopStreaming();
     }
-    // Do not dispose singletons globally here; only stop streaming if active
     super.dispose();
   }
 
   Future<void> _toggleMic() async {
     if (_micService.isStopping) return;
-    // Show 10s loading for opening/closing mic
+    if (!liveOn) {
+      AppSnackbar.error('โหมดถ่ายทอดปิดอยู่', 'ไม่สามารถเปิดไมโครโฟนได้');
+      return;
+    }
     final start = DateTime.now();
     LoadingOverlay.show(context);
     try {
       if (micOn) {
-        // Closing mic: just stop streaming, keep loading visible until 10s total
         await _micService.stopStreaming();
         final elapsed = DateTime.now().difference(start).inMilliseconds;
         final remain = 10000 - elapsed;
@@ -434,9 +410,6 @@ class _ControlPanelState extends State<ControlPanel> {
 
         final success = await _micService.startStreaming(_micServerUrl);
 
-        // Keep loading for a total time from the beginning depending on mode:
-        // - PlaybackMode.none: 5 seconds total
-        // - Other modes: 10 seconds total (legacy behaviour)
         final elapsed = DateTime.now().difference(start).inMilliseconds;
         final int targetMs = playbackMode == PlaybackMode.none ? 5000 : 10000;
         final remain = targetMs - elapsed;
@@ -473,13 +446,56 @@ class _ControlPanelState extends State<ControlPanel> {
     });
   }
 
-  void _toggleLive() => setState(() => liveOn = !liveOn);
+  Future<void> _toggleLive() async {
+    final bool target = !liveOn;
+    LoadingOverlay.show(context);
+    try {
+      final api = await ApiService.private();
+      final resp = await api.put(
+        '/device/stream-enabled',
+        data: {'enabled': target},
+      );
 
-  // (playlist start/stop handled via _onPlayPressed and PlaylistService)
+      if (!target) {
+        try {
+          await api.get('/stream/stop');
+        } catch (_) {}
+        if (micOn && !_micService.isStopping) {
+          try {
+            await _micService.stopStreaming();
+          } catch (_) {}
+          if (mounted)
+            setState(() {
+              micOn = false;
+            });
+        }
+      }
+      if (mounted)
+        setState(() {
+          liveOn = target;
+        });
+      await _refreshFromDb();
+      if (target) {
+        final zones =
+            (resp['enabledZones'] as List<dynamic>?)?.cast<int>() ??
+            const <int>[];
+        AppSnackbar.success(
+          'ถ่ายทอด',
+          zones.isNotEmpty
+              ? 'เริ่มถ่ายทอดแล้ว ${zones.length} โซน'
+              : 'เริ่มถ่ายทอดแล้ว',
+        );
+      } else {
+        AppSnackbar.success('ถ่ายทอด', 'หยุดถ่ายทอดและปิดทุกโซนแล้ว');
+      }
+    } catch (e) {
+      AppSnackbar.error('ข้อผิดพลาด', 'ไม่สามารถเปลี่ยนสถานะถ่ายทอดได้');
+    } finally {
+      LoadingOverlay.hide();
+    }
+  }
 
-  // New handler: if currently playing/paused -> toggle stop. Otherwise show play options.
   Future<void> _onPlayPressed() async {
-    // If already playing or paused, use existing toggle
     if (isPlaying || isPaused) {
       await _stopActive();
       return;
@@ -694,7 +710,6 @@ class _ControlPanelState extends State<ControlPanel> {
   }
 
   Future<void> _togglePause() async {
-    // No-op if nothing playing
     if (!(isPlaying || isPaused)) return;
 
     try {
@@ -706,10 +721,8 @@ class _ControlPanelState extends State<ControlPanel> {
           'แจ้งเตือน',
           _playlist.state.value.isPaused ? 'หยุดชั่วคราว' : 'เล่นต่อ',
         );
-        // mirror playlist cooldown visually
         _startLocalControlsCooldown();
       } else if (playbackMode == PlaybackMode.file) {
-        // For local file, call pause/resume endpoints
         final api = await ApiService.private();
         if (isPaused) {
           await api.get('/stream/resume');
@@ -722,7 +735,6 @@ class _ControlPanelState extends State<ControlPanel> {
         }
         _startLocalControlsCooldown();
       } else if (playbackMode == PlaybackMode.youtube) {
-        // YouTube only supports stop
         await _stopActive();
       }
     } catch (error) {
@@ -733,7 +745,6 @@ class _ControlPanelState extends State<ControlPanel> {
   Future<void> _nextSong() async => await _playlist.next();
   Future<void> _prevSong() async => await _playlist.prev();
 
-  // Stop current active playback according to mode
   Future<void> _stopActive() async {
     try {
       final api = await ApiService.private();
@@ -751,8 +762,7 @@ class _ControlPanelState extends State<ControlPanel> {
 
     final bool hasActiveMode =
         playbackMode != PlaybackMode.none || isPlaying || isPaused;
-    final bool controlsDisabled = _micUiDisabled; // mic on or in cooldown
-
+    final bool controlsDisabled = micOn || _micUiDisabled || !liveOn;
     return Column(
       children: [
         Container(
@@ -766,17 +776,6 @@ class _ControlPanelState extends State<ControlPanel> {
               Row(
                 children: [
                   _CircularToggleButton(
-                    isActive: micOn,
-                    activeIcon: Icons.mic,
-                    inactiveIcon: Icons.mic_off,
-                    activeLabel: 'ปิดไมค์',
-                    inactiveLabel: 'เปิดไมค์',
-                    activeColor: Colors.green[600]!,
-                    inactiveColor: Colors.grey[700]!,
-                    onTap: _toggleMic,
-                  ),
-                  const SizedBox(width: 24),
-                  _CircularToggleButton(
                     isActive: liveOn,
                     activeIcon: Icons.live_tv,
                     inactiveIcon: Icons.live_tv_outlined,
@@ -785,7 +784,7 @@ class _ControlPanelState extends State<ControlPanel> {
                     activeColor: Colors.red[600]!,
                     inactiveColor: Colors.grey[700]!,
                     onTap: _toggleLive,
-                    enabled: !controlsDisabled,
+                    enabled: !micOn,
                   ),
                   const SizedBox(width: 24),
                   _CircularToggleButton(
@@ -808,6 +807,18 @@ class _ControlPanelState extends State<ControlPanel> {
                       }
                     },
                     enabled: !isLoading && !controlsDisabled,
+                  ),
+                  const SizedBox(width: 24),
+                  _CircularToggleButton(
+                    isActive: micOn,
+                    activeIcon: Icons.mic,
+                    inactiveIcon: Icons.mic_off,
+                    activeLabel: 'ปิดไมค์',
+                    inactiveLabel: 'เปิดไมค์',
+                    activeColor: Colors.green[600]!,
+                    inactiveColor: Colors.grey[700]!,
+                    onTap: _toggleMic,
+                    enabled: micOn || liveOn,
                   ),
                   const SizedBox(width: 24),
                   Expanded(
@@ -833,10 +844,12 @@ class _ControlPanelState extends State<ControlPanel> {
                               min: 0.0,
                               max: 3.0,
                               value: micVolume.clamp(0.0, 3.0),
-                              onChanged: (v) {
-                                setState(() => micVolume = v);
-                                _saveMicVolume(v);
-                              },
+                              onChanged: !controlsDisabled
+                                  ? (v) {
+                                      setState(() => micVolume = v);
+                                      _saveMicVolume(v);
+                                    }
+                                  : null,
                               activeColor: accent,
                             ),
                           ),
@@ -889,7 +902,6 @@ class _ControlPanelState extends State<ControlPanel> {
                       ),
                       const SizedBox(width: 32),
 
-                      // Center button: pause/resume for playlist/file, stop for youtube
                       Opacity(
                         opacity: isControlsCoolingDown ? 0.3 : 1.0,
                         child: () {
@@ -1047,10 +1059,6 @@ class _ControlPanelState extends State<ControlPanel> {
   }
 }
 
-// ============================
-// UI widgets
-// ============================
-// Backwards-compatible factory function to keep existing call sites working
 Widget _buildCircularToggleButton({
   required bool isActive,
   required IconData activeIcon,
@@ -1102,8 +1110,6 @@ class _CircularToggleButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Opacity(
-      // reduce opacity when the button is disabled so callers that
-      // pass `enabled: false` will automatically appear faded
       opacity: enabled ? 1.0 : 0.35,
       child: InkWell(
         onTap: enabled ? onTap : null,

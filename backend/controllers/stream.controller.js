@@ -1,8 +1,19 @@
 const stream = require('../services/stream.service');
 const Song = require('../models/Song');
 const path = require('path');
+const { getStreamEnabled } = require('../services/device.service');
+
+async function assertStreamingEnabled(res) {
+    const enabled = await getStreamEnabled();
+    if (!enabled) {
+        res.status(403).json({ status: 'error', code: 'STREAM_DISABLED', message: 'Streaming is disabled' });
+        return false;
+    }
+    return true;
+}
 
 async function startFile(req, res) {
+    if (!(await assertStreamingEnabled(res))) return;
     let filePath = req.query.path || req.body?.path;
     const songId = req.query.songId || req.body?.songId;
     try {
@@ -10,7 +21,7 @@ async function startFile(req, res) {
         if (songId) {
             const song = await Song.findById(songId).lean();
             if (!song) return res.status(404).json({ status: 'error', message: 'Song not found' });
-            // Resolve to uploads path
+            
             filePath = path.join(__dirname, '../uploads', song.url || song.file || '');
             displayName = song.name || song.title || (song.url || song.file || '');
         }
@@ -18,7 +29,6 @@ async function startFile(req, res) {
         if (!filePath) return res.status(400).json({ status: 'error', message: 'path or songId is required' });
 
         if (!displayName) {
-            // Derive a friendly display name from path if none provided
             displayName = path.basename(filePath);
         }
 
@@ -32,6 +42,7 @@ async function startFile(req, res) {
 }
 
 async function startYoutube(req, res) {
+    if (!(await assertStreamingEnabled(res))) return;
     const youtubeUrl = req.query.url || req.body?.url;
     try {
         await stream.startYoutubeUrl(youtubeUrl);
@@ -44,7 +55,15 @@ async function startYoutube(req, res) {
 }
 
 function status(_req, res) {
-    res.json({ status: 'success', data: stream.getStatus() });
+    Promise.resolve(getStreamEnabled())
+        .then((enabled) => {
+            const s = stream.getStatus();
+            res.json({ status: 'success', data: { ...s, streamEnabled: enabled } });
+        })
+        .catch(() => {
+            const s = stream.getStatus();
+            res.json({ status: 'success', data: { ...s, streamEnabled: false } });
+        });
 }
 
 async function stopMic(_req, res) {
@@ -59,6 +78,7 @@ async function stopMic(_req, res) {
 
 async function playPlaylist(req, res) {
     try {
+        if (!(await assertStreamingEnabled(res))) return;
         const loop = req.query.loop === 'true' || req.body?.loop === true;
         const result = await stream.playPlaylist({ loop });
         return res.json({ status: 'success', message: result.message });
@@ -81,6 +101,7 @@ async function stopAll(_req, res) {
 
 async function nextTrack(_req, res) {
     try {
+        if (!(await assertStreamingEnabled(res))) return;
         const result = await stream.nextTrack();
         if (!result.success) {
             return res.status(400).json({ status: 'error', message: result.message });
@@ -94,6 +115,7 @@ async function nextTrack(_req, res) {
 
 async function prevTrack(_req, res) {
     try {
+        if (!(await assertStreamingEnabled(res))) return;
         const result = await stream.prevTrack();
         if (!result.success) {
             return res.status(400).json({ status: 'error', message: result.message });
@@ -117,6 +139,7 @@ async function pause(_req, res) {
 
 async function resume(_req, res) {
     try {
+        if (!(await assertStreamingEnabled(res))) return;
         stream.resume();
         return res.json({ status: 'success', message: 'เล่นต่อ' });
     } catch (e) {
