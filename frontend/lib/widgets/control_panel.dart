@@ -851,6 +851,8 @@ class _ControlPanelState extends State<ControlPanel> {
                                     }
                                   : null,
                               activeColor: accent,
+                              label: 'ระดับเสียงไมโครโฟน',
+                              divisions: 10,
                             ),
                           ),
                           Icon(Icons.volume_up, size: 28, color: accent),
