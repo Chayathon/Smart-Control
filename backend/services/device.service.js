@@ -50,38 +50,9 @@ async function appendDevices({ count }) {
     return seedDevices({ count, startAt, reset: false });
 }
 
-async function setStreamEnabled(enabled) {
-    const mqtt = require('./mqtt.service');
-    if (enabled) {
-        try { mqtt.publish('mass-radio/all/command', { set_stream: true }); } catch (_) {}
-
-        await new Promise(r => setTimeout(r, 1200));
-        const enabledDevices = await Device.find({ 'status.stream_enabled': true }, { no: 1 }).lean();
-        const enabledZones = enabledDevices.map(d => d.no).sort((a,b)=>a-b);
-        return { enabled: true, enabledZones };
-    }
-    
-    const res = await Device.updateMany({}, {
-        $set: {
-            'status.stream_enabled': false,
-            'status.is_playing': false,
-            'status.playback_mode': 'none',
-        },
-    });
-    try { mqtt.publish('mass-radio/all/command', { set_stream: false }); } catch (_) {}
-    return { matched: res.matchedCount ?? res.n, modified: res.modifiedCount ?? res.nModified, enabled: false };
-}
-
-async function getStreamEnabled() {
-    const any = await Device.findOne({}, { 'status.stream_enabled': 1 }).lean();
-    return !!(any && any.status && any.status.stream_enabled);
-}
-
 module.exports = {
     seedDevices,
     listDevices,
     clearDevices,
     appendDevices,
-    setStreamEnabled,
-    getStreamEnabled,
 };

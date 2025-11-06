@@ -6,6 +6,7 @@ let deviceStatus = [];
 let seenZones = new Set();
 let client = null;
 let connected = false;
+let lastEnabledZones = [];
 
 const pendingRequestsByZone = {};
 
@@ -37,6 +38,21 @@ function connectAndSend({
             else console.log(`📥 Subscribed to ${statusTopic}`);
         });
 
+        // Subscribe to select command topic for zone-specific commands
+        client.subscribe('mass-radio/select/command', { qos: 1 }, (err) => {
+            if (err) console.error('❌ Subscribe error for select/command:', err.message);
+            else console.log(`📥 Subscribed to mass-radio/select/command`);
+        });
+
+        // Load previously enabled zones from database on startup
+        Device.find({ 'status.stream_enabled': true }).lean().then(devices => {
+            lastEnabledZones = devices.map(d => d.no);
+            if (lastEnabledZones.length > 0) {
+                console.log(`📚 Loaded previously enabled zones from DB: [${lastEnabledZones.join(', ')}]`);
+            }
+        }).catch(err => {
+            console.error('❌ Failed to load enabled zones from DB:', err.message);
+        });
 
         setTimeout(() => {
             publish(commandTopic, payload);
@@ -55,6 +71,30 @@ function connectAndSend({
     });
 
     client.on('message', (topic, message, packet) => {
+        // Handle select command topic
+        if (topic === 'mass-radio/select/command') {
+            if (!message || !message.toString().trim()) return;
+            try {
+                const data = JSON.parse(message.toString());
+                console.log(`📨 Received select command:`, data);
+                
+                // Forward the command to specific zones
+                if (data.zone && Array.isArray(data.zone)) {
+                    data.zone.forEach(zoneNo => {
+                        const zoneTopic = `mass-radio/zone${zoneNo}/command`;
+                        const zonePayload = { ...data };
+                        delete zonePayload.zone; // Remove zone array from payload
+                        publish(zoneTopic, zonePayload);
+                        console.log(`📤 Forwarded to zone ${zoneNo}`);
+                    });
+                }
+            } catch (err) {
+                console.error(`❌ Failed to parse select command:`, err.message);
+            }
+            return;
+        }
+
+        // Handle status topic
         const match = topic.match(/mass-radio\/([^/]+)\/status/);
         const zoneStr = match ? match[1] : null;
         if (!zoneStr) return;
@@ -177,6 +217,22 @@ async function updateDeviceInDB(no, data) {
             },
             { upsert: true, new: true }
         );
+        
+        // Update lastEnabledZones when stream_enabled changes
+        if (data.stream_enabled === true) {
+            // Add zone to lastEnabledZones if not already there
+            if (!lastEnabledZones.includes(no)) {
+                lastEnabledZones.push(no);
+                console.log(`📝 Added zone ${no} to enabled zones: [${lastEnabledZones.join(', ')}]`);
+            }
+        } else if (data.stream_enabled === false) {
+            // Remove zone from lastEnabledZones
+            const index = lastEnabledZones.indexOf(no);
+            if (index > -1) {
+                lastEnabledZones.splice(index, 1);
+                console.log(`📝 Removed zone ${no} from enabled zones: [${lastEnabledZones.join(', ')}]`);
+            }
+        }
     } catch (err) {
         console.error(`❌ Failed to update device ${no} in DB:`, err.message);
     }
@@ -269,4 +325,19 @@ async function checkOfflineZones() {
     }
 }
 
-module.exports = { connectAndSend, getStatus, publish, publishAndWaitByZone };
+function getLastEnabledZones() {
+    return [...lastEnabledZones];
+}
+
+function setLastEnabledZones(zones) {
+    lastEnabledZones = Array.isArray(zones) ? [...zones] : [];
+}
+
+module.exports = { 
+    connectAndSend, 
+    getStatus, 
+    publish, 
+    publishAndWaitByZone, 
+    getLastEnabledZones, 
+    setLastEnabledZones 
+};

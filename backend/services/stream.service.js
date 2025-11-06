@@ -9,6 +9,7 @@ const fs = require('fs');
 const Song = require('../models/Song');
 const Playlist = require('../models/Playlist');
 const settingsService = require('./settings.service');
+const Device = require('../models/Device');
 
 let ffmpegProcess = null;
 let isPaused = false;
@@ -38,6 +39,17 @@ let pausedState = null; // { kind: 'playlist'|'youtube'|'file', index?, url?, pa
 const ytdlpCache = new Map();
 
 const isAlive = (p) => !!p && p.exitCode === null;
+
+async function checkStreamEnabled() {
+    try {
+        // Check if any device has stream_enabled = true
+        const enabledDevice = await Device.findOne({ 'status.stream_enabled': true });
+        return !!enabledDevice;
+    } catch (error) {
+        console.error('❌ Error checking stream_enabled:', error.message);
+        return false;
+    }
+}
 
 function getIcecastUrl() {
     const { icecast } = cfg;
@@ -275,6 +287,13 @@ async function _quickStop() {
 }
 
 async function playPlaylist({ loop = false } = {}) {
+    const streamEnabled = await checkStreamEnabled();
+    if (!streamEnabled) {
+        const err = new Error('ไม่สามารถเล่นได้ เนื่องจากระบบถ่ายทอดถูกปิดอยู่');
+        err.code = 'STREAM_DISABLED';
+        throw err;
+    }
+    
     if (activeMode !== 'none') {
         const err = new Error(`ระบบกำลังเล่นโหมด ${activeMode} อยู่ โปรดหยุดก่อนเริ่มเพลย์ลิสต์`);
         err.code = 'MODE_BUSY';
@@ -494,6 +513,13 @@ function resolveDirectUrl(youtubeUrl) {
 }
 
 async function startYoutubeUrl(url, seekMs = 0, opts = {}) {
+    const streamEnabled = await checkStreamEnabled();
+    if (!streamEnabled) {
+        const err = new Error('ไม่สามารถเล่นได้ เนื่องจากระบบถ่ายทอดถูกปิดอยู่');
+        err.code = 'STREAM_DISABLED';
+        throw err;
+    }
+    
     if (activeMode !== 'none') {
         const allowResume = opts && opts.fromResume === true && activeMode === 'youtube';
         if (!allowResume) {
@@ -588,6 +614,13 @@ async function startYoutubeUrl(url, seekMs = 0, opts = {}) {
 }
 
 async function startLocalFile(filePath, seekMs = 0, opts = {}) {
+    const streamEnabled = await checkStreamEnabled();
+    if (!streamEnabled) {
+        const err = new Error('ไม่สามารถเล่นได้ เนื่องจากระบบถ่ายทอดถูกปิดอยู่');
+        err.code = 'STREAM_DISABLED';
+        throw err;
+    }
+    
     if (activeMode !== 'none') {
         const allowResume = opts && opts.fromResume === true && activeMode === 'file';
         if (!allowResume) {
@@ -767,27 +800,17 @@ function getStatus() {
 }
 
 async function startMicStream(ws) {
+    const streamEnabled = await checkStreamEnabled();
+    if (!streamEnabled) {
+        console.warn('Mic start requested but stream is disabled');
+        try { ws.close(1013, 'stream-disabled'); } catch { }
+        return;
+    }
+    
     if (isAlive(ffmpegProcess) && currentStreamUrl !== 'flutter-mic') {
         console.warn('Mic start requested while another stream is active; rejecting without altering playback.');
         try { ws.close(1013, 'stream-busy'); } catch { }
         return;
-    }
-
-    try {
-        const Device = require('../models/Device');
-        const any = await Device.findOne({}, { 'status.stream_enabled': 1 }).lean();
-        if (!any || !any.status || !any.status.stream_enabled) {
-            try { ws.close(1013, 'stream-disabled'); } catch { }
-            const err = new Error('Streaming disabled');
-            err.code = 'STREAM_DISABLED';
-            throw err;
-        }
-    } catch (e) {
-        if (e && e.code === 'STREAM_DISABLED') throw e;
-        try { ws.close(1013, 'stream-disabled'); } catch { }
-        const err = new Error('Streaming disabled');
-        err.code = 'STREAM_DISABLED';
-        throw err;
     }
 
     if (activeWs && activeWs !== ws) {
@@ -954,6 +977,41 @@ async function stopMicStream() {
     }
 }
 
+async function enableStream() {
+    console.log('📡 Enabling stream for previous enable zones');
+    const mqttService = require('./mqtt.service');
+    
+    const lastEnabledZones = mqttService.getLastEnabledZones();
+    
+    if (lastEnabledZones.length > 0) {
+        console.log(`📌 Restoring previously enabled zones: [${lastEnabledZones.join(', ')}]`);
+        mqttService.publish('mass-radio/select/command', { zone: lastEnabledZones, set_stream: true });
+    } else {
+        mqttService.publish('mass-radio/all/command', { set_stream: true });
+    }
+    return { success: true, message: 'Enabled stream for all zones' };
+}
+
+async function disableStream() {
+    console.log('📡 Disabling stream for all zones');
+    const mqttService = require('./mqtt.service');
+    
+    const currentlyEnabled = await Device.find({ 'status.stream_enabled': true }).lean();
+    const zonesToSave = currentlyEnabled.map(d => d.no);
+    mqttService.setLastEnabledZones(zonesToSave);
+    console.log(`💾 Saved enabled zones before disabling: [${zonesToSave.join(', ')}]`);
+    
+    try {
+        await stop();
+        console.log('✅ Stopped active playback');
+    } catch (error) {
+        console.error('❌ Error stopping playback:', error.message);
+    }
+    
+    mqttService.publish('mass-radio/all/command', { set_stream: false });
+    return { success: true, message: 'Disabled stream for all zones' };
+}
+
 module.exports = {
     getStatus,
     startMicStream,
@@ -967,6 +1025,8 @@ module.exports = {
     pause,
     resume,
     stopAll,
+    enableStream,
+    disableStream,
 
     _internals: { isAlive: (p) => isAlive(p) }
 };

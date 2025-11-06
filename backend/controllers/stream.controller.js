@@ -1,19 +1,8 @@
 const stream = require('../services/stream.service');
 const Song = require('../models/Song');
 const path = require('path');
-const { getStreamEnabled } = require('../services/device.service');
-
-async function assertStreamingEnabled(res) {
-    const enabled = await getStreamEnabled();
-    if (!enabled) {
-        res.status(403).json({ status: 'error', code: 'STREAM_DISABLED', message: 'Streaming is disabled' });
-        return false;
-    }
-    return true;
-}
 
 async function startFile(req, res) {
-    if (!(await assertStreamingEnabled(res))) return;
     let filePath = req.query.path || req.body?.path;
     const songId = req.query.songId || req.body?.songId;
     try {
@@ -36,34 +25,25 @@ async function startFile(req, res) {
         res.json({ status: 'success', filePath, name: displayName });
     } catch (e) {
         console.error('Error starting stream:', e);
-        const status = e.code === 'MODE_BUSY' ? 409 : 500;
+        const status = (e.code === 'MODE_BUSY' || e.code === 'STREAM_DISABLED') ? 409 : 500;
         res.status(status).json({ status: 'error', message: e.message || 'start failed', code: e.code });
     }
 }
 
 async function startYoutube(req, res) {
-    if (!(await assertStreamingEnabled(res))) return;
     const youtubeUrl = req.query.url || req.body?.url;
     try {
         await stream.startYoutubeUrl(youtubeUrl);
         res.json({ status: 'success', youtubeUrl });
     } catch (e) {
         console.error('Error starting YouTube stream:', e);
-        const status = e.code === 'MODE_BUSY' ? 409 : 500;
+        const status = (e.code === 'MODE_BUSY' || e.code === 'STREAM_DISABLED') ? 409 : 500;
         res.status(status).json({ status: 'error', message: e.message || 'start failed', code: e.code });
     }
 }
 
 function status(_req, res) {
-    Promise.resolve(getStreamEnabled())
-        .then((enabled) => {
-            const s = stream.getStatus();
-            res.json({ status: 'success', data: { ...s, streamEnabled: enabled } });
-        })
-        .catch(() => {
-            const s = stream.getStatus();
-            res.json({ status: 'success', data: { ...s, streamEnabled: false } });
-        });
+    res.json({ status: 'success', data: stream.getStatus() });
 }
 
 async function stopMic(_req, res) {
@@ -78,13 +58,12 @@ async function stopMic(_req, res) {
 
 async function playPlaylist(req, res) {
     try {
-        if (!(await assertStreamingEnabled(res))) return;
         const loop = req.query.loop === 'true' || req.body?.loop === true;
         const result = await stream.playPlaylist({ loop });
         return res.json({ status: 'success', message: result.message });
     } catch (e) {
         console.error('Error playPlaylist:', e);
-        const status = e.code === 'MODE_BUSY' ? 409 : 500;
+        const status = (e.code === 'MODE_BUSY' || e.code === 'STREAM_DISABLED') ? 409 : 500;
         return res.status(status).json({ status: 'error', message: e.message || 'play playlist failed', code: e.code });
     }
 }
@@ -101,7 +80,6 @@ async function stopAll(_req, res) {
 
 async function nextTrack(_req, res) {
     try {
-        if (!(await assertStreamingEnabled(res))) return;
         const result = await stream.nextTrack();
         if (!result.success) {
             return res.status(400).json({ status: 'error', message: result.message });
@@ -115,7 +93,6 @@ async function nextTrack(_req, res) {
 
 async function prevTrack(_req, res) {
     try {
-        if (!(await assertStreamingEnabled(res))) return;
         const result = await stream.prevTrack();
         if (!result.success) {
             return res.status(400).json({ status: 'error', message: result.message });
@@ -139,12 +116,31 @@ async function pause(_req, res) {
 
 async function resume(_req, res) {
     try {
-        if (!(await assertStreamingEnabled(res))) return;
         stream.resume();
         return res.json({ status: 'success', message: 'เล่นต่อ' });
     } catch (e) {
         console.error('Error resumePlaylist:', e);
         return res.status(500).json({ status: 'error', message: e.message || 'resume failed' });
+    }
+}
+
+async function enableStream(_req, res) {
+    try {
+        const result = await stream.enableStream();
+        return res.json({ status: 'success', message: result.message });
+    } catch (e) {
+        console.error('Error enableStreamAll:', e);
+        return res.status(500).json({ status: 'error', message: e.message || 'enable stream failed' });
+    }
+}
+
+async function disableStream(_req, res) {
+    try {
+        const result = await stream.disableStream();
+        return res.json({ status: 'success', message: result.message });
+    } catch (e) {
+        console.error('Error disableStreamAll:', e);
+        return res.status(500).json({ status: 'error', message: e.message || 'disable stream failed' });
     }
 }
 
@@ -158,5 +154,7 @@ module.exports = {
     nextTrack,
     prevTrack,
     pause,
-    resume
+    resume,
+    enableStream,
+    disableStream,
 };

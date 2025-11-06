@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:smart_control/services/playlist_service.dart';
 import 'package:smart_control/core/network/api_service.dart';
 import 'package:smart_control/services/mic_stream_service.dart';
+import 'package:smart_control/services/stream_service.dart';
 import 'package:smart_control/core/alert/app_snackbar.dart';
 import 'package:smart_control/widgets/loading_overlay.dart';
 import 'package:smart_control/core/services/StreamStatusService.dart';
@@ -21,19 +22,21 @@ class _ControlPanelState extends State<ControlPanel> {
   final PlaylistService _playlist = PlaylistService.instance;
   final MicStreamService _micService = MicStreamService();
   final StreamStatusService _statusSse = StreamStatusService();
+  final StreamService _streamService = StreamService.instance;
 
   bool micOn = false;
-  bool liveOn = false;
+  bool streamEnabled = false;
   double micVolume = 1.5;
 
   bool _micUiDisabled = false;
   Timer? _micUiCooldownTimer;
-
+  // Debounced/throttled status refresh helpers
   Timer? _refreshDebounce;
   bool _refreshInFlight = false;
   bool _refreshQueued = false;
   DateTime? _lastRefreshAt;
 
+  // Playlist state
   bool isPlaying = false;
   bool isPaused = false;
   bool isLoading = false;
@@ -43,7 +46,6 @@ class _ControlPanelState extends State<ControlPanel> {
   String currentSongTitle = '';
   int currentSongIndex = 0;
   int totalSongs = 0;
-
   PlaybackMode playbackMode = PlaybackMode.none;
   Timer? _localControlsCooldownTimer;
 
@@ -57,10 +59,12 @@ class _ControlPanelState extends State<ControlPanel> {
     _syncFromPlaylistState();
     _playlist.state.addListener(_syncFromPlaylistState);
 
+    // Initialize playback mode and engine status from backend/DB (with retries)
     _initStatusFromDb();
 
     _loadMicVolume();
 
+    // Realtime sync via SSE: reflect backend status regardless of local actions
     _statusSse.onStatusUpdate = (data) => _applySseStatus(data);
     _statusSse.connect();
 
@@ -82,6 +86,10 @@ class _ControlPanelState extends State<ControlPanel> {
       AppSnackbar.error('ข้อผิดพลาด', error);
     };
   }
+
+  // ----------------------------
+  // Types and helpers
+  // ----------------------------
 
   Future<void> _loadMicVolume() async {
     try {
@@ -143,6 +151,16 @@ class _ControlPanelState extends State<ControlPanel> {
     try {
       final String event = (data['event'] ?? '').toString();
       final bool micEvent = event == 'mic-started' || event == 'mic-stopped';
+
+      if (data.containsKey('stream_enabled')) {
+        final streamEnabledValue = data['stream_enabled'];
+        if (streamEnabledValue is bool && mounted) {
+          setState(() {
+            streamEnabled = streamEnabledValue;
+          });
+        }
+      }
+
       final PlaybackMode mode = _parseMode(
         data['activeMode'] ?? data['requestedMode'] ?? data['mode'],
       );
@@ -182,6 +200,7 @@ class _ControlPanelState extends State<ControlPanel> {
                         : null));
         if (tFromData != null) tot = tFromData;
       } else if (mode == PlaybackMode.file) {
+        // Avoid overriding file title with the mic sentinel or on mic events
         if (!micEvent) {
           final nameField = data['name'] ?? data['title'];
           if (nameField != null && nameField.toString().isNotEmpty) {
@@ -211,6 +230,7 @@ class _ControlPanelState extends State<ControlPanel> {
         totalSongs = tot;
       });
 
+      // For events that may not include full state, fetch authoritative status
       if (playingMaybe == null ||
           event == 'mic-started' ||
           event == 'mic-stopped' ||
@@ -265,16 +285,22 @@ class _ControlPanelState extends State<ControlPanel> {
       final api = await ApiService.private();
       final devices = await api.get('/device') as List<dynamic>;
       PlaybackMode mode = playbackMode;
+      bool streamEnabledFromDb = streamEnabled;
       if (devices.isNotEmpty) {
         final first = devices.first;
         final m = (first['status']?['playback_mode'] ?? 'none').toString();
         if (m.isNotEmpty) mode = _parseMode(m);
+
+        // Get stream_enabled status
+        final streamEnabledValue = first['status']?['stream_enabled'];
+        if (streamEnabledValue is bool) {
+          streamEnabledFromDb = streamEnabledValue;
+        }
       }
 
       final engine = await api.get('/stream/status');
       final data = engine['data'] ?? engine;
       final bool engIsPlaying = data['isPlaying'] == true;
-      liveOn = data['streamEnabled'] == true;
       final bool engIsPaused = data['isPaused'] == true;
       final PlaybackMode activeMode = _parseMode(
         data['activeMode'] ?? data['mode'] ?? 'none',
@@ -312,6 +338,7 @@ class _ControlPanelState extends State<ControlPanel> {
       if (!mounted) return true;
       setState(() {
         playbackMode = mode;
+        streamEnabled = streamEnabledFromDb;
         isPlaying = engIsPlaying;
         isPaused = engIsPaused;
         playlistActive = engPlaylistMode;
@@ -319,7 +346,6 @@ class _ControlPanelState extends State<ControlPanel> {
         currentSongTitle = title;
         currentSongIndex = idx;
         totalSongs = tot;
-        liveOn = data['streamEnabled'] == true;
       });
       return true;
     } catch (_) {
@@ -368,10 +394,7 @@ class _ControlPanelState extends State<ControlPanel> {
 
   Future<void> _toggleMic() async {
     if (_micService.isStopping) return;
-    if (!liveOn) {
-      AppSnackbar.error('โหมดถ่ายทอดปิดอยู่', 'ไม่สามารถเปิดไมโครโฟนได้');
-      return;
-    }
+
     final start = DateTime.now();
     LoadingOverlay.show(context);
     try {
@@ -446,50 +469,20 @@ class _ControlPanelState extends State<ControlPanel> {
     });
   }
 
-  Future<void> _toggleLive() async {
-    final bool target = !liveOn;
+  Future<void> _toggleStream() async {
     LoadingOverlay.show(context);
     try {
-      final api = await ApiService.private();
-      final resp = await api.put(
-        '/device/stream-enabled',
-        data: {'enabled': target},
-      );
-
-      if (!target) {
-        try {
-          await api.get('/stream/stop');
-        } catch (_) {}
-        if (micOn && !_micService.isStopping) {
-          try {
-            await _micService.stopStreaming();
-          } catch (_) {}
-          if (mounted)
-            setState(() {
-              micOn = false;
-            });
-        }
-      }
-      if (mounted)
-        setState(() {
-          liveOn = target;
-        });
-      await _refreshFromDb();
-      if (target) {
-        final zones =
-            (resp['enabledZones'] as List<dynamic>?)?.cast<int>() ??
-            const <int>[];
-        AppSnackbar.success(
-          'ถ่ายทอด',
-          zones.isNotEmpty
-              ? 'เริ่มถ่ายทอดแล้ว ${zones.length} โซน'
-              : 'เริ่มถ่ายทอดแล้ว',
-        );
+      if (streamEnabled) {
+        await _streamService.disableStream();
+        AppSnackbar.success('สำเร็จ', 'หยุดการถ่ายทอดทุกโซน');
       } else {
-        AppSnackbar.success('ถ่ายทอด', 'หยุดถ่ายทอดและปิดทุกโซนแล้ว');
+        await _streamService.enableStream();
+        AppSnackbar.success('สำเร็จ', 'เริ่มการถ่ายทอดแล้ว');
       }
+
+      await _refreshFromDb();
     } catch (e) {
-      AppSnackbar.error('ข้อผิดพลาด', 'ไม่สามารถเปลี่ยนสถานะถ่ายทอดได้');
+      AppSnackbar.error('ข้อผิดพลาด', e.toString());
     } finally {
       LoadingOverlay.hide();
     }
@@ -515,7 +508,6 @@ class _ControlPanelState extends State<ControlPanel> {
                   Navigator.of(ctx).pop();
                   try {
                     await _playlist.start();
-                    // Refresh from DB/engine to set the mode reliably
                     await _refreshFromDb();
                   } catch (e) {
                     AppSnackbar.error('ข้อผิดพลาด', e.toString());
@@ -602,7 +594,6 @@ class _ControlPanelState extends State<ControlPanel> {
                               subtitle: Text(filename),
                               onTap: () async {
                                 Navigator.of(ctx).pop();
-                                // Try to start local file. Use path relative to backend cwd: uploads/<filename>
                                 if (filename.isEmpty) {
                                   AppSnackbar.error(
                                     'ข้อผิดพลาด',
@@ -721,6 +712,7 @@ class _ControlPanelState extends State<ControlPanel> {
           'แจ้งเตือน',
           _playlist.state.value.isPaused ? 'หยุดชั่วคราว' : 'เล่นต่อ',
         );
+
         _startLocalControlsCooldown();
       } else if (playbackMode == PlaybackMode.file) {
         final api = await ApiService.private();
@@ -762,7 +754,8 @@ class _ControlPanelState extends State<ControlPanel> {
 
     final bool hasActiveMode =
         playbackMode != PlaybackMode.none || isPlaying || isPaused;
-    final bool controlsDisabled = micOn || _micUiDisabled || !liveOn;
+    final bool controlsDisabled = _micUiDisabled && !micOn;
+
     return Column(
       children: [
         Container(
@@ -776,14 +769,14 @@ class _ControlPanelState extends State<ControlPanel> {
               Row(
                 children: [
                   _CircularToggleButton(
-                    isActive: liveOn,
-                    activeIcon: Icons.live_tv,
-                    inactiveIcon: Icons.live_tv_outlined,
+                    isActive: streamEnabled,
+                    activeIcon: Icons.broadcast_on_personal,
+                    inactiveIcon: Icons.broadcast_on_personal_outlined,
                     activeLabel: 'หยุดถ่ายทอด',
                     inactiveLabel: 'เริ่มถ่ายทอด',
                     activeColor: Colors.red[600]!,
                     inactiveColor: Colors.grey[700]!,
-                    onTap: _toggleLive,
+                    onTap: _toggleStream,
                     enabled: !micOn,
                   ),
                   const SizedBox(width: 24),
@@ -800,13 +793,18 @@ class _ControlPanelState extends State<ControlPanel> {
                     onTap: () {
                       if (isLoading) return;
                       if (controlsDisabled) return;
+                      if (micOn) return;
                       if (hasActiveMode) {
                         _stopActive();
                       } else {
                         _onPlayPressed();
                       }
                     },
-                    enabled: !isLoading && !controlsDisabled,
+                    enabled:
+                        !isLoading &&
+                        !controlsDisabled &&
+                        streamEnabled &&
+                        !micOn,
                   ),
                   const SizedBox(width: 24),
                   _CircularToggleButton(
@@ -818,7 +816,7 @@ class _ControlPanelState extends State<ControlPanel> {
                     activeColor: Colors.green[600]!,
                     inactiveColor: Colors.grey[700]!,
                     onTap: _toggleMic,
-                    enabled: micOn || liveOn,
+                    enabled: streamEnabled,
                   ),
                   const SizedBox(width: 24),
                   Expanded(
@@ -844,13 +842,12 @@ class _ControlPanelState extends State<ControlPanel> {
                               min: 0.0,
                               max: 3.0,
                               value: micVolume.clamp(0.0, 3.0),
-                              onChanged: !controlsDisabled
-                                  ? (v) {
-                                      setState(() => micVolume = v);
-                                      _saveMicVolume(v);
-                                    }
-                                  : null,
+                              onChanged: (v) {
+                                setState(() => micVolume = v);
+                                _saveMicVolume(v);
+                              },
                               activeColor: accent,
+                              inactiveColor: Colors.grey,
                               label: 'ระดับเสียงไมโครโฟน',
                               divisions: 10,
                             ),
@@ -886,7 +883,8 @@ class _ControlPanelState extends State<ControlPanel> {
                               playbackMode != PlaybackMode.playlist ||
                               (currentSongIndex <= 1 && !isLoopEnabled) ||
                               isControlsCoolingDown ||
-                              controlsDisabled;
+                              controlsDisabled ||
+                              micOn;
                           return _buildCircularToggleButton(
                             isActive: false,
                             activeIcon: Icons.skip_previous,
@@ -904,8 +902,9 @@ class _ControlPanelState extends State<ControlPanel> {
                       ),
                       const SizedBox(width: 32),
 
+                      // Center button: pause/resume for playlist/file, stop for youtube
                       Opacity(
-                        opacity: isControlsCoolingDown ? 0.3 : 1.0,
+                        opacity: (isControlsCoolingDown || micOn) ? 0.3 : 1.0,
                         child: () {
                           return _buildCircularToggleButton(
                             isActive: isPaused,
@@ -914,12 +913,14 @@ class _ControlPanelState extends State<ControlPanel> {
                             activeLabel: 'เล่นต่อ',
                             inactiveLabel: 'หยุด',
                             activeColor: Colors.green[600]!,
-                            inactiveColor: isControlsCoolingDown
+                            inactiveColor: (isControlsCoolingDown || micOn)
                                 ? Colors.grey
                                 : Colors.orange[700]!,
                             onTap: _togglePause,
                             enabled:
-                                !isControlsCoolingDown && !controlsDisabled,
+                                !isControlsCoolingDown &&
+                                !controlsDisabled &&
+                                !micOn,
                           );
                         }(),
                       ),
@@ -933,7 +934,8 @@ class _ControlPanelState extends State<ControlPanel> {
                               (currentSongIndex >= totalSongs &&
                                   !isLoopEnabled) ||
                               isControlsCoolingDown ||
-                              controlsDisabled;
+                              controlsDisabled ||
+                              micOn;
                           return _buildCircularToggleButton(
                             isActive: false,
                             activeIcon: Icons.skip_next,
@@ -1061,6 +1063,10 @@ class _ControlPanelState extends State<ControlPanel> {
   }
 }
 
+// ============================
+// UI widgets
+// ============================
+// Backwards-compatible factory function to keep existing call sites working
 Widget _buildCircularToggleButton({
   required bool isActive,
   required IconData activeIcon,

@@ -7,6 +7,9 @@ router.get('/status', ctrl.status);
 // Mic control endpoint
 router.post('/mic/stop', authenticateToken, ctrl.stopMic);
 
+router.post('/enable', authenticateToken, ctrl.enableStream);
+router.post('/disable', authenticateToken, ctrl.disableStream);
+
 router.get('/start-playlist', authenticateToken, ctrl.playPlaylist);
 router.get('/stop', authenticateToken, ctrl.stopAll);
 router.get('/next-track', authenticateToken, ctrl.nextTrack);
