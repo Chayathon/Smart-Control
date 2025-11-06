@@ -25,7 +25,7 @@ class _ControlPanelState extends State<ControlPanel> {
   final StreamService _streamService = StreamService.instance;
 
   bool micOn = false;
-  bool streamEnabled = false;
+  bool streamEnabled = true;
   double micVolume = 1.5;
 
   bool _micUiDisabled = false;
@@ -338,7 +338,6 @@ class _ControlPanelState extends State<ControlPanel> {
       if (!mounted) return true;
       setState(() {
         playbackMode = mode;
-        streamEnabled = streamEnabledFromDb;
         isPlaying = engIsPlaying;
         isPaused = engIsPaused;
         playlistActive = engPlaylistMode;
@@ -474,9 +473,15 @@ class _ControlPanelState extends State<ControlPanel> {
     try {
       if (streamEnabled) {
         await _streamService.disableStream();
+        setState(() {
+          streamEnabled = false;
+        });
         AppSnackbar.success('สำเร็จ', 'หยุดการถ่ายทอดทุกโซน');
       } else {
         await _streamService.enableStream();
+        setState(() {
+          streamEnabled = true;
+        });
         AppSnackbar.success('สำเร็จ', 'เริ่มการถ่ายทอดแล้ว');
       }
 
