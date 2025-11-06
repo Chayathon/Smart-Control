@@ -69,8 +69,6 @@ class _HomeScreenState extends State<HomeScreen> {
       DeviceOrientation.landscapeRight,
     ]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-
-    // Playlist and mic are now managed inside ControlPanel.
   }
 
   @override
@@ -93,10 +91,6 @@ class _HomeScreenState extends State<HomeScreen> {
       LoadingOverlay.hide();
     });
   }
-
-  // ControlPanel now manages playlist and mic actions.
-
-  // Sidebar moved to SidebarPanel widget.
 
   @override
   Widget build(BuildContext context) {
@@ -223,8 +217,4 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
-
-  // Keypad UI has been extracted to `KeypadPanel` widget.
-
-  // Keypad and zone control logic now live inside KeypadPanel widget.
 }
