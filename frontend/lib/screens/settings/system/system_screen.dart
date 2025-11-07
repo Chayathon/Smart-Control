@@ -3,14 +3,14 @@ import 'package:smart_control/core/alert/app_snackbar.dart';
 import 'package:smart_control/core/network/api_service.dart';
 import 'package:smart_control/widgets/loading_overlay.dart';
 
-class SettingScreen extends StatefulWidget {
-  const SettingScreen({Key? key}) : super(key: key);
+class SystemScreen extends StatefulWidget {
+  const SystemScreen({Key? key}) : super(key: key);
 
   @override
-  _SettingScreenState createState() => _SettingScreenState();
+  _SystemScreenState createState() => _SystemScreenState();
 }
 
-class _SettingScreenState extends State<SettingScreen> {
+class _SystemScreenState extends State<SystemScreen> {
   // ตัวเลือก Sample Rate ที่รองรับ
   final List<int> _sampleRateOptions = [
     8000,
