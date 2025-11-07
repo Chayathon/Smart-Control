@@ -6,7 +6,6 @@ let deviceStatus = [];
 let seenZones = new Set();
 let client = null;
 let connected = false;
-let lastEnabledZones = [];
 
 const pendingRequestsByZone = {};
 
@@ -42,16 +41,6 @@ function connectAndSend({
         client.subscribe('mass-radio/select/command', { qos: 1 }, (err) => {
             if (err) console.error('❌ Subscribe error for select/command:', err.message);
             else console.log(`📥 Subscribed to mass-radio/select/command`);
-        });
-
-        // Load previously enabled zones from database on startup
-        Device.find({ 'status.stream_enabled': true }).lean().then(devices => {
-            lastEnabledZones = devices.map(d => d.no);
-            if (lastEnabledZones.length > 0) {
-                console.log(`📚 Loaded previously enabled zones from DB: [${lastEnabledZones.join(', ')}]`);
-            }
-        }).catch(err => {
-            console.error('❌ Failed to load enabled zones from DB:', err.message);
         });
 
         setTimeout(() => {
@@ -121,7 +110,6 @@ function connectAndSend({
         try {
             const data = JSON.parse(message.toString());
 
-
             if (pendingRequestsByZone[no]) {
                 pendingRequestsByZone[no].resolve({ zone: no, ...data });
                 delete pendingRequestsByZone[no];
@@ -146,13 +134,11 @@ function getStatus() {
     return deviceStatus;
 }
 
-
 function publishAndWaitByZone(topic, payload, timeoutMs = 5000) {
     return new Promise((resolve, reject) => {
         if (!client || !connected) {
             return reject(new Error('MQTT not connected'));
         }
-
 
         const match = topic.match(/zone(\d+)/);
         if (!match) {
@@ -160,9 +146,7 @@ function publishAndWaitByZone(topic, payload, timeoutMs = 5000) {
         }
         const zone = parseInt(match[1], 10);
 
-
         pendingRequestsByZone[zone] = { resolve, reject };
-
 
         setTimeout(() => {
             if (pendingRequestsByZone[zone]) {
@@ -171,14 +155,12 @@ function publishAndWaitByZone(topic, payload, timeoutMs = 5000) {
             }
         }, timeoutMs);
 
-
         const message = JSON.stringify(payload);
         client.publish(topic, message, { qos: 1 }, (err) => {
             if (err) reject(err);
         });
     });
 }
-
 
 function publish(topic, payload, opts = { qos: 1, retain: false }) {
     if (!client || !connected) {
@@ -217,22 +199,6 @@ async function updateDeviceInDB(no, data) {
             },
             { upsert: true, new: true }
         );
-        
-        // Update lastEnabledZones when stream_enabled changes
-        if (data.stream_enabled === true) {
-            // Add zone to lastEnabledZones if not already there
-            if (!lastEnabledZones.includes(no)) {
-                lastEnabledZones.push(no);
-                console.log(`📝 Added zone ${no} to enabled zones: [${lastEnabledZones.join(', ')}]`);
-            }
-        } else if (data.stream_enabled === false) {
-            // Remove zone from lastEnabledZones
-            const index = lastEnabledZones.indexOf(no);
-            if (index > -1) {
-                lastEnabledZones.splice(index, 1);
-                console.log(`📝 Removed zone ${no} from enabled zones: [${lastEnabledZones.join(', ')}]`);
-            }
-        }
     } catch (err) {
         console.error(`❌ Failed to update device ${no} in DB:`, err.message);
     }
@@ -245,7 +211,6 @@ async function checkOfflineZones() {
     const onlineZones = [];
     const offlineZones = [];
 
-    
     if (deviceStatus.length === 0) {
         try {
            
@@ -262,7 +227,6 @@ async function checkOfflineZones() {
                 }
             );
 
-           
             const allDevices = await Device.find({});
             allDevices.forEach(d => {
                 broadcast({
@@ -281,7 +245,6 @@ async function checkOfflineZones() {
         return; 
     }
 
- 
     deviceStatus = deviceStatus.filter(d => {
         const online = now - d.lastSeen <= 35000;
         if (online) {
@@ -325,19 +288,9 @@ async function checkOfflineZones() {
     }
 }
 
-function getLastEnabledZones() {
-    return [...lastEnabledZones];
-}
-
-function setLastEnabledZones(zones) {
-    lastEnabledZones = Array.isArray(zones) ? [...zones] : [];
-}
-
 module.exports = { 
     connectAndSend, 
     getStatus, 
     publish, 
-    publishAndWaitByZone, 
-    getLastEnabledZones, 
-    setLastEnabledZones 
+    publishAndWaitByZone
 };

@@ -11,6 +11,40 @@ const Playlist = require('../models/Playlist');
 const settingsService = require('./settings.service');
 const Device = require('../models/Device');
 
+// ไฟล์เก็บสถานะโซนที่เปิดอยู่ก่อนหน้า
+const ENABLED_ZONES_FILE = path.join(__dirname, '../storage/enabled-zones.json');
+
+// ฟังก์ชันโหลดโซนที่เปิดอยู่จากไฟล์
+function loadEnabledZonesFromFile() {
+    try {
+        if (fs.existsSync(ENABLED_ZONES_FILE)) {
+            const data = fs.readFileSync(ENABLED_ZONES_FILE, 'utf8');
+            const parsed = JSON.parse(data);
+            if (Array.isArray(parsed.zones)) {
+                console.log(`📂 Loaded enabled zones from file: [${parsed.zones.join(', ')}]`);
+                return parsed.zones;
+            }
+        }
+    } catch (err) {
+        console.error('❌ Failed to load enabled zones from file:', err.message);
+    }
+    return [];
+}
+
+// ฟังก์ชันบันทึกโซนที่เปิดอยู่ลงไฟล์
+function saveEnabledZonesToFile(zones) {
+    try {
+        const dir = path.dirname(ENABLED_ZONES_FILE);
+        if (!fs.existsSync(dir)) {
+            fs.mkdirSync(dir, { recursive: true });
+        }
+        fs.writeFileSync(ENABLED_ZONES_FILE, JSON.stringify({ zones, updatedAt: new Date().toISOString() }, null, 2));
+        console.log(`💾 Saved enabled zones to file: [${zones.join(', ')}]`);
+    } catch (err) {
+        console.error('❌ Failed to save enabled zones to file:', err.message);
+    }
+}
+
 let ffmpegProcess = null;
 let isPaused = false;
 let currentStreamUrl = null;
@@ -981,25 +1015,32 @@ async function enableStream() {
     console.log('📡 Enabling stream for previous enable zones');
     const mqttService = require('./mqtt.service');
     
-    const lastEnabledZones = mqttService.getLastEnabledZones();
+    // ดึงโซนที่เปิดอยู่ครั้งที่แล้วจากไฟล์
+    let lastEnabledZones = loadEnabledZonesFromFile();
     
     if (lastEnabledZones.length > 0) {
-        console.log(`📌 Restoring previously enabled zones: [${lastEnabledZones.join(', ')}]`);
+        console.log(`Restoring previously enabled zones: [${lastEnabledZones.join(', ')}]`);
         mqttService.publish('mass-radio/select/command', { zone: lastEnabledZones, set_stream: true });
     } else {
+        console.log('📡 No previously enabled zones found, enabling all zones');
         mqttService.publish('mass-radio/all/command', { set_stream: true });
     }
-    return { success: true, message: 'Enabled stream for all zones' };
+    return { success: true, message: 'Enabled stream for zones' };
 }
 
 async function disableStream() {
     console.log('📡 Disabling stream for all zones');
     const mqttService = require('./mqtt.service');
     
+    // ดึงโซนที่เปิดอยู่ปัจจุบันจาก DB ก่อนที่จะปิด
     const currentlyEnabled = await Device.find({ 'status.stream_enabled': true }).lean();
     const zonesToSave = currentlyEnabled.map(d => d.no);
-    mqttService.setLastEnabledZones(zonesToSave);
-    console.log(`💾 Saved enabled zones before disabling: [${zonesToSave.join(', ')}]`);
+    
+    // บันทึกลงไฟล์เพื่อใช้ในครั้งถัดไป
+    if (zonesToSave.length > 0) {
+        saveEnabledZonesToFile(zonesToSave);
+        console.log(`💾 Saved enabled zones before disabling: [${zonesToSave.join(', ')}]`);
+    }
     
     try {
         await stop();
