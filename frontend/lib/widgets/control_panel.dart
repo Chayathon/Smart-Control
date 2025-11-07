@@ -845,8 +845,8 @@ class _ControlPanelState extends State<ControlPanel> {
                           Expanded(
                             child: Slider(
                               min: 0.0,
-                              max: 3.0,
-                              value: micVolume.clamp(0.0, 3.0),
+                              max: 9.9,
+                              value: micVolume.clamp(0.0, 9.9),
                               onChanged: (v) {
                                 setState(() => micVolume = v);
                                 _saveMicVolume(v);
@@ -854,7 +854,7 @@ class _ControlPanelState extends State<ControlPanel> {
                               activeColor: accent,
                               inactiveColor: Colors.grey,
                               label: 'ระดับเสียงไมโครโฟน',
-                              divisions: 10,
+                              divisions: 9,
                             ),
                           ),
                           Icon(Icons.volume_up, size: 28, color: accent),
