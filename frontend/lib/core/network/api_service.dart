@@ -204,6 +204,21 @@ class ApiService {
     cancelToken: cancelToken,
   );
 
+  Future<T> patch<T>(
+    String path, {
+    dynamic data,
+    Json? query,
+    FromJson<T>? decoder,
+    CancelToken? cancelToken,
+  }) => _request<T>(
+    path,
+    method: 'PATCH',
+    data: data,
+    query: query,
+    decoder: decoder,
+    cancelToken: cancelToken,
+  );
+
   Future<T> delete<T>(
     String path, {
     dynamic data,
