@@ -49,7 +49,7 @@ class _SongUploadScreenState extends State<_SongUploadScreen> {
                     ? 'เพิ่มเพลงจากไฟล์'
                     : 'เพิ่มเพลงจาก YouTube',
                 style: const TextStyle(
-                  fontWeight: FontWeight.w600,
+                  fontWeight: FontWeight.bold,
                   fontSize: 18,
                 ),
               ),
@@ -532,7 +532,11 @@ class _SongScreenState extends State<SongScreen>
                   SizedBox(height: 16),
                   Text(
                     "ยังไม่มีเพลง",
-                    style: TextStyle(color: Colors.grey, fontSize: 24),
+                    style: TextStyle(
+                      color: Colors.grey,
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   Text(
                     "กดปุ่ม ➕ เพื่ออัปโหลดเพลง",
