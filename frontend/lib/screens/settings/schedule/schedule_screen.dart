@@ -53,7 +53,6 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   void initState() {
     super.initState();
     _loadSchedules();
-    _loadSongs();
   }
 
   final List<String> _dayNames = [
@@ -86,7 +85,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     }
   }
 
-  void _loadSongs() async {
+  Future<void> _loadSongs() async {
     final api = await ApiService.private();
 
     try {
@@ -106,22 +105,53 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     }
   }
 
-  void _changeStatus(int scheduleId, bool isActive) async {
+  void _changeStatus(String scheduleId, bool isActive) async {
     final api = await ApiService.private();
 
     try {
-      final result = await api.put(
-        "/schedule/change-status",
-        data: {'id': scheduleId, 'is_active': isActive},
+      // Optimistic UI update
+      final index = _schedules.indexWhere((s) => s['_id'] == scheduleId);
+      if (index != -1) {
+        setState(() {
+          _schedules[index]['is_active'] = isActive;
+        });
+      }
+
+      final result = await api.patch(
+        "/schedule/change-status/$scheduleId",
+        data: {'is_active': isActive},
       );
 
       if (result['ok'] == true) {
         AppSnackbar.success("สำเร็จ", "เปลี่ยนสถานะเรียบร้อยแล้ว");
-        _loadSchedules();
+        _loadSchedules(); // refresh from server to ensure consistency
       }
     } catch (error) {
       print("Error changing schedule status: $error");
       AppSnackbar.error("แจ้งเตือน", "เกิดข้อผิดพลาดในการเปลี่ยนสถานะ");
+      // revert optimistic update if failed
+      final index = _schedules.indexWhere((s) => s['_id'] == scheduleId);
+      if (index != -1) {
+        setState(() {
+          _schedules[index]['is_active'] = !_schedules[index]['is_active'];
+        });
+      }
+    }
+  }
+
+  void _deleteSchedule(String scheduleId) async {
+    final api = await ApiService.private();
+
+    try {
+      final result = await api.delete("/schedule/delete/$scheduleId");
+
+      if (result['ok'] == true) {
+        AppSnackbar.success("สำเร็จ", "ลบรายการเพลงตั้งเวลาเรียบร้อยแล้ว");
+        _loadSchedules();
+      }
+    } catch (error) {
+      print("Error deleting schedule: $error");
+      AppSnackbar.error("แจ้งเตือน", "เกิดข้อผิดพลาดในการลบรายการเพลงตั้งเวลา");
     }
   }
 
@@ -199,8 +229,9 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     });
   }
 
-  Future<void> addSchedule() async {
+  Future<void> scheduleForm() async {
     _resetForm();
+    await _loadSongs();
 
     await showModalBottomSheet(
       context: context,
@@ -484,6 +515,35 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     );
   }
 
+  Future<void> deleteDialog(String scheduleId, String description) async {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text("ยืนยันการลบ"),
+          content: Text(
+            "คุณแน่ใจหรือว่าต้องการลบรายการเพลงตั้งเวลา \"$description\" ?",
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child: Text("ยกเลิก"),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _deleteSchedule(scheduleId);
+              },
+              child: Text("ยืนยัน"),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -519,6 +579,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
               ),
             )
           : ListView.builder(
+              padding: EdgeInsets.all(12),
               itemCount: _schedules.length,
               itemBuilder: (context, index) {
                 final schedule = _schedules[index];
@@ -526,24 +587,63 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                     .map((d) => _dayNames[d])
                     .join(', ');
 
-                return ListTile(
-                  title: Text(
-                    schedule['description'] ?? 'ไม่มีคำอธิบาย',
-                    style: TextStyle(fontWeight: FontWeight.bold),
+                return Card(
+                  color: Colors.grey[100],
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
                   ),
-                  subtitle: Text('เวลา: ${schedule['time']} | วัน: $days'),
-                  trailing: Switch(
-                    value: schedule['is_active'] ?? false,
-                    onChanged: (value) {
-                      _changeStatus(schedule['_id'], value);
-                    },
-                    activeThumbColor: Colors.blue[600],
+                  child: ListTile(
+                    title: Text(
+                      schedule['description'] ?? 'ไม่มีคำอธิบาย',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text('เวลา: ${schedule['time']}'),
+                        Text('วัน: $days'),
+                        Text(
+                          'เพลง: ${schedule['id_song']['name'] ?? 'ไม่มีชื่อ'}',
+                        ),
+                      ],
+                    ),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          onPressed: () {
+                            deleteDialog(
+                              schedule['_id'].toString(),
+                              schedule['description'] ?? '',
+                            );
+                          },
+                          icon: Icon(Icons.delete, color: Colors.red),
+                        ),
+                        IconButton(
+                          onPressed: () {},
+                          icon: Icon(Icons.edit, color: Colors.amber),
+                        ),
+                        Switch(
+                          value:
+                              (schedule['is_active'] is bool
+                                  ? schedule['is_active']
+                                  : schedule['is_active'] == 1) ??
+                              false,
+                          onChanged: (value) {
+                            _changeStatus(schedule['_id'].toString(), value);
+                          },
+                          activeColor: Colors.blue[600],
+                        ),
+                      ],
+                    ),
                   ),
                 );
               },
             ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => addSchedule(),
+        onPressed: () => scheduleForm(),
         foregroundColor: Colors.white,
         backgroundColor: Colors.blue,
         child: const Icon(Icons.add),
