@@ -4,7 +4,7 @@ import 'package:smart_control/routes/app_routes.dart';
 
 typedef LogoutCallback = void Function();
 
-class SidebarPanel extends StatelessWidget {
+class SidebarPanel extends StatefulWidget {
   final bool isOpen;
   final VoidCallback onClose;
   final LogoutCallback onLogout;
@@ -15,6 +15,13 @@ class SidebarPanel extends StatelessWidget {
     required this.onClose,
     required this.onLogout,
   }) : super(key: key);
+
+  @override
+  State<SidebarPanel> createState() => _SidebarPanelState();
+}
+
+class _SidebarPanelState extends State<SidebarPanel> {
+  bool _isSettingsExpanded = false;
 
   // Sidebar menu configuration lives here. Add/remove items as needed.
   List<_MenuItem> get _menuItems => [
@@ -34,13 +41,21 @@ class SidebarPanel extends StatelessWidget {
       'ตรวจสอบสถานะ',
       () => Get.toNamed(AppRoutes.monitoring),
     ),
+    _MenuItem(Icons.mic, 'ทดสอบไมค์', () => Get.toNamed(AppRoutes.test)),
+    _MenuItem(Icons.logout, 'ออกจากระบบ', widget.onLogout),
+  ];
+
+  List<_MenuItem> get _settingsMenuItems => [
+    _MenuItem(
+      Icons.schedule_rounded,
+      'เพลงตั้งเวลา',
+      () => Get.toNamed(AppRoutes.schedule),
+    ),
     _MenuItem(
       Icons.settings,
-      'การตั้งค่า',
-      () => Get.toNamed(AppRoutes.settings),
+      'ตั้งค่าระบบ',
+      () => Get.toNamed(AppRoutes.system),
     ),
-    _MenuItem(Icons.mic, 'ทดสอบไมค์', () => Get.toNamed(AppRoutes.test)),
-    _MenuItem(Icons.logout, 'ออกจากระบบ', onLogout),
   ];
 
   @override
@@ -48,11 +63,11 @@ class SidebarPanel extends StatelessWidget {
     return Stack(
       children: [
         // overlay
-        if (isOpen)
+        if (widget.isOpen)
           GestureDetector(
-            onTap: onClose,
+            onTap: widget.onClose,
             child: AnimatedOpacity(
-              opacity: isOpen ? 0.5 : 0.0,
+              opacity: widget.isOpen ? 0.5 : 0.0,
               duration: const Duration(milliseconds: 300),
               child: Container(color: Colors.black),
             ),
@@ -63,7 +78,7 @@ class SidebarPanel extends StatelessWidget {
           duration: const Duration(milliseconds: 500),
           top: 0,
           bottom: 0,
-          right: isOpen ? 0 : -270,
+          right: widget.isOpen ? 0 : -270,
           child: Container(
             width: 270,
             color: Colors.blue[900],
@@ -86,6 +101,7 @@ class SidebarPanel extends StatelessWidget {
                     children: [
                       _buildMenuItem(m.icon, m.title, m.action),
                       const Divider(color: Colors.white12),
+                      if (m.title == 'ตรวจสอบสถานะ') _buildSettingsDropdown(),
                     ],
                   ),
                 ),
@@ -98,11 +114,61 @@ class SidebarPanel extends StatelessWidget {
     );
   }
 
+  Widget _buildSettingsDropdown() {
+    return Column(
+      children: [
+        InkWell(
+          onTap: () =>
+              setState(() => _isSettingsExpanded = !_isSettingsExpanded),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Row(
+              children: [
+                Icon(Icons.settings, color: Colors.white, size: 22),
+                const SizedBox(width: 16),
+                const Expanded(
+                  child: Text(
+                    'การตั้งค่า',
+                    style: TextStyle(color: Colors.white, fontSize: 16),
+                  ),
+                ),
+                Icon(
+                  _isSettingsExpanded
+                      ? Icons.keyboard_arrow_up
+                      : Icons.keyboard_arrow_down,
+                  color: Colors.white,
+                ),
+              ],
+            ),
+          ),
+        ),
+        AnimatedCrossFade(
+          firstChild: const SizedBox.shrink(),
+          secondChild: Column(
+            children: _settingsMenuItems
+                .map(
+                  (item) => Padding(
+                    padding: const EdgeInsets.only(left: 38),
+                    child: _buildMenuItem(item.icon, item.title, item.action),
+                  ),
+                )
+                .toList(),
+          ),
+          crossFadeState: _isSettingsExpanded
+              ? CrossFadeState.showSecond
+              : CrossFadeState.showFirst,
+          duration: const Duration(milliseconds: 200),
+        ),
+        const Divider(color: Colors.white12),
+      ],
+    );
+  }
+
   Widget _buildMenuItem(IconData icon, String title, VoidCallback onTap) {
     return InkWell(
       onTap: () {
         onTap();
-        onClose();
+        widget.onClose();
       },
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 12),
