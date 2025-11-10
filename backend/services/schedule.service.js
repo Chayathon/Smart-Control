@@ -10,18 +10,52 @@ async function getSchedules() {
     }
 }
 
+async function getScheduleById(id) {
+    try {
+        const schedule = await Schedule.findById(id).populate('id_song');
+        return schedule;
+    } catch (err) {
+        console.error('Error in getSchedule:', err);
+        throw err;
+    }
+}
+
 async function saveSchedule(schedule) {
     try {
         const newSchedule = new Schedule(schedule);
 
         const savedSchedule = await newSchedule.save();
+
         return {
             success: true,
             message: 'บันทึกเพลงตั้งเวลาเรียบร้อย',
             data: savedSchedule,
-        }
+        };
     } catch (err) {
         console.error('Error in saveSchedule:', err);
+        throw err;
+    }
+}
+
+async function updateSchedule(id, schedule) {
+    try {
+        const updatedSchedule = await Schedule.findByIdAndUpdate(
+            id,
+            schedule,
+            { new: true }
+        );
+
+        if (!updatedSchedule) {
+            throw new Error('Schedule not found');
+        }
+
+        return {
+            success: true,
+            message: 'อัปเดตเพลงตั้งเวลาเรียบร้อย',
+            data: updatedSchedule,
+        };
+    } catch (err) {
+        console.error('Error in updateSchedule:', err);
         throw err;
     }
 }
@@ -49,4 +83,22 @@ async function changeScheduleStatus(id, isActive) {
     }
 }
 
-module.exports = { getSchedules, saveSchedule, changeScheduleStatus };
+async function deleteSchedule(id) {
+    try {
+        const deletedSchedule = await Schedule.findByIdAndDelete(id);
+
+        if (!deletedSchedule) {
+            throw new Error('Schedule not found');
+        }
+
+        return {
+            success: true,
+            message: 'ลบเพลงตั้งเวลาเรียบร้อย',
+        }
+    } catch (err) {
+        console.error('Error in deleteSchedule:', err);
+        throw err;
+    }
+}
+
+module.exports = { getSchedules, getScheduleById, saveSchedule, updateSchedule, changeScheduleStatus, deleteSchedule };

@@ -13,6 +13,28 @@ async function getSchedules(_req, res) {
     }
 }
 
+async function getScheduleById(req, res) {
+    try {
+        const { id } = req.params;
+
+        if (!id) {
+            return res.status(400).json({
+                success: false,
+                error: 'Missing schedule ID',
+            });
+        }
+
+        const result = await schedule.getScheduleById(id);
+        res.json({ ok: true, data: result });
+    } catch (err) {
+        console.error('Error in getScheduleById controller:', err);
+        res.status(500).json({
+            success: false,
+            error: 'Internal server error'
+        });
+    }
+}
+
 async function saveSchedule(req, res) {
     try {
         const scheduleData = req.body;
@@ -35,9 +57,33 @@ async function saveSchedule(req, res) {
     }
 }
 
+async function updateSchedule(req, res) {
+    try {
+        const { id } = req.params;
+        const scheduleData = req.body;
+
+        if (!id || !scheduleData) {
+            return res.status(400).json({
+                success: false,
+                error: 'Missing parameters',
+            });
+        }
+
+        const result = await schedule.updateSchedule(id, scheduleData);
+        res.json({ ok: true, result });
+    } catch (err) {
+        console.error('Error in updateSchedule controller:', err);
+        res.status(500).json({
+            success: false,
+            error: 'Internal server error',
+        });
+    }
+}
+
 async function changeScheduleStatus(req, res) {
     try {
-        const { id, is_active } = req.body;
+        const { id } = req.params;
+        const { is_active } = req.body;
 
         if (!id || typeof is_active !== 'boolean') {
             return res.status(400).json({
@@ -57,4 +103,26 @@ async function changeScheduleStatus(req, res) {
     }
 }
 
-module.exports = { getSchedules, saveSchedule, changeScheduleStatus };
+async function deleteSchedule(req, res) {
+    try {
+        const { id } = req.params;
+
+        if(!id) {
+            return res.status(400).json({
+                success: false,
+                error: 'Missing schedule ID',
+            });
+        }
+
+        const result = await schedule.deleteSchedule(id);
+        res.json({ ok: true, result });
+    } catch (err) {
+        console.error('Error in deleteSchedule controller:', err);
+        res.status(500).json({
+            success: false,
+            error: 'Internal server error',
+        });
+    }
+}
+
+module.exports = { getSchedules, getScheduleById, saveSchedule, updateSchedule, changeScheduleStatus, deleteSchedule };
