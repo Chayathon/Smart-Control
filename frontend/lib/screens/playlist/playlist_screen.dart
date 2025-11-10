@@ -167,7 +167,11 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
                   const SizedBox(height: 16),
                   Text(
                     "ยังไม่มีเพลงใน Playlist",
-                    style: TextStyle(color: Colors.grey, fontSize: 24),
+                    style: TextStyle(
+                      color: Colors.grey,
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   Text(
                     "กดปุ่ม ➕ เพื่อเพิ่มเพลง",
