@@ -6,10 +6,11 @@ router.get('/health', (_req, res) => {
 
 router.use('/stream', require('./stream.routes'));
 router.use('/mqtt', require('./mqtt.routes'));
-router.use('/device', require('./device.routes'))
-router.use('/auth', require('./user.routes'))
-router.use('/playlist', require('./playlist.routes'))
-router.use('/song', require('./song.routes'))
+router.use('/device', require('./device.routes'));
+router.use('/auth', require('./user.routes'));
+router.use('/playlist', require('./playlist.routes'));
+router.use('/schedule', require('./schedule.routes'));
+router.use('/song', require('./song.routes'));
 router.use('/deviceData', require('./deviceData.routes'));
 router.use('/settings', require('./settings.routes'));
 
