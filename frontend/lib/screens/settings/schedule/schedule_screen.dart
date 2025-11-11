@@ -594,7 +594,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                       padding: EdgeInsets.all(16.0),
                       child: SizedBox(
                         width: double.infinity,
-                        child: ElevatedButton(
+                        child: ElevatedButton.icon(
                           onPressed: () {
                             if (scheduleId != null) {
                               _updateSchedule(modalContext, scheduleId);
@@ -603,18 +603,19 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                             }
                           },
                           style: ElevatedButton.styleFrom(
+                            foregroundColor: Colors.white,
                             backgroundColor: Colors.blue,
                             padding: EdgeInsets.symmetric(vertical: 12),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
                           ),
-                          child: Text(
+                          icon: const Icon(Icons.save_outlined),
+                          label: const Text(
                             "บันทึก",
                             style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
-                              color: Colors.white,
                             ),
                           ),
                         ),
