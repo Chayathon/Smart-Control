@@ -709,27 +709,54 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
               itemCount: _schedules.length,
               itemBuilder: (context, index) {
                 final schedule = _schedules[index];
-                final days = (schedule['days_of_week'] as List<dynamic>)
-                    .map((d) => _dayNames[d])
-                    .join(', ');
 
                 return Card(
                   color: Colors.grey[100],
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
                   child: ListTile(
                     title: Text(
-                      schedule['description'] ?? 'ไม่มีคำอธิบาย',
-                      style: TextStyle(fontWeight: FontWeight.bold),
+                      schedule['time'],
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     subtitle: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisAlignment: MainAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text('เวลา: ${schedule['time']}'),
-                        Text('วัน: $days'),
+                        Row(
+                          children: [
+                            ...((schedule['days_of_week'] as List<dynamic>)
+                                .map<Widget>(
+                                  (d) => Padding(
+                                    padding: EdgeInsets.only(right: 4),
+                                    child: Card(
+                                      margin: EdgeInsets.symmetric(vertical: 4),
+                                      color: Colors.blue[100],
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Padding(
+                                        padding: EdgeInsets.symmetric(
+                                          horizontal: 6,
+                                          vertical: 4,
+                                        ),
+                                        child: Text(
+                                          _dayNames[d],
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: Colors.blue[800],
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                )
+                                .toList()),
+                          ],
+                        ),
+                        Text('คำอธิบาย: ${schedule['description'] ?? ''}'),
                         Text(
                           'เพลง: ${schedule['id_song']['name'] ?? 'ไม่มีชื่อ'}',
                         ),
