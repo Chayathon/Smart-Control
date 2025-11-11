@@ -172,14 +172,6 @@ class _SystemScreenState extends State<SystemScreen> {
         centerTitle: true,
         iconTheme: const IconThemeData(color: Colors.black),
         elevation: 1,
-        actions: [
-          if (_hasChanges)
-            IconButton(
-              icon: const Icon(Icons.save, color: Colors.blue),
-              tooltip: 'บันทึกการตั้งค่า',
-              onPressed: _saveSettings,
-            ),
-        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -212,7 +204,7 @@ class _SystemScreenState extends State<SystemScreen> {
       floatingActionButton: _hasChanges
           ? FloatingActionButton.extended(
               onPressed: _saveSettings,
-              backgroundColor: Colors.green,
+              backgroundColor: Colors.blue,
               icon: const Icon(Icons.save),
               label: const Text(
                 'บันทึกการตั้งค่า',
@@ -386,7 +378,7 @@ class _SystemScreenState extends State<SystemScreen> {
             children: [
               Icon(
                 _loopPlaylist ? Icons.repeat_on : Icons.repeat,
-                color: _loopPlaylist ? Colors.green : Colors.grey,
+                color: _loopPlaylist ? Colors.blue : Colors.grey,
                 size: 28,
               ),
               const SizedBox(width: 12),
@@ -395,14 +387,14 @@ class _SystemScreenState extends State<SystemScreen> {
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
-                  color: _loopPlaylist ? Colors.green : Colors.grey[700],
+                  color: _loopPlaylist ? Colors.blue : Colors.grey[700],
                 ),
               ),
             ],
           ),
           Switch(
             value: _loopPlaylist,
-            activeColor: Colors.green,
+            activeColor: Colors.blue[600],
             onChanged: (value) {
               setState(() {
                 _loopPlaylist = value;
