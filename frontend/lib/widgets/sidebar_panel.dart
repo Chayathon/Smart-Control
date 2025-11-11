@@ -48,7 +48,7 @@ class _SidebarPanelState extends State<SidebarPanel> {
   List<_MenuItem> get _settingsMenuItems => [
     _MenuItem(
       Icons.schedule_rounded,
-      'เพลงตั้งเวลา',
+      'ตั้งเวลาเปิดเพลง',
       () => Get.toNamed(AppRoutes.schedule),
     ),
     _MenuItem(
