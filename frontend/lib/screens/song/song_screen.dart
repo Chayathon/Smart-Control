@@ -466,26 +466,15 @@ class _SongScreenState extends State<SongScreen>
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        backgroundColor: Colors.white,
-        title: Text(
-          "แจ้งเตือน",
-          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
-        ),
-        content: Text(
-          "ยืนยันที่จะลบเพลง ${song.name} หรือไม่?",
-          style: TextStyle(fontSize: 16),
-        ),
+        title: Text("ยืนยันการลบ"),
+        content: Text("ยืนยันที่จะลบเพลง \"${song.name}\" ?"),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
             style: ButtonStyle(
               backgroundColor: WidgetStateProperty.all(Colors.grey[200]),
             ),
-            child: Text(
-              "ยกเลิก",
-              style: TextStyle(color: Colors.grey[600], fontSize: 16),
-            ),
+            child: Text("ยกเลิก", style: TextStyle(color: Colors.grey[600])),
           ),
           TextButton(
             onPressed: () {
@@ -499,7 +488,6 @@ class _SongScreenState extends State<SongScreen>
               "ยืนยัน",
               style: TextStyle(
                 color: Colors.redAccent,
-                fontSize: 16,
                 fontWeight: FontWeight.bold,
               ),
             ),
