@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 const multer = require('multer');
+const { json } = require('body-parser');
 
 // -------- Utils --------
 function ensureDir(dir) {
@@ -53,6 +54,15 @@ const upload = multer({ storage, fileFilter, limits: { fileSize: 10 * 1024 * 102
 
 async function getSongList() {
     return await Song.find().sort({ no: 1 }).lean();
+}
+
+async function getSongById(id) {
+  try {
+    const song = await Song.findById(id).lean();
+    return song;
+  } catch (error) {
+    return error;
+  }
 }
 
 async function getSongExceptInPlaylist() {
@@ -134,19 +144,73 @@ async function uploadSongYT(youtubeUrl, filename) {
   };
 }
 
+async function updateSongName(id, newName) {
+  try {
+    const isPlaylisted = await Playlist.exists({ id_song: id });
+
+    if (isPlaylisted) {
+      const err = new Error('ไม่สามารถแก้ไขชื่อเพลงนี้ได้ เนื่องจากมีการใช้งานในเพลย์ลิสต์');
+      err.status = 400;
+      throw err;
+    }
+
+    // Load the existing song to get the current filename
+    const song = await Song.findById(id);
+    if (!song) {
+      const err = new Error('Song not found');
+      err.status = 404;
+      throw err;
+    }
+
+    const unique = Math.random().toString(36).slice(2);
+    const safeName = sanitizeBaseName(newName);
+    const newUrl = `${safeName}-${unique}.mp3`;
+    const oldUrl = song.url;
+
+    const oldPath = path.join(UPLOAD_DIR, oldUrl || '');
+    const newPath = path.join(UPLOAD_DIR, newUrl);
+
+    // Rename on disk first (if the source file exists and names differ)
+    try {
+      if (oldUrl && oldUrl !== newUrl && fs.existsSync(oldPath)) {
+        // use promise API so we can await
+        await fs.promises.rename(oldPath, newPath);
+      } else if (oldUrl && !fs.existsSync(oldPath)) {
+        console.warn('Old file not found, will update DB anyway:', oldPath);
+      }
+    } catch (err) {
+      console.error('Error renaming file:', err);
+      const e = new Error('ไม่สามารถเปลี่ยนชื่อเพลงได้');
+      e.status = 500;
+      throw e;
+    }
+
+    // Update DB to point to the new filename
+    const updated = await Song.findByIdAndUpdate(
+      id,
+      { name: safeName, url: newUrl },
+      { new: true, runValidators: true }
+    );
+
+    return updated;
+  } catch (error) {
+    throw error;
+  }
+}
+
 async function deleteSong(id) {
   const isPlaylisted = await Playlist.exists({ id_song: id });
 
   if (isPlaylisted) {
-    const err = new Error('ไม่สามารถลบเพลงนี้ได้ เนื่องจากมีการใช้งานในเพลย์ลิสต์');
+    const err = new Error('Used in playlist');
     err.status = 400;
     throw err;
   }
 
-  const doc = await Song.findById(id);
-  if (!doc) return;
+  const song = await Song.findById(id);
+  if (!song) return;
 
-  const filePath = path.join(UPLOAD_DIR, doc.url);
+  const filePath = path.join(UPLOAD_DIR, song.url);
   await Song.findByIdAndDelete(id);
 
   fs.unlink(filePath, err => {
@@ -157,8 +221,10 @@ async function deleteSong(id) {
 module.exports = {
     upload, UPLOAD_DIR,
     getSongList,
+    getSongById,
     getSongExceptInPlaylist,
     uploadSongFile,
     uploadSongYT,
+    updateSongName,
     deleteSong
 };

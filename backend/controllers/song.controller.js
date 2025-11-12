@@ -19,6 +19,32 @@ async function getSongList(req, res) {
     }
 }
 
+async function getSongById(req, res) {
+    try {
+        const { id } = req.params;
+
+        if (!id) {
+            return res.status(400).json({
+                status: 'error',
+                message: 'Song ID is required'
+            });
+        }
+
+        const data = await song.getSongById(id);
+
+        return res.json({
+            status: 'success',
+            data
+        });
+    } catch (error) {
+        console.error('Error getting song by ID:', error);
+        res.status(500).json({
+            status: 'error',
+            message: error.message
+        })
+    }
+}
+
 async function getSongExceptInPlaylist(req, res) {
     try {
         const list = await song.getSongExceptInPlaylist();
@@ -77,6 +103,35 @@ async function uploadSongYT(req, res) {
     }
 }
 
+async function updateSongName(req, res) {
+    try {
+        const { id } = req.params;
+        const { newName } = req.body;
+
+        if (!id || !newName) {
+            return res.status(400).json({
+                status: 'error',
+                message: 'Song ID and new name are required'
+            });
+        }
+
+        const updatedSong = await song.updateSongName(id, newName);
+
+        return res.json({
+            status: 'success',
+            data: updatedSong
+        });
+    } catch (error) {
+        console.error('Error updating song name:', error);
+        const status = error.status || error.statusCode || 500;
+
+        return res.status(status).json({
+            status: 'error',
+            message: error.message
+        });
+    }
+}
+
 async function deleteSong(req, res) {
     try {
         const { songId } = req.params;
@@ -98,4 +153,4 @@ async function deleteSong(req, res) {
     }
 }
 
-module.exports = { getSongList, getSongExceptInPlaylist, uploadSongFile, uploadSongYT, deleteSong }
+module.exports = { getSongList, getSongById, getSongExceptInPlaylist, uploadSongFile, uploadSongYT, updateSongName, deleteSong }
