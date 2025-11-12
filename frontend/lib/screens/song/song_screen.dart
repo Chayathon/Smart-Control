@@ -39,7 +39,7 @@ class _SongUploadScreenState extends State<_SongUploadScreen> {
     return SafeArea(
       top: false,
       child: Padding(
-        padding: EdgeInsets.fromLTRB(20, 20, 20, bottomInset + 20),
+        padding: EdgeInsets.fromLTRB(16, 16, 16, bottomInset + 16),
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -228,6 +228,7 @@ class SongScreen extends StatefulWidget {
 class _SongScreenState extends State<SongScreen>
     with SingleTickerProviderStateMixin {
   List<Song> _songs = [];
+  final _nameCtrl = TextEditingController();
   late final AnimationController _fabCtrl;
   late final Animation<double> _rotate;
   bool isLoading = false;
@@ -283,6 +284,23 @@ class _SongScreenState extends State<SongScreen>
     }
   }
 
+  Future<void> getSong(String id) async {
+    try {
+      final api = await ApiService.private();
+
+      final result = await api.get("/song/$id");
+
+      if (result['status'] == 'success' && result['data'] != null) {
+        final song = Song.fromJson(result['data']);
+        setState(() {
+          _nameCtrl.text = song.name;
+        });
+      }
+    } catch (error) {
+      print(error);
+    }
+  }
+
   String _normalizeYouTubeUrl(String raw) {
     final text = raw.trim();
     final short = RegExp(r'^https?:\/\/youtu\.be\/([A-Za-z0-9_-]{6,})');
@@ -326,7 +344,7 @@ class _SongScreenState extends State<SongScreen>
       );
 
       if (res['status'] == 'success') {
-        AppSnackbar.success("แจ้งเตือน", "อัปโหลดสำเร็จ");
+        AppSnackbar.success("สำเร็จ", "อัปโหลดสำเร็จ");
         getSongList();
         return;
       }
@@ -334,9 +352,9 @@ class _SongScreenState extends State<SongScreen>
       final msg = e.response?.data is Map<String, dynamic>
           ? (e.response!.data['message']?.toString() ?? 'อัปโหลดล้มเหลว')
           : 'อัปโหลดล้มเหลว';
-      AppSnackbar.error("แจ้งเตือน", msg);
+      AppSnackbar.error("ล้มเหลว", msg);
     } catch (error) {
-      AppSnackbar.error("แจ้งเตือน", "อัปโหลดล้มเหลว");
+      AppSnackbar.error("ล้มเหลว", "อัปโหลดล้มเหลว");
     } finally {
       LoadingOverlay.hide();
     }
@@ -350,7 +368,7 @@ class _SongScreenState extends State<SongScreen>
       final normalizedUrl = _normalizeYouTubeUrl(youtubeUrl);
 
       if (!_looksLikeYouTubeUrl(normalizedUrl)) {
-        AppSnackbar.error("แจ้งเตือน", "URL ไม่ใช่ลิงก์ YouTube ที่รองรับ");
+        AppSnackbar.error("ล้มเหลว", "URL ไม่ใช่ลิงก์ YouTube ที่รองรับ");
         return;
       }
 
@@ -374,7 +392,7 @@ class _SongScreenState extends State<SongScreen>
       final status = res['status']?.toString().toLowerCase();
 
       if (status == 'success') {
-        AppSnackbar.success("แจ้งเตือน", "เพิ่มเพลงจาก YouTube สำเร็จ");
+        AppSnackbar.success("สำเร็จ", "เพิ่มเพลงจาก YouTube สำเร็จ");
       }
 
       try {
@@ -390,7 +408,7 @@ class _SongScreenState extends State<SongScreen>
 
       if (isTimeout) {
         AppSnackbar.success(
-          "แจ้งเตือน",
+          "สำเร็จ",
           "เพิ่มเพลงจาก YouTube สำเร็จ (กำลังประมวลผลบนเซิร์ฟเวอร์)",
         );
         try {
@@ -402,9 +420,32 @@ class _SongScreenState extends State<SongScreen>
       final msg = e.response?.data is Map<String, dynamic>
           ? (e.response!.data['message']?.toString() ?? 'อัปโหลดล้มเหลว')
           : 'อัปโหลดล้มเหลว';
-      AppSnackbar.error("แจ้งเตือน", msg);
+      AppSnackbar.error("ล้มเหลว", msg);
     } catch (_) {
-      AppSnackbar.error("แจ้งเตือน", "อัปโหลดล้มเหลว");
+      AppSnackbar.error("ล้มเหลว", "อัปโหลดล้มเหลว");
+    } finally {
+      LoadingOverlay.hide();
+    }
+  }
+
+  Future<void> editSong(String id, String newName) async {
+    try {
+      LoadingOverlay.show(context);
+
+      final api = await ApiService.private();
+
+      final res = await api.patch(
+        "/song/update/$id",
+        data: {'newName': newName},
+      );
+
+      if (res['status'] == 'success' && res['data']['name'] == newName) {
+        AppSnackbar.success("สำเร็จ", "แก้ไขชื่อเพลงสำเร็จ");
+        getSongList();
+        return;
+      }
+    } on ApiException catch (e) {
+      AppSnackbar.error("ล้มเหลว", e.message);
     } finally {
       LoadingOverlay.hide();
     }
@@ -421,12 +462,12 @@ class _SongScreenState extends State<SongScreen>
       final res = await api.delete<Map<String, dynamic>>('/song/remove/$id');
 
       if (res['status'] == 'success') {
-        AppSnackbar.success('แจ้งเตือน', 'ลบเพลงสำเร็จแล้ว');
+        AppSnackbar.success('สำเร็จ', 'ลบเพลงสำเร็จแล้ว');
         getSongList();
         return;
       }
     } on ApiException catch (e) {
-      AppSnackbar.error('แจ้งเตือน', e.message);
+      AppSnackbar.error('ล้มเหลว', e.message);
     } finally {
       if (context.mounted) LoadingOverlay.hide();
       _isDeletingSong = false;
@@ -462,38 +503,126 @@ class _SongScreenState extends State<SongScreen>
   //   AppSnackbar.success("แจ้งเตือน", "กำลังเล่นเพลง ${_songs[index].name}");
   // }
 
-  void _showDeleteConfirmDialog(BuildContext context, song) {
-    showDialog(
+  Future<void> _editDialog(String id) async {
+    await getSong(id);
+
+    showModalBottomSheet(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text("ยืนยันการลบ"),
-        content: Text("ยืนยันที่จะลบเพลง \"${song.name}\" ?"),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            style: ButtonStyle(
-              backgroundColor: WidgetStateProperty.all(Colors.grey[200]),
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (BuildContext context) {
+        return SafeArea(
+          child: Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(context).viewInsets.bottom,
             ),
-            child: Text("ยกเลิก", style: TextStyle(color: Colors.grey[600])),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              deleteSong(song.id);
-            },
-            style: ButtonStyle(
-              backgroundColor: WidgetStateProperty.all(Colors.red[50]),
-            ),
-            child: Text(
-              "ยืนยัน",
-              style: TextStyle(
-                color: Colors.redAccent,
-                fontWeight: FontWeight.bold,
+            child: SingleChildScrollView(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          "แก้ไขชื่อเพลง",
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _TextFieldBox(
+                            controller: _nameCtrl,
+                            hint: "ชื่อเพลง",
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: () {
+                              editSong(id, _nameCtrl.text);
+                              Navigator.pop(context);
+                            },
+                            label: const Text(
+                              "บักทึก",
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            icon: const Icon(Icons.save_outlined),
+                            style: ElevatedButton.styleFrom(
+                              foregroundColor: Colors.white,
+                              backgroundColor: Colors.blue,
+                              padding: EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadiusGeometry.all(
+                                  Radius.circular(12),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
-        ],
-      ),
+        );
+      },
+    );
+  }
+
+  void _deleteDialog(String id, String name) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text("ยืนยันการลบ"),
+          content: Text("ยืนยันที่จะลบเพลง \"${name}\" ?"),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              style: ButtonStyle(
+                backgroundColor: WidgetStateProperty.all(Colors.grey[200]),
+              ),
+              child: Text("ยกเลิก", style: TextStyle(color: Colors.grey[600])),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                deleteSong(id);
+              },
+              style: ButtonStyle(
+                backgroundColor: WidgetStateProperty.all(Colors.red[50]),
+              ),
+              child: Text(
+                "ยืนยัน",
+                style: TextStyle(
+                  color: Colors.redAccent,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -569,9 +698,19 @@ class _SongScreenState extends State<SongScreen>
                     //   icon: const Icon(Icons.play_arrow, color: Colors.blue),
                     //   onPressed: () => playSong(index),
                     // ),
-                    trailing: IconButton(
-                      icon: const Icon(Icons.delete, color: Colors.red),
-                      onPressed: () => _showDeleteConfirmDialog(context, song),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          onPressed: () => _editDialog(song.id.toString()),
+                          icon: Icon(Icons.edit, color: Colors.amber),
+                        ),
+                        IconButton(
+                          onPressed: () =>
+                              _deleteDialog(song.id.toString(), song.name),
+                          icon: const Icon(Icons.delete, color: Colors.red),
+                        ),
+                      ],
                     ),
                   ),
                 );
