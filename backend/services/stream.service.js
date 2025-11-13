@@ -716,8 +716,8 @@ async function startLocalFile(filePath, seekMs = 0, opts = {}) {
                 bus.emit('status', { event: 'ended', reason: 'ffmpeg-closed', code });
             }
 
-            // ถ้าเป็น schedule ให้ notify scheduler service
-            if (wasSchedule) {
+            // ถ้าเป็น schedule และไม่ได้อยู่ในสถานะ pause
+            if (wasSchedule && !pausePendingResume) {
                 const schedulerService = require('./scheduler.service');
                 if (schedulerService.isSchedulePlaying) {
                     // Schedule จบแล้ว ให้ scheduler.service จัดการ

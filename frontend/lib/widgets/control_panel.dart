@@ -254,8 +254,16 @@ class _ControlPanelState extends State<ControlPanel> {
         currentSongIndex = idx;
         totalSongs = tot;
 
-        // Reset schedule state when mode changes or ended
-        if (mode != PlaybackMode.schedule || event == 'schedule-ended') {
+        // Reset schedule state เฉพาะเมื่อ schedule จบจริงๆ (ไม่ใช่แค่ pause)
+        if (event == 'schedule-ended') {
+          scheduleActive = false;
+          scheduleSongName = '';
+          scheduleTime = '';
+          scheduleDays = [];
+          scheduleDescription = '';
+        }
+        // ถ้า mode ไม่ใช่ schedule และไม่ใช่ event paused ให้ reset schedule state
+        else if (mode != PlaybackMode.schedule && event != 'paused') {
           scheduleActive = false;
           scheduleSongName = '';
           scheduleTime = '';
@@ -374,6 +382,22 @@ class _ControlPanelState extends State<ControlPanel> {
         // แสดงชื่อเพลงจาก schedule
         if (schedActive && schedSongName.isNotEmpty) {
           title = schedSongName;
+        }
+        // ถ้า pause อยู่ ให้คงค่า schedule state เดิมไว้ ไม่ต้องเคลียร์
+        if (engIsPaused) {
+          schedActive = this.scheduleActive || schedActive;
+          schedSongName = this.scheduleSongName.isNotEmpty
+              ? this.scheduleSongName
+              : schedSongName;
+          schedTime = this.scheduleTime.isNotEmpty
+              ? this.scheduleTime
+              : schedTime;
+          schedDays = this.scheduleDays.isNotEmpty
+              ? this.scheduleDays
+              : schedDays;
+          schedDesc = this.scheduleDescription.isNotEmpty
+              ? this.scheduleDescription
+              : schedDesc;
         }
       } else if (activeMode == PlaybackMode.file) {
         if (data['name'] != null && data['name'].toString().isNotEmpty) {
