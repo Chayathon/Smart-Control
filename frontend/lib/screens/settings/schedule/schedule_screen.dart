@@ -1,6 +1,7 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:smart_control/core/alert/app_snackbar.dart';
 import 'package:smart_control/core/network/api_service.dart';
+import 'package:smart_control/core/network/api_exceptions.dart';
 import 'package:smart_control/widgets/loading_overlay.dart';
 
 class ScheduleScreen extends StatefulWidget {
@@ -255,9 +256,8 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
         _loadSchedules();
         _resetForm();
       }
-    } catch (error) {
-      print("Error saving schedule: $error");
-      AppSnackbar.error("แจ้งเตือน", "เกิดข้อผิดพลาดในการบันทึกข้อมูล");
+    } on ApiException catch (error) {
+      AppSnackbar.error("ล้มเหลว", error.message);
     } finally {
       LoadingOverlay.hide();
     }
@@ -305,9 +305,8 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
         _loadSchedules();
         _resetForm();
       }
-    } catch (error) {
-      print("Error updating schedule: $error");
-      AppSnackbar.error("แจ้งเตือน", "เกิดข้อผิดพลาดในการอัปเดตข้อมูล");
+    } on ApiException catch (error) {
+      AppSnackbar.error("ล้มเหลว", error.message);
     } finally {
       LoadingOverlay.hide();
     }
