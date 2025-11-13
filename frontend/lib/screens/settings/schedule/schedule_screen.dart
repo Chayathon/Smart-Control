@@ -53,7 +53,10 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   @override
   void initState() {
     super.initState();
-    _loadSchedules();
+    // Load schedules after the first frame is rendered
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadSchedules();
+    });
   }
 
   final List<String> _dayNames = [
@@ -67,6 +70,8 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   ];
 
   Future<void> _loadSchedules() async {
+    if (!mounted) return;
+
     LoadingOverlay.show(context);
 
     try {
@@ -85,7 +90,9 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
         );
       }
     } finally {
-      LoadingOverlay.hide();
+      if (mounted) {
+        LoadingOverlay.hide();
+      }
     }
   }
 
@@ -168,6 +175,8 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   }
 
   Future<void> _deleteSchedule(String scheduleId) async {
+    if (!mounted) return;
+
     LoadingOverlay.show(context);
 
     try {
@@ -188,7 +197,9 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
         );
       }
     } finally {
-      LoadingOverlay.hide();
+      if (mounted) {
+        LoadingOverlay.hide();
+      }
     }
   }
 
@@ -221,6 +232,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   Future<void> _saveSchedule(BuildContext modalContext) async {
     if (!_validateForm()) return;
 
+    if (!mounted) return;
     LoadingOverlay.show(context);
 
     try {
@@ -228,22 +240,28 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
       final success = await ScheduleService.createSchedule(scheduleData);
 
       if (success) {
-        Navigator.pop(modalContext);
-        AppSnackbar.success("สำเร็จ", "บันทึกข้อมูลการตั้งเวลาเรียบร้อยแล้ว");
+        if (mounted) {
+          Navigator.pop(modalContext);
+          AppSnackbar.success("สำเร็จ", "บันทึกข้อมูลการตั้งเวลาเรียบร้อยแล้ว");
+        }
         await _loadSchedules();
         _resetForm();
       } else {
         throw Exception("Failed to save schedule");
       }
     } on ApiException catch (error) {
-      AppSnackbar.error("ล้มเหลว", error.message);
+      if (mounted) {
+        AppSnackbar.error("ล้มเหลว", error.message);
+      }
     } catch (error) {
       print("Error saving schedule: $error");
       if (mounted) {
         AppSnackbar.error("แจ้งเตือน", "เกิดข้อผิดพลาดในการบันทึกข้อมูล");
       }
     } finally {
-      LoadingOverlay.hide();
+      if (mounted) {
+        LoadingOverlay.hide();
+      }
     }
   }
 
@@ -253,6 +271,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   ) async {
     if (!_validateForm()) return;
 
+    if (!mounted) return;
     LoadingOverlay.show(context);
 
     try {
@@ -263,22 +282,28 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
       );
 
       if (success) {
-        Navigator.pop(modalContext);
-        AppSnackbar.success("สำเร็จ", "อัปเดตข้อมูลการตั้งเวลาเรียบร้อยแล้ว");
+        if (mounted) {
+          Navigator.pop(modalContext);
+          AppSnackbar.success("สำเร็จ", "อัปเดตข้อมูลการตั้งเวลาเรียบร้อยแล้ว");
+        }
         await _loadSchedules();
         _resetForm();
       } else {
         throw Exception("Failed to update schedule");
       }
     } on ApiException catch (error) {
-      AppSnackbar.error("ล้มเหลว", error.message);
+      if (mounted) {
+        AppSnackbar.error("ล้มเหลว", error.message);
+      }
     } catch (error) {
       print("Error updating schedule: $error");
       if (mounted) {
         AppSnackbar.error("แจ้งเตือน", "เกิดข้อผิดพลาดในการอัปเดตข้อมูล");
       }
     } finally {
-      LoadingOverlay.hide();
+      if (mounted) {
+        LoadingOverlay.hide();
+      }
     }
   }
 
