@@ -614,7 +614,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                           label: const Text(
                             "บันทึก",
                             style: TextStyle(
-                              fontSize: 18,
+                              fontSize: 16,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
