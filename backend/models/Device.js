@@ -10,7 +10,7 @@ const deviceSchema = new mongoose.Schema(
             is_playing: { type: Boolean, default: false },
             playback_mode: {
                 type: String,
-                enum: ['none', 'playlist', 'file', 'youtube', 'mic'],
+                enum: ['none', 'playlist', 'file', 'youtube', 'schedule'],
                 default: 'none',
             },
         },

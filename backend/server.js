@@ -5,6 +5,7 @@ const createApp = require('./app');
 const { connectMongo } = require('./database/mongoose');
 const mqttSvc = require('./services/mqtt.service');
 const { createWSServer } = require('./ws/wsServer');
+const schedulerService = require('./services/scheduler.service');
 
 (async () => {
     try {
@@ -18,6 +19,9 @@ const { createWSServer } = require('./ws/wsServer');
 
 
         mqttSvc.connectAndSend();
+
+        // เริ่ม scheduler สำหรับเล่นเพลงตามเวลา
+        schedulerService.startScheduler();
 
 
         app.get('/devices/status', (req, res) => {

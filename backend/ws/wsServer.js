@@ -50,7 +50,18 @@ function createWSServer(server) {
             console.error('⚠️ Failed to update devices playback_mode:', e.message || e);
         }
     };
+    
+    const onScheduleStatus = async (payload) => {
+        const msg = JSON.stringify({ type: 'schedule-status', ...payload });
+        for (const client of statusClients) {
+            if (client.readyState === WebSocket.OPEN) {
+                try { client.send(msg); } catch { }
+            }
+        }
+    };
+    
     bus.on('status', onStatus);
+    bus.on('schedule-status', onScheduleStatus);
 
     server.on('upgrade', (req, socket, head) => {
         let pathname = '/';

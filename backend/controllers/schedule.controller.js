@@ -1,4 +1,31 @@
 const schedule = require('../services/schedule.service');
+const schedulerService = require('../services/scheduler.service');
+
+async function getScheduleStatus(_req, res) {
+    try {
+        const status = schedulerService.getScheduleStatus();
+        res.json({ ok: true, data: status });
+    } catch (err) {
+        console.error('Error in getScheduleStatus controller:', err);
+        res.status(500).json({
+            success: false,
+            error: 'Internal server error'
+        });
+    }
+}
+
+async function stopSchedulePlayback(_req, res) {
+    try {
+        const result = await schedulerService.stopSchedulePlayback();
+        res.json({ ok: true, result });
+    } catch (err) {
+        console.error('Error in stopSchedulePlayback controller:', err);
+        res.status(500).json({
+            success: false,
+            error: 'Internal server error'
+        });
+    }
+}
 
 async function getSchedules(_req, res) {
     try {
@@ -125,4 +152,13 @@ async function deleteSchedule(req, res) {
     }
 }
 
-module.exports = { getSchedules, getScheduleById, saveSchedule, updateSchedule, changeScheduleStatus, deleteSchedule };
+module.exports = { 
+    getSchedules, 
+    getScheduleById, 
+    saveSchedule, 
+    updateSchedule, 
+    changeScheduleStatus, 
+    deleteSchedule,
+    getScheduleStatus,
+    stopSchedulePlayback
+};

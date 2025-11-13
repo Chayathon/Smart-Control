@@ -74,6 +74,11 @@ const ytdlpCache = new Map();
 
 const isAlive = (p) => !!p && p.exitCode === null;
 
+function isMicActive() {
+    // เช็คว่าไมค์เปิดอยู่โดยดูจาก activeMode หรือ activeWs
+    return activeMode === 'mic' || (activeWs && activeWs.readyState === 1);
+}
+
 async function checkStreamEnabled() {
     try {
         // Check if any device has stream_enabled = true
@@ -655,16 +660,21 @@ async function startLocalFile(filePath, seekMs = 0, opts = {}) {
         throw err;
     }
     
-    if (activeMode !== 'none') {
+    // ตรวจสอบว่าเป็นการเล่นจาก schedule หรือไม่
+    const isSchedule = opts && opts.isSchedule === true;
+    
+    // ถ้าไม่ใช่ schedule และมี active mode อยู่ ให้ check priority
+    if (!isSchedule && activeMode !== 'none') {
         const allowResume = opts && opts.fromResume === true && activeMode === 'file';
         if (!allowResume) {
-        const err = new Error(`ระบบกำลังเล่นโหมด ${activeMode} อยู่ โปรดหยุดก่อนเริ่มไฟล์จากเครื่อง`);
-        err.code = 'MODE_BUSY';
-        err.activeMode = activeMode;
-        err.requestedMode = 'file';
-        throw err;
+            const err = new Error(`ระบบกำลังเล่นโหมด ${activeMode} อยู่ โปรดหยุดก่อนเริ่มไฟล์จากเครื่อง`);
+            err.code = 'MODE_BUSY';
+            err.activeMode = activeMode;
+            err.requestedMode = 'file';
+            throw err;
         }
     }
+    
     while (starting) await sleep(50);
     starting = true;
     try {
@@ -693,6 +703,7 @@ async function startLocalFile(filePath, seekMs = 0, opts = {}) {
         ffmpegProcess.on('close', (code) => {
             console.log(`🎵 สตรีมไฟล์ในเครื่องจบการทำงาน (รหัส ${code})`);
             const endedUrl = currentStreamUrl;
+            const wasSchedule = activeMode === 'schedule';
             ffmpegProcess = null;
             if (!pausePendingResume) {
                 isPaused = false;
@@ -705,7 +716,23 @@ async function startLocalFile(filePath, seekMs = 0, opts = {}) {
                 bus.emit('status', { event: 'ended', reason: 'ffmpeg-closed', code });
             }
 
-            if (!pausePendingResume && cfg.stream.autoReplayOnEnd && endedUrl) {
+            // ถ้าเป็น schedule ให้ notify scheduler service
+            if (wasSchedule) {
+                const schedulerService = require('./scheduler.service');
+                if (schedulerService.isSchedulePlaying) {
+                    // Schedule จบแล้ว ให้ scheduler.service จัดการ
+                    setTimeout(() => {
+                        const sched = require('./scheduler.service');
+                        if (sched.isSchedulePlaying) {
+                            sched.stopSchedulePlayback().catch(err => {
+                                console.error('Error stopping schedule after end:', err);
+                            });
+                        }
+                    }, 100);
+                }
+            }
+
+            if (!pausePendingResume && !wasSchedule && cfg.stream.autoReplayOnEnd && endedUrl) {
                 setTimeout(() => {
                     console.log('🔁 Auto replay same file');
                     startLocalFile(endedUrl).catch(e => console.error('Auto replay failed:', e));
@@ -715,7 +742,7 @@ async function startLocalFile(filePath, seekMs = 0, opts = {}) {
 
         isPaused = false;
         currentStreamUrl = absPath;
-        activeMode = 'file';
+        activeMode = isSchedule ? 'schedule' : 'file';
         trackBaseOffsetMs = Math.max(0, seekMs | 0);
         trackStartMonotonic = nowMs();
         bus.emit('status', { event: 'started', url: absPath, name: currentDisplayName });
@@ -748,6 +775,9 @@ function pause() {
             throw new Error('no active playlist');
         }
         pausedState = { kind: 'playlist', index: currentIndex, resumeMs: lastKnownElapsedMs };
+    } else if (activeMode === 'schedule') {
+        // schedule สามารถ pause ได้
+        pausedState = { kind: 'schedule', path: currentStreamUrl, resumeMs: lastKnownElapsedMs };
     } else if (activeMode === 'youtube') {
         throw new Error('cannot pause youtube');
     } else if (activeMode === 'file') {
@@ -796,6 +826,9 @@ function resume() {
                 currentIndex = typeof toResume.index === 'number' ? toResume.index : currentIndex;
                 activeMode = 'playlist';
                 _playIndex(currentIndex, seekMs).catch(e => console.error('resume playlist failed:', e));
+            } else if (kind === 'schedule' && toResume.path) {
+                // resume schedule
+                startLocalFile(toResume.path, seekMs, { fromResume: true, isSchedule: true }).catch(e => console.error('resume schedule failed:', e));
             } else if (kind === 'youtube' && toResume.url) {
                 console.warn('Resume requested for YouTube but disabled');
             } else if (kind === 'file' && toResume.path) {
@@ -807,6 +840,9 @@ function resume() {
 }
 
 function getStatus() {
+    const schedulerService = require('./scheduler.service');
+    const scheduleStatus = schedulerService.getScheduleStatus();
+    
     const status = {
         isPlaying: isAlive(ffmpegProcess) && currentStreamUrl !== 'flutter-mic',
         isPaused,
@@ -819,6 +855,7 @@ function getStatus() {
         resumeMs: lastKnownElapsedMs,
         activeMode,
         name: currentDisplayName,
+        schedule: scheduleStatus, // เพิ่มข้อมูล schedule
     };
     
     if (playlistMode && currentIndex >= 0 && currentIndex < playlistQueue.length) {
@@ -839,6 +876,15 @@ async function startMicStream(ws) {
         console.warn('Mic start requested but stream is disabled');
         try { ws.close(1013, 'stream-disabled'); } catch { }
         return;
+    }
+    
+    // Priority 1: Mic - หยุด schedule ถ้ากำลังเล่นอยู่
+    const schedulerService = require('./scheduler.service');
+    if (schedulerService.isSchedulePlaying) {
+        console.log('🎤 Mic priority: Stopping schedule playback');
+        await schedulerService.stopSchedulePlayback();
+        console.log('⏳ Waiting 8 seconds before starting mic...');
+        await sleep(8000); // รอ 8 วินาที
     }
     
     if (isAlive(ffmpegProcess) && currentStreamUrl !== 'flutter-mic') {
@@ -1068,6 +1114,7 @@ module.exports = {
     stopAll,
     enableStream,
     disableStream,
+    isMicActive,
 
     _internals: { isAlive: (p) => isAlive(p) }
 };

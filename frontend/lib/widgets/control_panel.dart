@@ -9,7 +9,7 @@ import 'package:smart_control/widgets/loading_overlay.dart';
 import 'package:smart_control/core/services/StreamStatusService.dart';
 import 'package:smart_control/core/config/app_config.dart';
 
-enum PlaybackMode { none, playlist, file, youtube }
+enum PlaybackMode { none, playlist, file, youtube, schedule }
 
 class ControlPanel extends StatefulWidget {
   const ControlPanel({Key? key}) : super(key: key);
@@ -48,6 +48,13 @@ class _ControlPanelState extends State<ControlPanel> {
   int totalSongs = 0;
   PlaybackMode playbackMode = PlaybackMode.none;
   Timer? _localControlsCooldownTimer;
+
+  // Schedule state
+  bool scheduleActive = false;
+  String scheduleSongName = '';
+  String scheduleTime = '';
+  List<int> scheduleDays = [];
+  String scheduleDescription = '';
 
   static const String _micServerUrl = AppConfig.wsMic;
 
@@ -136,6 +143,8 @@ class _ControlPanelState extends State<ControlPanel> {
         return PlaybackMode.file;
       case 'youtube':
         return PlaybackMode.youtube;
+      case 'schedule':
+        return PlaybackMode.schedule;
       default:
         return PlaybackMode.none;
     }
@@ -217,6 +226,22 @@ class _ControlPanelState extends State<ControlPanel> {
         }
       } else if (mode == PlaybackMode.youtube) {
         title = (data['url'] ?? data['currentUrl'])?.toString() ?? title;
+      } else if (mode == PlaybackMode.schedule) {
+        // รับข้อมูล schedule จาก SSE
+        if (data['currentSchedule'] != null) {
+          final sched = data['currentSchedule'];
+          title = (sched['songName'] ?? '').toString();
+
+          if (mounted) {
+            setState(() {
+              scheduleActive = true;
+              scheduleSongName = (sched['songName'] ?? '').toString();
+              scheduleTime = (sched['time'] ?? '').toString();
+              scheduleDays = List<int>.from(sched['days'] ?? []);
+              scheduleDescription = (sched['description'] ?? '').toString();
+            });
+          }
+        }
       }
 
       if (!mounted) return;
@@ -228,6 +253,15 @@ class _ControlPanelState extends State<ControlPanel> {
         currentSongTitle = title;
         currentSongIndex = idx;
         totalSongs = tot;
+
+        // Reset schedule state when mode changes or ended
+        if (mode != PlaybackMode.schedule || event == 'schedule-ended') {
+          scheduleActive = false;
+          scheduleSongName = '';
+          scheduleTime = '';
+          scheduleDays = [];
+          scheduleDescription = '';
+        }
       });
 
       // For events that may not include full state, fetch authoritative status
@@ -236,7 +270,8 @@ class _ControlPanelState extends State<ControlPanel> {
           event == 'mic-stopped' ||
           event == 'stopped' ||
           event == 'stopped-all' ||
-          event == 'ended') {
+          event == 'ended' ||
+          event == 'schedule-ended') {
         _scheduleRefreshFromDb(const Duration(milliseconds: 200));
       }
     } catch (_) {
@@ -308,6 +343,25 @@ class _ControlPanelState extends State<ControlPanel> {
       final bool engPlaylistMode =
           activeMode == PlaybackMode.playlist || data['playlistMode'] == true;
 
+      // ดึงข้อมูล schedule
+      bool schedActive = false;
+      String schedSongName = '';
+      String schedTime = '';
+      List<int> schedDays = [];
+      String schedDesc = '';
+
+      if (data['schedule'] != null) {
+        final sched = data['schedule'];
+        schedActive = sched['isPlaying'] == true;
+        if (sched['currentSchedule'] != null) {
+          final curr = sched['currentSchedule'];
+          schedSongName = (curr['songName'] ?? '').toString();
+          schedTime = (curr['time'] ?? '').toString();
+          schedDays = List<int>.from(curr['days'] ?? []);
+          schedDesc = (curr['description'] ?? '').toString();
+        }
+      }
+
       String title = currentSongTitle;
       int idx = currentSongIndex;
       int tot = totalSongs;
@@ -316,6 +370,11 @@ class _ControlPanelState extends State<ControlPanel> {
         title = (cs['title'] ?? '').toString();
         idx = ((cs['index'] ?? 0) as int) + 1;
         tot = (cs['total'] ?? data['totalSongs'] ?? 0) as int;
+      } else if (activeMode == PlaybackMode.schedule) {
+        // แสดงชื่อเพลงจาก schedule
+        if (schedActive && schedSongName.isNotEmpty) {
+          title = schedSongName;
+        }
       } else if (activeMode == PlaybackMode.file) {
         if (data['name'] != null && data['name'].toString().isNotEmpty) {
           title = data['name'].toString();
@@ -345,6 +404,14 @@ class _ControlPanelState extends State<ControlPanel> {
         currentSongTitle = title;
         currentSongIndex = idx;
         totalSongs = tot;
+        streamEnabled = streamEnabledFromDb;
+
+        // อัปเดต schedule state
+        scheduleActive = schedActive;
+        scheduleSongName = schedSongName;
+        scheduleTime = schedTime;
+        scheduleDays = schedDays;
+        scheduleDescription = schedDesc;
       });
       return true;
     } catch (_) {
@@ -719,7 +786,8 @@ class _ControlPanelState extends State<ControlPanel> {
         );
 
         _startLocalControlsCooldown();
-      } else if (playbackMode == PlaybackMode.file) {
+      } else if (playbackMode == PlaybackMode.file ||
+          playbackMode == PlaybackMode.schedule) {
         final api = await ApiService.private();
         if (isPaused) {
           await api.get('/stream/resume');
@@ -751,6 +819,129 @@ class _ControlPanelState extends State<ControlPanel> {
     } catch (e) {
       AppSnackbar.error('ข้อผิดพลาด', 'ไม่สามารถหยุดการเล่นได้');
     }
+  }
+
+  String _getDayName(int dayNum) {
+    const days = ['อา.', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.'];
+    if (dayNum >= 0 && dayNum < days.length) return days[dayNum];
+    return '';
+  }
+
+  Widget _buildScheduleInfo(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.purple[50]!, Colors.purple[100]!],
+        ),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.purple[300]!),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.schedule, color: Colors.purple[700], size: 14),
+              const SizedBox(width: 8),
+              Text(
+                'เพลงตั้งเวลา',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.purple[900],
+                ),
+              ),
+              const Spacer(),
+              IconButton(
+                icon: Icon(Icons.settings, color: Colors.purple[700]),
+                onPressed: () {
+                  Navigator.pushNamed(context, '/settings/schedule');
+                },
+                tooltip: 'ตั้งค่าเพลงตั้งเวลา',
+              ),
+            ],
+          ),
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      scheduleDescription,
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.purple[900],
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.access_time,
+                          size: 16,
+                          color: Colors.purple[600],
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          scheduleTime,
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.purple[700],
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Icon(
+                          Icons.calendar_today,
+                          size: 16,
+                          color: Colors.purple[600],
+                        ),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            scheduleDays.map(_getDayName).join(', '),
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.purple[700],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.music_note,
+                          size: 16,
+                          color: Colors.purple[600],
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          scheduleSongName,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.purple[600],
+                            fontStyle: FontStyle.italic,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -866,7 +1057,8 @@ class _ControlPanelState extends State<ControlPanel> {
               ),
 
               if ((playbackMode == PlaybackMode.playlist ||
-                      playbackMode == PlaybackMode.file) &&
+                      playbackMode == PlaybackMode.file ||
+                      playbackMode == PlaybackMode.schedule) &&
                   !isLoading) ...[
                 const SizedBox(height: 12),
                 Container(
@@ -959,6 +1151,12 @@ class _ControlPanelState extends State<ControlPanel> {
                     ],
                   ),
                 ),
+              ],
+
+              // แสดง Schedule Info
+              if (playbackMode == PlaybackMode.schedule && scheduleActive) ...[
+                const SizedBox(height: 12),
+                _buildScheduleInfo(context),
               ],
             ],
           ),
