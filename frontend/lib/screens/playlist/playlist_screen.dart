@@ -197,10 +197,7 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: ListTile(
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 8,
-                    ),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16),
                     leading: CircleAvatar(
                       backgroundColor: AppColors.primary,
                       foregroundColor: Colors.white,
