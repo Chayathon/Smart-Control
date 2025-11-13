@@ -28,20 +28,24 @@ async function checkAndPlaySchedules() {
     try {
         const now = new Date();
         const currentDay = now.getDay(); // 0=Sunday, 1=Monday, etc.
+        
+        // เพิ่มเวลา 10 วินาที เพื่อเช็คล่วงหน้า
+        const checkTime = new Date(now.getTime() + 10 * 1000);
+        const targetTime = `${String(checkTime.getHours()).padStart(2, '0')}:${String(checkTime.getMinutes()).padStart(2, '0')}`;
         const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
         
-        console.log(`🕐 Schedule check: Day=${currentDay}, Time=${currentTime}`);
+        console.log(`🕐 Schedule check: Day=${currentDay}, CurrentTime=${currentTime}, CheckingFor=${targetTime}`);
 
-        // ดึง schedules ที่ active และตรงกับวันและเวลาปัจจุบัน
+        // ดึง schedules ที่ active และตรงกับวันและเวลาที่จะถึง (ล่วงหน้า 10 วินาที)
         const schedules = await Schedule.find({
             is_active: true,
             days_of_week: currentDay,
-            time: currentTime
+            time: targetTime
         }).populate('id_song').lean();
 
         if (schedules.length === 0) {
             // ถ้าเวลาเปลี่ยนไปแล้ว ให้ reset lastPlayedTime
-            if (lastPlayedTime && lastPlayedTime !== currentTime) {
+            if (lastPlayedTime && lastPlayedTime !== targetTime) {
                 lastPlayedTime = null;
                 lastPlayedScheduleId = null;
                 console.log('🔄 Time changed, reset schedule tracking');
@@ -55,8 +59,8 @@ async function checkAndPlaySchedules() {
         const schedule = schedules[0];
         
         // ป้องกันเล่นซ้ำ: ถ้าเคยเล่น schedule นี้ในเวลานี้แล้ว ให้ข้าม
-        if (lastPlayedScheduleId === schedule._id.toString() && lastPlayedTime === currentTime) {
-            console.log(`⏭️ Already played schedule ${schedule._id} at ${currentTime}, skipping`);
+        if (lastPlayedScheduleId === schedule._id.toString() && lastPlayedTime === targetTime) {
+            console.log(`⏭️ Already played schedule ${schedule._id} at ${targetTime}, skipping`);
             return;
         }
 
@@ -75,7 +79,7 @@ async function checkAndPlaySchedules() {
 
         // บันทึกว่าเล่น schedule นี้แล้ว
         lastPlayedScheduleId = schedule._id.toString();
-        lastPlayedTime = currentTime;
+        lastPlayedTime = targetTime;
 
         await playSchedule(schedule);
 
@@ -162,6 +166,13 @@ async function playSchedule(schedule) {
 
 async function endSchedulePlayback() {
     try {
+        // เช็คว่า stream service กำลัง pause อยู่หรือไม่
+        const streamStatus = stream.getStatus();
+        if (streamStatus.isPaused && streamStatus.activeMode === 'schedule') {
+            console.log('⏸️ Schedule is paused, not ending');
+            return;
+        }
+
         isSchedulePlaying = false;
         const finishedSchedule = currentScheduleTrack;
         currentScheduleId = null;
@@ -244,34 +255,41 @@ function startScheduler() {
         return;
     }
 
-    console.log('🚀 Starting schedule checker (smart timing for instant playback)');
+    console.log('🚀 Starting schedule checker (checking at :50 seconds for 10-second advance)');
     
     // Reset tracking variables
     lastPlayedScheduleId = null;
     lastPlayedTime = null;
     
-    // ฟังก์ชันคำนวณเวลาถัดไปที่ต้องเช็ค (ต้นนาทีถัดไป)
+    // ฟังก์ชันคำนวณเวลาถัดไปที่ต้องเช็ค (วินาทีที่ 50 ของทุกนาที)
     function scheduleNextCheck() {
         const now = new Date();
         const seconds = now.getSeconds();
         const milliseconds = now.getMilliseconds();
         
-        // คำนวณเวลาที่เหลือจนถึงต้นนาทีถัดไป (XX:XX:00.000)
-        const msUntilNextMinute = (60 - seconds) * 1000 - milliseconds;
+        // คำนวณเวลาที่เหลือจนถึงวินาทีที่ 50 (XX:XX:50.000)
+        let msUntilCheck;
+        if (seconds < 50) {
+            // ยังไม่ถึงวินาทีที่ 50 ของนาทีนี้
+            msUntilCheck = (50 - seconds) * 1000 - milliseconds;
+        } else {
+            // ข้ามวินาทีที่ 50 ไปแล้ว รอไปยังวินาทีที่ 50 ของนาทีถัดไป
+            msUntilCheck = (110 - seconds) * 1000 - milliseconds;
+        }
         
-        console.log(`⏱️ Next check in ${(msUntilNextMinute / 1000).toFixed(1)} seconds`);
+        console.log(`⏱️ Next check in ${(msUntilCheck / 1000).toFixed(1)} seconds (at :50 seconds)`);
         
         setTimeout(() => {
             checkAndPlaySchedules();
             // ตั้งเวลาเช็ครอบถัดไป (ทุก 1 นาทีพอดี)
             schedulerInterval = setInterval(checkAndPlaySchedules, 60 * 1000);
-        }, msUntilNextMinute);
+        }, msUntilCheck);
     }
     
     // เช็คทันทีเมื่อเริ่มต้น
     checkAndPlaySchedules();
     
-    // จากนั้นตั้งเวลาให้เช็คที่ต้นนาทีถัดไป
+    // จากนั้นตั้งเวลาให้เช็คที่วินาทีที่ 50 ของนาทีถัดไป
     scheduleNextCheck();
 }
 
