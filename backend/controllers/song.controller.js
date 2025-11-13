@@ -67,7 +67,6 @@ async function uploadSongFile(req, res) {
 
         return res.json({
             status: 'success',
-            message: 'Song uploaded successfully',
             file: created.fileName,
             name: created.name,
             url: created.url
@@ -89,7 +88,6 @@ async function uploadSongYT(req, res) {
 
         return res.json({
             status: 'success',
-            message: 'Song uploaded successfully',
             data: {
                 id: result.id,
                 name: result.name,
@@ -127,7 +125,7 @@ async function updateSongName(req, res) {
 
         return res.status(status).json({
             status: 'error',
-            message: error.message
+            message: error.message || 'Internal server error'
         });
     }
 }
@@ -145,10 +143,12 @@ async function deleteSong(req, res) {
 
         return res.json({ status: 'success', ...result });
     } catch (e) {
+        console.error('Error deleting song:', e);
         const status = e.status || e.statusCode || 500;
+
         return res.status(status).json({
             status: 'error',
-            message: e.message || 'delete song failed'
+            message: e.message || 'Internal server error'
         });
     }
 }
