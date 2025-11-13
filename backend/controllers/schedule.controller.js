@@ -8,8 +8,8 @@ async function getScheduleStatus(_req, res) {
     } catch (err) {
         console.error('Error in getScheduleStatus controller:', err);
         res.status(500).json({
-            success: false,
-            error: 'Internal server error'
+            ok: false,
+            message: 'Internal server error'
         });
     }
 }
@@ -21,8 +21,8 @@ async function stopSchedulePlayback(_req, res) {
     } catch (err) {
         console.error('Error in stopSchedulePlayback controller:', err);
         res.status(500).json({
-            success: false,
-            error: 'Internal server error'
+            ok: false,
+            message: 'Internal server error'
         });
     }
 }
@@ -34,8 +34,8 @@ async function getSchedules(_req, res) {
     } catch (err) {
         console.error('Error in getSchedules controller:', err);
         res.status(500).json({
-            success: false,
-            error: 'Internal server error'
+            ok: false,
+            message: 'Internal server error'
         });
     }
 }
@@ -46,8 +46,8 @@ async function getScheduleById(req, res) {
 
         if (!id) {
             return res.status(400).json({
-                success: false,
-                error: 'Missing schedule ID',
+                ok: false,
+                message: 'Missing schedule ID',
             });
         }
 
@@ -56,8 +56,8 @@ async function getScheduleById(req, res) {
     } catch (err) {
         console.error('Error in getScheduleById controller:', err);
         res.status(500).json({
-            success: false,
-            error: 'Internal server error'
+            ok: false,
+            message: 'Internal server error'
         });
     }
 }
@@ -68,8 +68,8 @@ async function saveSchedule(req, res) {
 
         if (!scheduleData) {
             return res.status(400).json({
-                success: false,
-                error: 'Missing schedule data',
+                ok: false,
+                message: 'Missing schedule data',
             });
         }
 
@@ -77,9 +77,11 @@ async function saveSchedule(req, res) {
         res.json({ ok: true, result });
     } catch (err) {
         console.error('Error in saveSchedule controller:', err);
-        res.status(500).json({
-            success: false,
-            error: 'Internal server error',
+        const status = err.status || err.statusCode || 500;
+
+        res.status(status).json({
+            ok: false,
+            message: err.message || 'Internal server error',
         });
     }
 }
@@ -91,8 +93,8 @@ async function updateSchedule(req, res) {
 
         if (!id || !scheduleData) {
             return res.status(400).json({
-                success: false,
-                error: 'Missing parameters',
+                ok: false,
+                message: 'Missing parameters',
             });
         }
 
@@ -100,9 +102,11 @@ async function updateSchedule(req, res) {
         res.json({ ok: true, result });
     } catch (err) {
         console.error('Error in updateSchedule controller:', err);
-        res.status(500).json({
-            success: false,
-            error: 'Internal server error',
+        const status = err.status || err.statusCode || 500;
+        
+        res.status(status).json({
+            ok: false,
+            message: err.message || 'Internal server error',
         });
     }
 }
@@ -114,8 +118,8 @@ async function changeScheduleStatus(req, res) {
 
         if (!id || typeof is_active !== 'boolean') {
             return res.status(400).json({
-                success: false,
-                error: 'Missing or invalid parameters',
+                ok: false,
+                message: 'Missing or invalid parameters',
             });
         }
 
@@ -124,8 +128,8 @@ async function changeScheduleStatus(req, res) {
     } catch (err) {
         console.error('Error in changeScheduleStatus controller:', err);
         res.status(500).json({
-            success: false,
-            error: 'Internal server error',
+            ok: false,
+            message: 'Internal server error',
         });
     }
 }
@@ -136,8 +140,8 @@ async function deleteSchedule(req, res) {
 
         if(!id) {
             return res.status(400).json({
-                success: false,
-                error: 'Missing schedule ID',
+                ok: false,
+                message: 'Missing schedule ID',
             });
         }
 
@@ -146,8 +150,8 @@ async function deleteSchedule(req, res) {
     } catch (err) {
         console.error('Error in deleteSchedule controller:', err);
         res.status(500).json({
-            success: false,
-            error: 'Internal server error',
+            ok: false,
+            message: 'Internal server error',
         });
     }
 }

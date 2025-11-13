@@ -1,5 +1,21 @@
 const Schedule = require('../models/Schedule');
 
+// Helper: convert "HH:mm" or "HH:mm:ss" to minutes since midnight
+function timeStrToMinutes(timeStr) {
+    if (!timeStr || typeof timeStr !== 'string') return null;
+    const parts = timeStr.split(':').map(p => parseInt(p, 10));
+    if (parts.length < 2 || parts.some(isNaN)) return null;
+    const hours = parts[0];
+    const minutes = parts[1];
+    return hours * 60 + minutes;
+}
+
+// Helper: circular minute difference (handles midnight wrap)
+function minuteDiff(a, b) {
+    const diff = Math.abs(a - b);
+    return Math.min(diff, 1440 - diff);
+}
+
 async function getSchedules() {
     try {
         const schedules = await Schedule.find().populate('id_song');
@@ -22,7 +38,32 @@ async function getScheduleById(id) {
 
 async function saveSchedule(schedule) {
     try {
+        // Validate basic fields for conflict checking
         const newSchedule = new Schedule(schedule);
+
+        // If days_of_week and time are provided, check for conflicts within +-5 minutes
+        if (Array.isArray(schedule.days_of_week) && schedule.days_of_week.length && schedule.time) {
+            const newMinutes = timeStrToMinutes(schedule.time);
+            if (newMinutes === null) {
+                throw new Error('Invalid time format for schedule.time');
+            }
+
+            // Find active schedules that share any day
+            const candidates = await Schedule.find({
+                days_of_week: { $in: schedule.days_of_week },
+                is_active: true,
+            });
+
+            for (const cand of candidates) {
+                const candMinutes = timeStrToMinutes(cand.time);
+                if (candMinutes === null) continue; // skip malformed
+                if (minuteDiff(newMinutes, candMinutes) <= 5) {
+                    const err = new Error('ไม่สามารถเพิ่มเพลงตั้งเวลาได้เนื่องจากมีรายการอื่นอยู่ใกล้เวลา (+-5 นาที)');
+                    err.status = 400;
+                    throw err;
+                }
+            }
+        }
 
         const savedSchedule = await newSchedule.save();
 
@@ -39,6 +80,40 @@ async function saveSchedule(schedule) {
 
 async function updateSchedule(id, schedule) {
     try {
+        // If days_of_week and/or time are provided, check for conflicts within +-5 minutes
+        if ((Array.isArray(schedule.days_of_week) && schedule.days_of_week.length) || schedule.time) {
+            // Need the target schedule's new days/time to compute conflicts. If a field isn't provided,
+            // fetch the existing schedule to use its current value.
+            const existing = await Schedule.findById(id);
+            if (!existing) {
+                throw new Error('Schedule not found');
+            }
+
+            const days = Array.isArray(schedule.days_of_week) && schedule.days_of_week.length ? schedule.days_of_week : existing.days_of_week;
+            const timeStr = schedule.time ? schedule.time : existing.time;
+            const newMinutes = timeStrToMinutes(timeStr);
+            if (newMinutes === null) {
+                throw new Error('Invalid time format for schedule.time');
+            }
+
+            // Find active schedules that share any day, excluding this schedule
+            const candidates = await Schedule.find({
+                _id: { $ne: id },
+                days_of_week: { $in: days },
+                is_active: true,
+            });
+
+            for (const cand of candidates) {
+                const candMinutes = timeStrToMinutes(cand.time);
+                if (candMinutes === null) continue;
+                if (minuteDiff(newMinutes, candMinutes) <= 5) {
+                    const err = new Error('ไม่สามารถอัปเดตเพลงตั้งเวลาได้เนื่องจากมีรายการอื่นอยู่ใกล้เวลา (+-5 นาที)');
+                    err.status = 400;
+                    throw err;
+                }
+            }
+        }
+
         const updatedSchedule = await Schedule.findByIdAndUpdate(
             id,
             schedule,
