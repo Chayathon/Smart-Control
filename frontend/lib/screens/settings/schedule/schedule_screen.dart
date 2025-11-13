@@ -1,7 +1,7 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:smart_control/core/alert/app_snackbar.dart';
-import 'package:smart_control/core/network/api_service.dart';
 import 'package:smart_control/core/network/api_exceptions.dart';
+import 'package:smart_control/services/schedule_service.dart';
 import 'package:smart_control/widgets/loading_overlay.dart';
 
 class ScheduleScreen extends StatefulWidget {
@@ -66,73 +66,66 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     'เสาร์',
   ];
 
-  void _loadSchedules() async {
-    final api = await ApiService.private();
+  Future<void> _loadSchedules() async {
     LoadingOverlay.show(context);
 
     try {
-      final result = await api.get("/schedule");
-
-      if (result['ok'] == true && result['data'] != null) {
+      final schedules = await ScheduleService.getSchedules();
+      if (mounted) {
         setState(() {
-          _schedules = result['data'];
+          _schedules = schedules;
         });
       }
     } catch (error) {
       print("Error loading schedules: $error");
-      AppSnackbar.error(
-        "แจ้งเตือน",
-        "เกิดข้อผิดพลาดในการโหลดข้อมูลเพลงตั้งเวลา",
-      );
+      if (mounted) {
+        AppSnackbar.error(
+          "แจ้งเตือน",
+          "เกิดข้อผิดพลาดในการโหลดข้อมูลเพลงตั้งเวลา",
+        );
+      }
     } finally {
       LoadingOverlay.hide();
     }
   }
 
   Future<void> _loadSchedule(String scheduleId) async {
-    final api = await ApiService.private();
-
     try {
-      final result = await api.get('/schedule/$scheduleId');
+      final schedule = await ScheduleService.getScheduleById(scheduleId);
 
-      if (result['ok'] == true && result['data'] != null) {
-        if (mounted) {
-          setState(() {
-            final schedule = result['data'];
-            _selectedSongId = schedule['id_song']['_id'].toString();
-            _selectedDays = Set<int>.from(
-              schedule['days_of_week'] as List<dynamic>,
-            );
-            final timeParts = (schedule['time'] as String).split(':');
-            _selectedTime = TimeOfDay(
-              hour: int.parse(timeParts[0]),
-              minute: int.parse(timeParts[1]),
-            );
-            _descriptionCtrl.text = schedule['description'] ?? '';
-            _isActive = schedule['is_active'] ?? true;
-          });
-        }
+      if (schedule != null && mounted) {
+        setState(() {
+          _selectedSongId = schedule['id_song']['_id'].toString();
+          _selectedDays = Set<int>.from(
+            schedule['days_of_week'] as List<dynamic>,
+          );
+          final timeParts = (schedule['time'] as String).split(':');
+          _selectedTime = TimeOfDay(
+            hour: int.parse(timeParts[0]),
+            minute: int.parse(timeParts[1]),
+          );
+          _descriptionCtrl.text = schedule['description'] ?? '';
+          _isActive = schedule['is_active'] ?? true;
+        });
       }
     } catch (error) {
       print("Error loading schedule: $error");
-      AppSnackbar.error(
-        "แจ้งเตือน",
-        "เกิดข้อผิดพลาดในการโหลดข้อมูลเพลงตั้งเวลา",
-      );
+      if (mounted) {
+        AppSnackbar.error(
+          "แจ้งเตือน",
+          "เกิดข้อผิดพลาดในการโหลดข้อมูลเพลงตั้งเวลา",
+        );
+      }
     }
   }
 
   Future<void> _loadSongs() async {
-    final api = await ApiService.private();
-
     try {
-      final result = await api.get("/song");
-      if (result['status'] == 'success' && result['data'] != null) {
-        if (mounted) {
-          setState(() {
-            _songs = result['data'];
-          });
-        }
+      final songs = await ScheduleService.getSongs();
+      if (mounted) {
+        setState(() {
+          _songs = songs;
+        });
       }
     } catch (error) {
       print("Error loading songs: $error");
@@ -142,53 +135,58 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     }
   }
 
-  void _changeStatus(String scheduleId, bool isActive) async {
-    final api = await ApiService.private();
+  Future<void> _changeStatus(String scheduleId, bool isActive) async {
+    // Optimistic update
+    final index = _schedules.indexWhere((s) => s['_id'] == scheduleId);
+    if (index != -1) {
+      setState(() {
+        _schedules[index]['is_active'] = isActive;
+      });
+    }
 
     try {
-      final index = _schedules.indexWhere((s) => s['_id'] == scheduleId);
-      if (index != -1) {
-        setState(() {
-          _schedules[index]['is_active'] = isActive;
-        });
-      }
+      final success = await ScheduleService.changeStatus(scheduleId, isActive);
 
-      final result = await api.patch(
-        "/schedule/change-status/$scheduleId",
-        data: {'is_active': isActive},
-      );
-
-      if (result['ok'] == true) {
+      if (success) {
         AppSnackbar.success("สำเร็จ", "เปลี่ยนสถานะเรียบร้อยแล้ว");
         _loadSchedules();
+      } else {
+        throw Exception("Failed to change status");
       }
     } catch (error) {
       print("Error changing schedule status: $error");
-      AppSnackbar.error("แจ้งเตือน", "เกิดข้อผิดพลาดในการเปลี่ยนสถานะ");
-      // revert optimistic update if failed
-      final index = _schedules.indexWhere((s) => s['_id'] == scheduleId);
-      if (index != -1) {
-        setState(() {
-          _schedules[index]['is_active'] = !_schedules[index]['is_active'];
-        });
+      if (mounted) {
+        AppSnackbar.error("แจ้งเตือน", "เกิดข้อผิดพลาดในการเปลี่ยนสถานะ");
+        // Revert optimistic update
+        if (index != -1) {
+          setState(() {
+            _schedules[index]['is_active'] = !isActive;
+          });
+        }
       }
     }
   }
 
-  void _deleteSchedule(String scheduleId) async {
-    final api = await ApiService.private();
+  Future<void> _deleteSchedule(String scheduleId) async {
     LoadingOverlay.show(context);
 
     try {
-      final result = await api.delete("/schedule/delete/$scheduleId");
+      final success = await ScheduleService.deleteSchedule(scheduleId);
 
-      if (result['ok'] == true) {
+      if (success) {
         AppSnackbar.success("สำเร็จ", "ลบรายการเพลงตั้งเวลาเรียบร้อยแล้ว");
-        _loadSchedules();
+        await _loadSchedules();
+      } else {
+        throw Exception("Failed to delete schedule");
       }
     } catch (error) {
       print("Error deleting schedule: $error");
-      AppSnackbar.error("แจ้งเตือน", "เกิดข้อผิดพลาดในการลบรายการเพลงตั้งเวลา");
+      if (mounted) {
+        AppSnackbar.error(
+          "แจ้งเตือน",
+          "เกิดข้อผิดพลาดในการลบรายการเพลงตั้งเวลา",
+        );
+      }
     } finally {
       LoadingOverlay.hide();
     }
@@ -221,43 +219,29 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   }
 
   Future<void> _saveSchedule(BuildContext modalContext) async {
-    if (_selectedSongId == null) {
-      AppSnackbar.error("แจ้งเตือน", "กรุณาเลือกเพลง");
-      return;
-    }
-
-    if (_selectedDays.isEmpty) {
-      AppSnackbar.error("แจ้งเตือน", "กรุณาเลือกวันในสัปดาห์");
-      return;
-    }
-
-    if (_descriptionCtrl.text.isEmpty) {
-      AppSnackbar.error("แจ้งเตือน", "กรุณาใส่คำอธิบาย");
-      return;
-    }
+    if (!_validateForm()) return;
 
     LoadingOverlay.show(context);
-    final api = await ApiService.private();
 
     try {
-      final scheduleData = {
-        'id_song': _selectedSongId,
-        'days_of_week': _selectedDays.toList()..sort(),
-        'time': _formatTime(_selectedTime),
-        'description': _descriptionCtrl.text,
-        'is_active': _isActive,
-      };
+      final scheduleData = _buildScheduleData();
+      final success = await ScheduleService.createSchedule(scheduleData);
 
-      final result = await api.post("/schedule/save", data: scheduleData);
-
-      if (result['ok'] == true) {
+      if (success) {
         Navigator.pop(modalContext);
         AppSnackbar.success("สำเร็จ", "บันทึกข้อมูลการตั้งเวลาเรียบร้อยแล้ว");
-        _loadSchedules();
+        await _loadSchedules();
         _resetForm();
+      } else {
+        throw Exception("Failed to save schedule");
       }
     } on ApiException catch (error) {
       AppSnackbar.error("ล้มเหลว", error.message);
+    } catch (error) {
+      print("Error saving schedule: $error");
+      if (mounted) {
+        AppSnackbar.error("แจ้งเตือน", "เกิดข้อผิดพลาดในการบันทึกข้อมูล");
+      }
     } finally {
       LoadingOverlay.hide();
     }
@@ -267,49 +251,64 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     BuildContext modalContext,
     String scheduleId,
   ) async {
+    if (!_validateForm()) return;
+
+    LoadingOverlay.show(context);
+
+    try {
+      final scheduleData = _buildScheduleData();
+      final success = await ScheduleService.updateSchedule(
+        scheduleId,
+        scheduleData,
+      );
+
+      if (success) {
+        Navigator.pop(modalContext);
+        AppSnackbar.success("สำเร็จ", "อัปเดตข้อมูลการตั้งเวลาเรียบร้อยแล้ว");
+        await _loadSchedules();
+        _resetForm();
+      } else {
+        throw Exception("Failed to update schedule");
+      }
+    } on ApiException catch (error) {
+      AppSnackbar.error("ล้มเหลว", error.message);
+    } catch (error) {
+      print("Error updating schedule: $error");
+      if (mounted) {
+        AppSnackbar.error("แจ้งเตือน", "เกิดข้อผิดพลาดในการอัปเดตข้อมูล");
+      }
+    } finally {
+      LoadingOverlay.hide();
+    }
+  }
+
+  bool _validateForm() {
     if (_selectedSongId == null) {
       AppSnackbar.error("แจ้งเตือน", "กรุณาเลือกเพลง");
-      return;
+      return false;
     }
 
     if (_selectedDays.isEmpty) {
       AppSnackbar.error("แจ้งเตือน", "กรุณาเลือกวันในสัปดาห์");
-      return;
+      return false;
     }
 
     if (_descriptionCtrl.text.isEmpty) {
       AppSnackbar.error("แจ้งเตือน", "กรุณาใส่คำอธิบาย");
-      return;
+      return false;
     }
 
-    LoadingOverlay.show(context);
-    final api = await ApiService.private();
+    return true;
+  }
 
-    try {
-      final scheduleData = {
-        'id_song': _selectedSongId,
-        'days_of_week': _selectedDays.toList()..sort(),
-        'time': _formatTime(_selectedTime),
-        'description': _descriptionCtrl.text,
-        'is_active': _isActive,
-      };
-
-      final result = await api.put(
-        "/schedule/update/$scheduleId",
-        data: scheduleData,
-      );
-
-      if (result['ok'] == true) {
-        Navigator.pop(modalContext);
-        AppSnackbar.success("สำเร็จ", "อัปเดตข้อมูลการตั้งเวลาเรียบร้อยแล้ว");
-        _loadSchedules();
-        _resetForm();
-      }
-    } on ApiException catch (error) {
-      AppSnackbar.error("ล้มเหลว", error.message);
-    } finally {
-      LoadingOverlay.hide();
-    }
+  Map<String, dynamic> _buildScheduleData() {
+    return {
+      'id_song': _selectedSongId,
+      'days_of_week': _selectedDays.toList()..sort(),
+      'time': _formatTime(_selectedTime),
+      'description': _descriptionCtrl.text,
+      'is_active': _isActive,
+    };
   }
 
   void _resetForm() {
@@ -322,13 +321,15 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     });
   }
 
-  Future<void> scheduleForm(String? scheduleId) async {
+  Future<void> _showScheduleForm(String? scheduleId) async {
     _resetForm();
     await _loadSongs();
 
     if (scheduleId != null) {
       await _loadSchedule(scheduleId);
     }
+
+    if (!mounted) return;
 
     await showModalBottomSheet(
       context: context,
@@ -630,7 +631,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     );
   }
 
-  Future<void> deleteDialog(String scheduleId, String description) async {
+  Future<void> _showDeleteDialog(String scheduleId, String description) async {
     showDialog(
       context: context,
       builder: (BuildContext context) {
@@ -766,7 +767,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                       children: [
                         IconButton(
                           onPressed: () {
-                            deleteDialog(
+                            _showDeleteDialog(
                               schedule['_id'].toString(),
                               schedule['description'] ?? '',
                             );
@@ -775,7 +776,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                         ),
                         IconButton(
                           onPressed: () {
-                            scheduleForm(schedule['_id'].toString());
+                            _showScheduleForm(schedule['_id'].toString());
                           },
                           icon: Icon(Icons.edit, color: Colors.amber),
                         ),
@@ -797,7 +798,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
               },
             ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => scheduleForm(null),
+        onPressed: () => _showScheduleForm(null),
         foregroundColor: Colors.white,
         backgroundColor: Colors.blue,
         child: const Icon(Icons.add),
