@@ -343,18 +343,18 @@ class _SongScreenState extends State<SongScreen>
         data: formData,
       );
 
-      if (res['status'] == 'success') {
-        AppSnackbar.success("สำเร็จ", "อัปโหลดสำเร็จ");
+      if (res['ok'] == true) {
+        AppSnackbar.success("สำเร็จ", "อัปโหลดเพลงสำเร็จ");
         getSongList();
         return;
       }
     } on DioException catch (e) {
       final msg = e.response?.data is Map<String, dynamic>
-          ? (e.response!.data['message']?.toString() ?? 'อัปโหลดล้มเหลว')
+          ? (e.response!.data['message']?.toString() ?? 'อัปโหลดเพลงล้มเหลว')
           : 'อัปโหลดล้มเหลว';
       AppSnackbar.error("ล้มเหลว", msg);
     } catch (error) {
-      AppSnackbar.error("ล้มเหลว", "อัปโหลดล้มเหลว");
+      AppSnackbar.error("ล้มเหลว", "อัปโหลดเพลงล้มเหลว");
     } finally {
       LoadingOverlay.hide();
     }
@@ -389,10 +389,8 @@ class _SongScreenState extends State<SongScreen>
         ),
       );
 
-      final status = res['status']?.toString().toLowerCase();
-
-      if (status == 'success') {
-        AppSnackbar.success("สำเร็จ", "เพิ่มเพลงจาก YouTube สำเร็จ");
+      if (res['ok'] == true) {
+        AppSnackbar.success("สำเร็จ", "อัปโหลดเพลงสำเร็จ");
       }
 
       try {
@@ -409,7 +407,7 @@ class _SongScreenState extends State<SongScreen>
       if (isTimeout) {
         AppSnackbar.success(
           "สำเร็จ",
-          "เพิ่มเพลงจาก YouTube สำเร็จ (กำลังประมวลผลบนเซิร์ฟเวอร์)",
+          "อัปโหลดเพลงสำเร็จ (กำลังประมวลผลบนเซิร์ฟเวอร์)",
         );
         try {
           getSongList();
@@ -439,7 +437,7 @@ class _SongScreenState extends State<SongScreen>
         data: {'newName': newName},
       );
 
-      if (res['status'] == 'success' && res['data']['name'] == newName) {
+      if (res['ok'] == true && res['data']['name'] == newName) {
         AppSnackbar.success("สำเร็จ", "แก้ไขชื่อเพลงสำเร็จ");
         getSongList();
         return;
@@ -461,7 +459,7 @@ class _SongScreenState extends State<SongScreen>
       final api = await ApiService.private();
       final res = await api.delete<Map<String, dynamic>>('/song/remove/$id');
 
-      if (res['status'] == 'success') {
+      if (res['ok'] == true) {
         AppSnackbar.success('สำเร็จ', 'ลบเพลงสำเร็จแล้ว');
         getSongList();
         return;
