@@ -13,9 +13,9 @@ async function getSongList(req, res) {
     try {
         const list = await song.getSongList();
         res.json({ ok: true, data: list });
-    } catch (error) {
-        console.error('Error getting song list:', error);
-        res.status(500).json({ ok: false, message: error.message || 'get song list failed' });
+    } catch (err) {
+        console.error('Error getting song list:', err);
+        res.status(500).json({ ok: false, message: err.message || 'get song list failed' });
     }
 }
 
@@ -36,11 +36,11 @@ async function getSongById(req, res) {
             ok: true,
             data
         });
-    } catch (error) {
-        console.error('Error getting song by ID:', error);
+    } catch (err) {
+        console.error('Error getting song by ID:', err);
         res.status(500).json({
             ok: false,
-            message: error.message
+            message: err.message
         })
     }
 }
@@ -49,8 +49,8 @@ async function getSongExceptInPlaylist(req, res) {
     try {
         const list = await song.getSongExceptInPlaylist();
         res.json({ ok: true, data: list });
-    } catch (e) {
-        res.status(500).json({ ok: false, message: e.message || 'get songs failed' });
+    } catch (err) {
+        res.status(500).json({ ok: false, message: err.message || 'get songs failed' });
     }
 }
 
@@ -60,7 +60,19 @@ async function uploadSongFile(req, res) {
         const file = req.file;
 
         if (!file) {
-            return res.status(400).json({ ok: false, message: 'No file uploaded' });
+            return res.status(400).json({
+                ok: false,
+                message: 'ไม่พบไฟล์ที่อัปโหลด'
+            });
+        }
+
+        const nameExists = await song.checkNameExists(filename);
+
+        if (nameExists) {
+            return res.status(409).json({
+                ok: false,
+                message: 'ชื่อเพลงนี้มีอยู่ในระบบแล้ว'
+            });
         }
 
         const created = await song.uploadSongFile(file, filename);
@@ -73,7 +85,12 @@ async function uploadSongFile(req, res) {
         });
     } catch (err) {
         console.error('uploadSongFile error:', err);
-        return res.status(500).json({ ok: false, message: err.message });
+        const status = err.status || err.statusCode || 500;
+
+        return res.status(status).json({
+            ok: false,
+            message: err.message || 'Internal server error'
+        });
     }
 }
 
@@ -82,6 +99,15 @@ async function uploadSongYT(req, res) {
         const { url, filename } = req.body || {};
         if (!url || !isHttpUrl(url)) {
             return res.status(400).json({ ok: false, message: 'ต้องระบุ URL ที่ถูกต้อง' });
+        }
+
+        const nameExists = await song.checkNameExists(filename);
+
+        if (nameExists) {
+            return res.status(409).json({
+                ok: false,
+                message: 'ชื่อเพลงนี้มีอยู่ในระบบแล้ว'
+            });
         }
 
         const result = await song.uploadSongYT(url, filename);
@@ -95,9 +121,14 @@ async function uploadSongYT(req, res) {
                 url: result.url
             }
         });
-    } catch (e) {
-        console.error('Error uploading song:', e);
-        return res.status(500).json({ ok: false, message: e.message || 'upload failed' });
+    } catch (err) {
+        console.error('Error uploading song:', err);
+        const status = err.status || err.statusCode || 500;
+
+        return res.status(status).json({
+            ok: false,
+            message: err.message || 'Internal server error'
+        });
     }
 }
 
@@ -113,19 +144,28 @@ async function updateSongName(req, res) {
             });
         }
 
+        const nameExists = await song.checkNameExists(newName, id);
+
+        if (nameExists) {
+            return res.status(409).json({
+                ok: false,
+                message: 'ชื่อเพลงนี้มีอยู่ในระบบแล้ว'
+            });
+        }
+
         const updatedSong = await song.updateSongName(id, newName);
 
         return res.json({
             ok: true,
             data: updatedSong
         });
-    } catch (error) {
-        console.error('Error updating song name:', error);
-        const status = error.status || error.statusCode || 500;
+    } catch (err) {
+        console.error('Error updating song name:', err);
+        const status = err.status || err.statusCode || 500;
 
         return res.status(status).json({
             ok: false,
-            message: error.message || 'Internal server error'
+            message: err.message || 'Internal server error'
         });
     }
 }
@@ -142,13 +182,13 @@ async function deleteSong(req, res) {
         const result = await song.deleteSong(songId);
 
         return res.json({ ok: true, ...result });
-    } catch (e) {
-        console.error('Error deleting song:', e);
-        const status = e.status || e.statusCode || 500;
+    } catch (err) {
+        console.error('Error deleting song:', err);
+        const status = err.status || err.statusCode || 500;
 
         return res.status(status).json({
             ok: false,
-            message: e.message || 'Internal server error'
+            message: err.message || 'Internal server error'
         });
     }
 }

@@ -290,7 +290,7 @@ class _SongScreenState extends State<SongScreen>
 
       final result = await api.get("/song/$id");
 
-      if (result['status'] == 'success' && result['data'] != null) {
+      if (result['ok'] == true && result['data'] != null) {
         final song = Song.fromJson(result['data']);
         setState(() {
           _nameCtrl.text = song.name;
@@ -348,13 +348,13 @@ class _SongScreenState extends State<SongScreen>
         getSongList();
         return;
       }
-    } on DioException catch (e) {
-      final msg = e.response?.data is Map<String, dynamic>
-          ? (e.response!.data['message']?.toString() ?? 'อัปโหลดเพลงล้มเหลว')
-          : 'อัปโหลดล้มเหลว';
-      AppSnackbar.error("ล้มเหลว", msg);
-    } catch (error) {
-      AppSnackbar.error("ล้มเหลว", "อัปโหลดเพลงล้มเหลว");
+    } on ApiException catch (error) {
+      AppSnackbar.error("ล้มเหลว", error.message);
+    } catch (_) {
+      AppSnackbar.error(
+        "ล้มเหลว",
+        "เกิดข้อผิดพลาดในการอัปโหลดเพลง กรุณาลองใหม่อีกครั้ง",
+      );
     } finally {
       LoadingOverlay.hide();
     }
@@ -396,31 +396,13 @@ class _SongScreenState extends State<SongScreen>
       try {
         getSongList();
       } catch (_) {}
-    } on DioException catch (e) {
-      // ถ้าเป็น timeout หรือ 504 (เกทเวย์ timeout) มักหมายถึงฝั่งเซิร์ฟเวอร์ยังประมวลผลต่อและ “สำเร็จจริง”
-      final code = e.response?.statusCode;
-      final isTimeout =
-          e.type == DioExceptionType.receiveTimeout ||
-          e.type == DioExceptionType.connectionTimeout ||
-          code == 504;
-
-      if (isTimeout) {
-        AppSnackbar.success(
-          "สำเร็จ",
-          "อัปโหลดเพลงสำเร็จ (กำลังประมวลผลบนเซิร์ฟเวอร์)",
-        );
-        try {
-          getSongList();
-        } catch (_) {}
-        return;
-      }
-
-      final msg = e.response?.data is Map<String, dynamic>
-          ? (e.response!.data['message']?.toString() ?? 'อัปโหลดล้มเหลว')
-          : 'อัปโหลดล้มเหลว';
-      AppSnackbar.error("ล้มเหลว", msg);
+    } on ApiException catch (error) {
+      AppSnackbar.error("ล้มเหลว", error.message);
     } catch (_) {
-      AppSnackbar.error("ล้มเหลว", "อัปโหลดล้มเหลว");
+      AppSnackbar.error(
+        "ล้มเหลว",
+        "เกิดข้อผิดพลาดในการอัปโหลดเพลง กรุณาลองใหม่อีกครั้ง",
+      );
     } finally {
       LoadingOverlay.hide();
     }
@@ -489,17 +471,6 @@ class _SongScreenState extends State<SongScreen>
       ),
     );
   }
-
-  Future<void> showAddSongFileDialog() => showAddSongDialog(UploadSource.file);
-  Future<void> showAddSongYoutubeDialog() =>
-      showAddSongDialog(UploadSource.youtube);
-
-  // void playSong(int index) async {
-  //   final api = await ApiService.public();
-  //   await api.get("/stream/startFile?path=uploads/${_songs[index].url}");
-
-  //   AppSnackbar.success("แจ้งเตือน", "กำลังเล่นเพลง ${_songs[index].name}");
-  // }
 
   Future<void> _editDialog(String id) async {
     await getSong(id);
@@ -737,7 +708,7 @@ class _SongScreenState extends State<SongScreen>
                           heroTag: 'fab_child_1',
                           onPressed: () {
                             _toggleFabMenu();
-                            showAddSongFileDialog();
+                            showAddSongDialog(UploadSource.file);
                           },
                           tooltip: 'แนบไฟล์',
                           child: const Icon(Icons.library_music),
@@ -766,7 +737,7 @@ class _SongScreenState extends State<SongScreen>
                           heroTag: 'fab_child_2',
                           onPressed: () {
                             _toggleFabMenu();
-                            showAddSongYoutubeDialog();
+                            showAddSongDialog(UploadSource.youtube);
                           },
                           tooltip: 'แนบลิงก์',
                           child: const Icon(Icons.link),

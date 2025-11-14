@@ -31,6 +31,16 @@ function runCmd(cmd, args, opts = {}) {
     });
 }
 
+function checkNameExists(name, excludeId = null) {
+  const query = { name: name };
+
+  if (excludeId) {
+    query._id = { $ne: excludeId };
+  }
+
+  return Song.exists(query);
+}
+
 const UPLOAD_DIR = path.join(__dirname, '../uploads');
 ensureDir(UPLOAD_DIR);
 
@@ -70,8 +80,8 @@ async function getSongExceptInPlaylist() {
     return await Song.find({ _id: { $nin: playlistSongs } }).sort({ no: 1 }).lean();
 }
 
-async function uploadSongFile(file, givenName) {
-  const safeDisplayName = sanitizeBaseName(givenName || path.parse(file.originalname).name);
+async function uploadSongFile(file, filename) {
+  const safeDisplayName = sanitizeBaseName(filename || path.parse(file.originalname).name);
   const fileNameOnDisk = file.filename;
   const urlPath = `/uploads/${fileNameOnDisk}`;
 
@@ -157,8 +167,13 @@ async function updateSongName(id, newName) {
     // Load the existing song to get the current filename
     const song = await Song.findById(id);
     if (!song) {
-      const err = new Error('Song not found');
+      const err = new Error('ไม่พบเพลงที่ระบุ');
       err.status = 404;
+      throw err;
+    }
+    if (song.name === newName) {
+      const err = new Error('ไม่พบการเปลี่ยนแปลงชื่อเพลง');
+      err.status = 400;
       throw err;
     }
 
@@ -220,6 +235,7 @@ async function deleteSong(id) {
 
 module.exports = {
     upload, UPLOAD_DIR,
+    checkNameExists,
     getSongList,
     getSongById,
     getSongExceptInPlaylist,
