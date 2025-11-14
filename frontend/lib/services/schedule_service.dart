@@ -27,7 +27,7 @@ class ScheduleService {
     final api = await ApiService.private();
     final result = await api.get("/song");
 
-    if (result['status'] == 'success' && result['data'] != null) {
+    if (result['ok'] == true && result['data'] != null) {
       return result['data'] as List<dynamic>;
     }
     return [];
