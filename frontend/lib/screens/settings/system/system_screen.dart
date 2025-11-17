@@ -198,8 +198,9 @@ class _SystemScreenState extends State<SystemScreen> {
       floatingActionButton: _hasChanges
           ? FloatingActionButton.extended(
               onPressed: _saveSettings,
-              backgroundColor: Colors.blue,
-              icon: const Icon(Icons.save),
+              foregroundColor: Colors.white,
+              backgroundColor: Colors.green,
+              icon: const Icon(Icons.save_outlined),
               label: const Text(
                 'บันทึกการตั้งค่า',
                 style: TextStyle(fontWeight: FontWeight.bold),
