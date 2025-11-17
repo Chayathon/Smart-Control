@@ -3,42 +3,17 @@ import 'package:smart_control/core/alert/app_snackbar.dart';
 import 'package:smart_control/core/network/api_exceptions.dart';
 import 'package:smart_control/services/schedule_service.dart';
 import 'package:smart_control/widgets/loading_overlay.dart';
+import 'package:smart_control/widgets/text_field_box.dart';
+import 'package:smart_control/widgets/action_button.dart';
+import 'package:smart_control/widgets/custom_dialog.dart';
+import 'package:smart_control/widgets/modal_bottom_sheet.dart';
+import 'package:smart_control/widgets/widgets.dart';
 
 class ScheduleScreen extends StatefulWidget {
   const ScheduleScreen({Key? key}) : super(key: key);
 
   @override
   _ScheduleScreenState createState() => _ScheduleScreenState();
-}
-
-class _TextFieldBox extends StatelessWidget {
-  const _TextFieldBox({
-    required this.controller,
-    required this.hint,
-    this.textInputAction,
-  });
-
-  final TextEditingController controller;
-  final String hint;
-  final TextInputAction? textInputAction;
-
-  @override
-  Widget build(BuildContext context) {
-    return TextField(
-      controller: controller,
-      textInputAction: textInputAction ?? TextInputAction.next,
-      decoration: InputDecoration(
-        hintText: hint,
-        filled: true,
-        fillColor: Colors.grey[200],
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide.none,
-        ),
-      ),
-      style: TextStyle(fontSize: 14),
-    );
-  }
 }
 
 class _ScheduleScreenState extends State<ScheduleScreen> {
@@ -378,343 +353,227 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
 
     if (!mounted) return;
 
-    await showModalBottomSheet(
+    await ModalBottomSheet.showFormModal(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (BuildContext modalContext) {
-        return StatefulBuilder(
-          builder: (BuildContext context, StateSetter setModalState) {
-            return AnimatedPadding(
-              duration: const Duration(milliseconds: 100),
-              curve: Curves.easeOut,
-              padding: EdgeInsets.only(
-                bottom: MediaQuery.of(context).viewInsets.bottom,
+      title: scheduleId != null
+          ? "แก้ไขรายการเพลงตั้งเวลา"
+          : "เพิ่มรายการเพลงตั้งเวลา",
+      child: StatefulBuilder(
+        builder: (BuildContext context, StateSetter setModalState) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                "เลือกเพลง",
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w400),
               ),
-              child: Container(
-                height: MediaQuery.of(context).size.height * 0.8,
+              SizedBox(height: 8),
+              Container(
                 decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                  color: Colors.grey[200],
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      padding: EdgeInsets.all(16.0),
+                child: DropdownButtonFormField<String>(
+                  value: _selectedSongId,
+                  decoration: InputDecoration(
+                    hintText: "เลือกเพลง",
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                    contentPadding: EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                  ),
+                  items: _songs.map((song) {
+                    return DropdownMenuItem<String>(
+                      value: song['_id'].toString(),
+                      child: Text(
+                        song['name'] ?? 'ไม่มีชื่อ',
+                        style: TextStyle(fontSize: 14),
+                      ),
+                    );
+                  }).toList(),
+                  onChanged: (value) {
+                    setModalState(() {
+                      setState(() {
+                        _selectedSongId = value;
+                      });
+                    });
+                  },
+                ),
+              ),
+              SizedBox(height: 20),
+              Text(
+                "เลือกวันในสัปดาห์",
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w400),
+              ),
+              SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: List.generate(7, (index) {
+                  final dayIndex = index;
+                  final isSelected = _selectedDays.contains(dayIndex);
+                  return InkWell(
+                    onTap: () {
+                      setModalState(() {
+                        setState(() {
+                          if (isSelected) {
+                            _selectedDays.remove(dayIndex);
+                          } else {
+                            _selectedDays.add(dayIndex);
+                          }
+                        });
+                      });
+                    },
+                    child: Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                      decoration: BoxDecoration(
+                        color: isSelected ? Colors.blue : Colors.grey[200],
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: isSelected ? Colors.blue : Colors.grey[300]!,
+                          width: 2,
+                        ),
+                      ),
+                      child: Text(
+                        _dayNames[index],
+                        style: TextStyle(
+                          color: isSelected ? Colors.white : Colors.black87,
+                          fontWeight: isSelected
+                              ? FontWeight.bold
+                              : FontWeight.normal,
+                        ),
+                      ),
+                    ),
+                  );
+                }),
+              ),
+              SizedBox(height: 20),
+              Text(
+                "เลือกเวลา",
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w400),
+              ),
+              SizedBox(height: 8),
+              InkWell(
+                onTap: () => _selectTime(context),
+                child: Container(
+                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[200],
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        _formatTime(_selectedTime),
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      Icon(Icons.access_time),
+                    ],
+                  ),
+                ),
+              ),
+              SizedBox(height: 20),
+              Text(
+                "คำอธิบาย",
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w400),
+              ),
+              SizedBox(height: 8),
+              TextFieldBox(
+                controller: _descriptionCtrl,
+                hint: "เพลงชาติไทย, เพลงเช้า, เพลงเย็น ฯลฯ",
+                textInputAction: TextInputAction.done,
+              ),
+              SizedBox(height: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    "สถานะ",
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w400),
+                  ),
+                  InkWell(
+                    onTap: () {
+                      setModalState(() {
+                        setState(() {
+                          _isActive = !_isActive;
+                        });
+                      });
+                    },
+                    child: Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: _isActive ? Colors.green : Colors.grey[400],
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                       child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
                         children: [
+                          Icon(
+                            _isActive ? Icons.check_circle : Icons.cancel,
+                            color: Colors.white,
+                            size: 20,
+                          ),
+                          SizedBox(width: 8),
                           Text(
-                            scheduleId != null
-                                ? "แก้ไขรายการเพลงตั้งเวลา"
-                                : "เพิ่มรายการเพลงตั้งเวลา",
+                            _isActive ? "เปิดใช้งาน" : "ปิดใช้งาน",
                             style: TextStyle(
-                              fontSize: 18,
+                              color: Colors.white,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
                         ],
                       ),
                     ),
-                    Expanded(
-                      child: SingleChildScrollView(
-                        padding: EdgeInsets.symmetric(horizontal: 16.0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              "เลือกเพลง",
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w400,
-                              ),
-                            ),
-                            SizedBox(height: 8),
-                            Container(
-                              decoration: BoxDecoration(
-                                color: Colors.grey[200],
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: DropdownButtonFormField<String>(
-                                value: _selectedSongId,
-                                decoration: InputDecoration(
-                                  hintText: "เลือกเพลง",
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                    borderSide: BorderSide.none,
-                                  ),
-                                  contentPadding: EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                    vertical: 12,
-                                  ),
-                                ),
-                                items: _songs.map((song) {
-                                  return DropdownMenuItem<String>(
-                                    value: song['_id'].toString(),
-                                    child: Text(
-                                      song['name'] ?? 'ไม่มีชื่อ',
-                                      style: TextStyle(fontSize: 14),
-                                    ),
-                                  );
-                                }).toList(),
-                                onChanged: (value) {
-                                  setModalState(() {
-                                    setState(() {
-                                      _selectedSongId = value;
-                                    });
-                                  });
-                                },
-                              ),
-                            ),
-                            SizedBox(height: 20),
-                            Text(
-                              "เลือกวันในสัปดาห์",
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w400,
-                              ),
-                            ),
-                            SizedBox(height: 8),
-                            Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: List.generate(7, (index) {
-                                final dayIndex = index;
-                                final isSelected = _selectedDays.contains(
-                                  dayIndex,
-                                );
-                                return InkWell(
-                                  onTap: () {
-                                    setModalState(() {
-                                      setState(() {
-                                        if (isSelected) {
-                                          _selectedDays.remove(dayIndex);
-                                        } else {
-                                          _selectedDays.add(dayIndex);
-                                        }
-                                      });
-                                    });
-                                  },
-                                  child: Container(
-                                    padding: EdgeInsets.symmetric(
-                                      horizontal: 16,
-                                      vertical: 12,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: isSelected
-                                          ? Colors.blue
-                                          : Colors.grey[200],
-                                      borderRadius: BorderRadius.circular(12),
-                                      border: Border.all(
-                                        color: isSelected
-                                            ? Colors.blue
-                                            : Colors.grey[300]!,
-                                        width: 2,
-                                      ),
-                                    ),
-                                    child: Text(
-                                      _dayNames[index],
-                                      style: TextStyle(
-                                        color: isSelected
-                                            ? Colors.white
-                                            : Colors.black87,
-                                        fontWeight: isSelected
-                                            ? FontWeight.bold
-                                            : FontWeight.normal,
-                                      ),
-                                    ),
-                                  ),
-                                );
-                              }),
-                            ),
-                            SizedBox(height: 20),
-                            Text(
-                              "เลือกเวลา",
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w400,
-                              ),
-                            ),
-                            SizedBox(height: 8),
-                            InkWell(
-                              onTap: () => _selectTime(context),
-                              child: Container(
-                                padding: EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 16,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: Colors.grey[200],
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text(
-                                      _formatTime(_selectedTime),
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                    Icon(Icons.access_time),
-                                  ],
-                                ),
-                              ),
-                            ),
-                            SizedBox(height: 20),
-                            Text(
-                              "คำอธิบาย",
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w400,
-                              ),
-                            ),
-                            SizedBox(height: 8),
-                            _TextFieldBox(
-                              controller: _descriptionCtrl,
-                              hint: "เพลงชาติไทย, เพลงเช้า, เพลงเย็น ฯลฯ",
-                              textInputAction: TextInputAction.done,
-                            ),
-                            SizedBox(height: 20),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
-                                  "สถานะ",
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w400,
-                                  ),
-                                ),
-                                InkWell(
-                                  onTap: () {
-                                    setModalState(() {
-                                      setState(() {
-                                        _isActive = !_isActive;
-                                      });
-                                    });
-                                  },
-                                  child: Container(
-                                    padding: EdgeInsets.symmetric(
-                                      horizontal: 16,
-                                      vertical: 10,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: _isActive
-                                          ? Colors.green
-                                          : Colors.grey[400],
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: Row(
-                                      children: [
-                                        Icon(
-                                          _isActive
-                                              ? Icons.check_circle
-                                              : Icons.cancel,
-                                          color: Colors.white,
-                                          size: 20,
-                                        ),
-                                        SizedBox(width: 8),
-                                        Text(
-                                          _isActive
-                                              ? "เปิดใช้งาน"
-                                              : "ปิดใช้งาน",
-                                          style: TextStyle(
-                                            color: Colors.white,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    Container(
-                      padding: EdgeInsets.all(16.0),
-                      child: SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton.icon(
-                          onPressed: () {
-                            if (scheduleId != null) {
-                              _updateSchedule(modalContext, scheduleId);
-                            } else {
-                              _saveSchedule(modalContext);
-                            }
-                          },
-                          style: ElevatedButton.styleFrom(
-                            foregroundColor: Colors.white,
-                            backgroundColor: Colors.blue,
-                            padding: EdgeInsets.symmetric(vertical: 12),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          icon: const Icon(Icons.save_outlined),
-                          label: const Text(
-                            "บันทึก",
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-            );
-          },
-        );
-      },
+            ],
+          );
+        },
+      ),
+      actions: Button(
+        onPressed: () {
+          if (scheduleId != null) {
+            _updateSchedule(context, scheduleId);
+          } else {
+            _saveSchedule(context);
+          }
+        },
+        label: "บันทึก",
+        icon: Icons.save_outlined,
+      ),
     );
   }
 
   Future<void> _showDeleteDialog(String scheduleId, String description) async {
-    showDialog(
+    final confirmed = await CustomDialog.showConfirmation(
       context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text("ยืนยันการลบ"),
-          content: Text("ยืนยันที่จะลบรายการ \"$description\" ?"),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-              style: ButtonStyle(
-                backgroundColor: WidgetStateProperty.all(Colors.grey[200]),
-              ),
-              child: Text("ยกเลิก", style: TextStyle(color: Colors.grey[600])),
-            ),
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                _deleteSchedule(scheduleId);
-              },
-              style: ButtonStyle(
-                backgroundColor: WidgetStateProperty.all(Colors.red[50]),
-              ),
-              child: Text(
-                "ยืนยัน",
-                style: TextStyle(
-                  color: Colors.redAccent,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ],
-        );
-      },
+      title: "ยืนยันการลบ",
+      message: "ยืนยันที่จะลบเพลงตั้งเวลา $description ?",
+      confirmText: "ยืนยัน",
+      cancelText: "ยกเลิก",
+      confirmColor: Colors.red[50],
+      cancelColor: Colors.grey[100],
+      textColor: Colors.red,
+      fontBold: true,
     );
+
+    if (confirmed == true) {
+      _deleteSchedule(scheduleId);
+    }
   }
 
   @override
