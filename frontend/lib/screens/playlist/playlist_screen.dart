@@ -49,7 +49,7 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
       print(error);
       AppSnackbar.error(
         "ล้มเหลว",
-        "เกิดข้อผิดพลาดในการโหลดเพลง กรุณาลองใหม่อีกครั้ง",
+        "เกิดข้อผิดพลาดในการโหลดข้อมูลเพลง กรุณาลองใหม่อีกครั้ง",
       );
     } finally {
       LoadingOverlay.hide();
@@ -57,18 +57,21 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
   }
 
   void _savePlaylist() async {
+    LoadingOverlay.show(context);
     try {
-      LoadingOverlay.show(context);
       await _playlistService.savePlaylist(_playlist);
       setState(() {
         _originalPlaylist = List.from(_playlist);
       });
-      LoadingOverlay.hide();
       AppSnackbar.success("สำเร็จ", "บันทึกรายการเพลงเรียบร้อยแล้ว");
     } catch (error) {
-      LoadingOverlay.hide();
       print("❌ Error savePlaylist: $error");
-      AppSnackbar.error("ล้มเหลว", "ไม่สามารถบันทึกรายการเพลงได้");
+      AppSnackbar.error(
+        "ล้มเหลว",
+        "เกิดข้อผิดพลาดในการบันทึกรายการเพลง กรุณาลองใหม่อีกครั้ง",
+      );
+    } finally {
+      LoadingOverlay.hide();
     }
   }
 
