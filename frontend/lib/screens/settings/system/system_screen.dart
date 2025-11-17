@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:smart_control/core/alert/app_snackbar.dart';
-import 'package:smart_control/core/network/api_service.dart';
+import 'package:smart_control/services/system_service.dart';
 import 'package:smart_control/widgets/loading_overlay.dart';
 
 class SystemScreen extends StatefulWidget {
@@ -40,20 +40,18 @@ class _SystemScreenState extends State<SystemScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final api = await ApiService.private();
-      final response = await api.get('/settings');
-
-      if (response['status'] == 'success') {
-        final data = response['data'];
-        setState(() {
-          _selectedSampleRate = data['sampleRate'] ?? 44100;
-          _loopPlaylist = data['loopPlaylist'] ?? false;
-          _hasChanges = false;
-        });
-      }
+      final data = await SystemService.getSettings();
+      setState(() {
+        _selectedSampleRate = data['sampleRate'] ?? 44100;
+        _loopPlaylist = data['loopPlaylist'] ?? false;
+        _hasChanges = false;
+      });
     } catch (error) {
       print('❌ Error loading settings: $error');
-      AppSnackbar.error('แจ้งเตือน', 'ไม่สามารถโหลดการตั้งค่าได้');
+      AppSnackbar.error(
+        'แจ้งเตือน',
+        'เกิดข้อผิดพลาดในการโหลดการตั้งค่า กรุณาลองใหม่อีกครั้ง',
+      );
     } finally {
       setState(() => _isLoading = false);
     }
@@ -69,22 +67,18 @@ class _SystemScreenState extends State<SystemScreen> {
     LoadingOverlay.show(context);
 
     try {
-      final api = await ApiService.private();
-      final response = await api.post(
-        '/settings/bulk',
-        data: {
-          'sampleRate': _selectedSampleRate,
-          'loopPlaylist': _loopPlaylist,
-        },
+      await SystemService.saveSettings(
+        sampleRate: _selectedSampleRate,
+        loopPlaylist: _loopPlaylist,
       );
-
-      if (response['status'] == 'success') {
-        setState(() => _hasChanges = false);
-        AppSnackbar.success('สำเร็จ', 'บันทึกการตั้งค่าเรียบร้อยแล้ว');
-      }
+      setState(() => _hasChanges = false);
+      AppSnackbar.success('สำเร็จ', 'บันทึกการตั้งค่าเรียบร้อยแล้ว');
     } catch (error) {
       print('❌ Error saving settings: $error');
-      AppSnackbar.error('ผิดพลาด', 'ไม่สามารถบันทึกการตั้งค่าได้');
+      AppSnackbar.error(
+        'ผิดพลาด',
+        'เกิดข้อผิดพลาดในการบันทึกการตั้งค่า กรุณาลองใหม่อีกครั้ง',
+      );
     } finally {
       LoadingOverlay.hide();
     }

@@ -3,11 +3,11 @@ const settingsService = require('../services/settings.service');
 async function getAllSettings(req, res) {
     try {
         const settings = await settingsService.getAllSettings();
-        res.json({ status: 'success', data: settings });
+        res.json({ ok: true, data: settings });
     } catch (error) {
         console.error('Error getting all settings:', error);
         res.status(500).json({
-            status: 'error',
+            ok: false,
             message: error.message || 'Failed to get settings'
         });
     }
@@ -20,16 +20,16 @@ async function getSetting(req, res) {
         
         if (value === null) {
             return res.status(404).json({
-                status: 'error',
+                ok: false,
                 message: 'Setting not found'
             });
         }
 
-        res.json({ status: 'success', key, value });
+        res.json({ ok: true, key, value });
     } catch (error) {
         console.error('Error getting setting:', error);
         res.status(500).json({
-            status: 'error',
+            ok: false,
             message: error.message || 'Failed to get setting'
         });
     }
@@ -42,7 +42,7 @@ async function updateSetting(req, res) {
 
         if (value === undefined) {
             return res.status(400).json({
-                status: 'error',
+                ok: false,
                 message: 'Value is required'
             });
         }
@@ -56,11 +56,11 @@ async function updateSetting(req, res) {
         }
 
         const result = await settingsService.updateSetting(key, storeValue);
-        res.json({ status: 'success', data: result });
+        res.json({ ok: true, data: result });
     } catch (error) {
         console.error('Error updating setting:', error);
         res.status(500).json({
-            status: 'error',
+            ok: false,
             message: error.message || 'Failed to update setting'
         });
     }
@@ -72,7 +72,7 @@ async function updateMultipleSettings(req, res) {
 
         if (!settingsData || Object.keys(settingsData).length === 0) {
             return res.status(400).json({
-                status: 'error',
+                ok: false,
                 message: 'Settings data is required'
             });
         }
@@ -85,11 +85,11 @@ async function updateMultipleSettings(req, res) {
         }
 
         const result = await settingsService.updateMultipleSettings(settingsData);
-        res.json({ status: 'success', data: result });
+        res.json({ ok: true, data: result });
     } catch (error) {
         console.error('Error updating multiple settings:', error);
         res.status(500).json({
-            status: 'error',
+            ok: false,
             message: error.message || 'Failed to update settings'
         });
     }
@@ -98,11 +98,11 @@ async function updateMultipleSettings(req, res) {
 async function resetSettings(req, res) {
     try {
         const result = await settingsService.resetSettings();
-        res.json({ status: 'success', data: result });
+        res.json({ ok: true, data: result });
     } catch (error) {
         console.error('Error resetting settings:', error);
         res.status(500).json({
-            status: 'error',
+            ok: false,
             message: error.message || 'Failed to reset settings'
         });
     }
