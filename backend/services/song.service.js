@@ -63,7 +63,7 @@ const fileFilter = (req, file, cb) => {
 const upload = multer({ storage, fileFilter, limits: { fileSize: 10 * 1024 * 1024 } });
 
 async function getSongList() {
-    return await Song.find().sort({ no: 1 }).lean();
+    return await Song.find().sort({ name: 1 }).lean();
 }
 
 async function getSongById(id) {
@@ -217,7 +217,7 @@ async function deleteSong(id) {
   const isPlaylisted = await Playlist.exists({ id_song: id });
 
   if (isPlaylisted) {
-    const err = new Error('Used in playlist');
+    const err = new Error('ไม่สามารถลบเพลงนี้ได้ เนื่องจากมีการใช้งานในเพลย์ลิสต์');
     err.status = 400;
     throw err;
   }
