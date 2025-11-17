@@ -290,6 +290,10 @@ class _SongScreenState extends State<SongScreen>
       });
     } catch (error) {
       print(error);
+      AppSnackbar.error(
+        "ล้มเหลว",
+        "เกิดข้อผิดพลาดในการโหลดข้อมูลเพลง กรุณาลองใหม่อีกครั้ง",
+      );
     }
   }
 
@@ -372,6 +376,11 @@ class _SongScreenState extends State<SongScreen>
       }
     } on ApiException catch (e) {
       AppSnackbar.error("ล้มเหลว", e.message);
+    } catch (_) {
+      AppSnackbar.error(
+        "ล้มเหลว",
+        "เกิดข้อผิดพลาดในการแก้ไขชื่อเพลง กรุณาลองใหม่อีกครั้ง",
+      );
     } finally {
       LoadingOverlay.hide();
     }
@@ -390,6 +399,11 @@ class _SongScreenState extends State<SongScreen>
       }
     } on ApiException catch (e) {
       AppSnackbar.error('ล้มเหลว', e.message);
+    } catch (_) {
+      AppSnackbar.error(
+        "ล้มเหลว",
+        "เกิดข้อผิดพลาดในการลบเพลง กรุณาลองใหม่อีกครั้ง",
+      );
     } finally {
       if (context.mounted) LoadingOverlay.hide();
     }
