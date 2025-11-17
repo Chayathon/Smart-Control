@@ -49,6 +49,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   Set<int> _selectedDays = {};
   TimeOfDay _selectedTime = TimeOfDay.now();
   bool _isActive = true;
+  bool _songsLoaded = false;
 
   @override
   void initState() {
@@ -85,7 +86,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
       print("Error loading schedules: $error");
       if (mounted) {
         AppSnackbar.error(
-          "แจ้งเตือน",
+          "ล้มเหลว",
           "เกิดข้อผิดพลาดในการโหลดข้อมูลเพลงตั้งเวลา",
         );
       }
@@ -97,6 +98,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   }
 
   Future<void> _loadSchedule(String scheduleId) async {
+    LoadingOverlay.show(context);
     try {
       final schedule = await ScheduleService.getScheduleById(scheduleId);
 
@@ -119,9 +121,13 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
       print("Error loading schedule: $error");
       if (mounted) {
         AppSnackbar.error(
-          "แจ้งเตือน",
+          "ล้มเหลว",
           "เกิดข้อผิดพลาดในการโหลดข้อมูลเพลงตั้งเวลา",
         );
+      }
+    } finally {
+      if (mounted) {
+        LoadingOverlay.hide();
       }
     }
   }
@@ -132,12 +138,13 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
       if (mounted) {
         setState(() {
           _songs = songs;
+          _songsLoaded = true;
         });
       }
     } catch (error) {
       print("Error loading songs: $error");
       if (mounted) {
-        AppSnackbar.error("แจ้งเตือน", "เกิดข้อผิดพลาดในการโหลดรายการเพลง");
+        AppSnackbar.error("ล้มเหลว", "เกิดข้อผิดพลาดในการโหลดรายการเพลง");
       }
     }
   }
@@ -163,7 +170,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     } catch (error) {
       print("Error changing schedule status: $error");
       if (mounted) {
-        AppSnackbar.error("แจ้งเตือน", "เกิดข้อผิดพลาดในการเปลี่ยนสถานะ");
+        AppSnackbar.error("ล้มเหลว", "เกิดข้อผิดพลาดในการเปลี่ยนสถานะ");
         // Revert optimistic update
         if (index != -1) {
           setState(() {
@@ -191,10 +198,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     } catch (error) {
       print("Error deleting schedule: $error");
       if (mounted) {
-        AppSnackbar.error(
-          "แจ้งเตือน",
-          "เกิดข้อผิดพลาดในการลบรายการเพลงตั้งเวลา",
-        );
+        AppSnackbar.error("ล้มเหลว", "เกิดข้อผิดพลาดในการลบรายการเพลงตั้งเวลา");
       }
     } finally {
       if (mounted) {
@@ -256,7 +260,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     } catch (error) {
       print("Error saving schedule: $error");
       if (mounted) {
-        AppSnackbar.error("แจ้งเตือน", "เกิดข้อผิดพลาดในการบันทึกข้อมูล");
+        AppSnackbar.error("ล้มเหลว", "เกิดข้อผิดพลาดในการบันทึกข้อมูล");
       }
     } finally {
       if (mounted) {
@@ -298,7 +302,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     } catch (error) {
       print("Error updating schedule: $error");
       if (mounted) {
-        AppSnackbar.error("แจ้งเตือน", "เกิดข้อผิดพลาดในการอัปเดตข้อมูล");
+        AppSnackbar.error("ล้มเหลว", "เกิดข้อผิดพลาดในการอัปเดตข้อมูล");
       }
     } finally {
       if (mounted) {
@@ -309,17 +313,17 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
 
   bool _validateForm() {
     if (_selectedSongId == null) {
-      AppSnackbar.error("แจ้งเตือน", "กรุณาเลือกเพลง");
+      AppSnackbar.info("แจ้งเตือน", "กรุณาเลือกเพลง");
       return false;
     }
 
     if (_selectedDays.isEmpty) {
-      AppSnackbar.error("แจ้งเตือน", "กรุณาเลือกวันในสัปดาห์");
+      AppSnackbar.info("แจ้งเตือน", "กรุณาเลือกวันในสัปดาห์");
       return false;
     }
 
     if (_descriptionCtrl.text.isEmpty) {
-      AppSnackbar.error("แจ้งเตือน", "กรุณาใส่คำอธิบาย");
+      AppSnackbar.info("แจ้งเตือน", "กรุณาใส่คำอธิบาย");
       return false;
     }
 
@@ -348,7 +352,10 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
 
   Future<void> _showScheduleForm(String? scheduleId) async {
     _resetForm();
-    await _loadSongs();
+
+    if (!_songsLoaded) {
+      await _loadSongs();
+    }
 
     if (scheduleId != null) {
       await _loadSchedule(scheduleId);
