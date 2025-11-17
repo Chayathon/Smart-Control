@@ -3,6 +3,7 @@ import 'package:smart_control/core/alert/app_snackbar.dart';
 import 'package:smart_control/core/color/app_colors.dart';
 import 'package:smart_control/widgets/loading_overlay.dart';
 import 'package:smart_control/services/playlist_service.dart';
+import 'package:smart_control/widgets/modal_bottom_sheet.dart';
 
 class PlaylistScreen extends StatefulWidget {
   const PlaylistScreen({super.key});
@@ -88,48 +89,37 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
       await _loadSongs();
     }
 
-    showModalBottomSheet(
+    ModalBottomSheet.showDraggable(
       context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (context) {
-        return DraggableScrollableSheet(
-          expand: false,
-          builder: (context, scrollController) {
-            return ListView.builder(
-              controller: scrollController,
-              itemCount: _library.length,
-              itemBuilder: (context, index) {
-                final song = _library[index];
-                return ListTile(
-                  title: Text(song["name"]),
-                  subtitle: Text(song["url"]),
-                  trailing: IconButton(
-                    icon: const Icon(
-                      Icons.add_circle,
-                      color: AppColors.primary,
-                    ),
-                    onPressed: () {
-                      final exists = _playlist.any(
-                        (s) => s["_id"] == song["_id"],
-                      );
-                      if (!exists) {
-                        setState(() {
-                          _playlist.add(song);
-                        });
-                        Navigator.pop(context);
-                      } else {
-                        AppSnackbar.info(
-                          "แจ้งเตือน",
-                          "เพลงนี้ถูกเพิ่มในรายการแล้ว",
-                        );
-                      }
-                    },
-                  ),
-                );
-              },
+      initialChildSize: 0.5,
+      minChildSize: 0.25,
+      maxChildSize: 0.95,
+      builder: (context, scrollController) {
+        return ListView.builder(
+          controller: scrollController,
+          itemCount: _library.length,
+          itemBuilder: (context, index) {
+            final song = _library[index];
+            return ListTile(
+              title: Text(song["name"]),
+              subtitle: Text(song["url"]),
+              trailing: IconButton(
+                icon: const Icon(Icons.add_circle, color: AppColors.primary),
+                onPressed: () {
+                  final exists = _playlist.any((s) => s["_id"] == song["_id"]);
+                  if (!exists) {
+                    setState(() {
+                      _playlist.add(song);
+                    });
+                    Navigator.pop(context);
+                  } else {
+                    AppSnackbar.info(
+                      "แจ้งเตือน",
+                      "เพลงนี้ถูกเพิ่มในรายการแล้ว",
+                    );
+                  }
+                },
+              ),
             );
           },
         );
@@ -252,7 +242,7 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
               onPressed: _savePlaylist,
               backgroundColor: Colors.green,
               foregroundColor: Colors.white,
-              icon: const Icon(Icons.save),
+              icon: const Icon(Icons.save_outlined),
               label: const Text("บันทึก"),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
