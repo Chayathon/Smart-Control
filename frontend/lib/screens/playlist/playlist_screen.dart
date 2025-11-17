@@ -3,7 +3,7 @@ import 'package:smart_control/core/alert/app_snackbar.dart';
 import 'package:smart_control/core/color/app_colors.dart';
 import 'package:smart_control/widgets/loading_overlay.dart';
 import 'package:smart_control/services/playlist_service.dart';
-import 'package:smart_control/widgets/modal_bottom_sheet.dart';
+import 'package:smart_control/widgets/modals/modal_bottom_sheet.dart';
 
 class PlaylistScreen extends StatefulWidget {
   const PlaylistScreen({super.key});

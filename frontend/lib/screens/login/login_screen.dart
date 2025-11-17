@@ -6,8 +6,8 @@ import 'package:smart_control/core/color/app_colors.dart';
 import 'package:smart_control/core/network/api_service.dart';
 import 'package:smart_control/core/storage/secure_storage_service.dart';
 import 'package:smart_control/routes/app_routes.dart';
-import 'package:smart_control/widgets/text_field_box.dart';
-import 'package:smart_control/widgets/action_button.dart';
+import 'package:smart_control/widgets/inputs/text_field_box.dart';
+import 'package:smart_control/widgets/buttons/action_button.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});

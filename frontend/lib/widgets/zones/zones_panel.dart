@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:smart_control/widgets/lamp_tile.dart';
+import 'package:smart_control/widgets/zones/lamp_tile.dart';
 
 class ZonesPanel extends StatelessWidget {
   final List<dynamic> zones;

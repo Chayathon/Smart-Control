@@ -39,6 +39,7 @@ class CustomDialog {
         return AlertDialog(
           title: Text(title),
           content: content ?? Text(message),
+          backgroundColor: Colors.white,
           actions: actions?.map((action) {
             return TextButton(
               onPressed: () {
@@ -84,6 +85,7 @@ class CustomDialog {
         return AlertDialog(
           title: Text(title),
           content: Text(message),
+          backgroundColor: Colors.white,
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
@@ -161,6 +163,7 @@ class CustomDialog {
               ],
             ),
           ),
+          backgroundColor: Colors.white,
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),

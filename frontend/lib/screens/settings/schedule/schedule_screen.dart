@@ -3,11 +3,10 @@ import 'package:smart_control/core/alert/app_snackbar.dart';
 import 'package:smart_control/core/network/api_exceptions.dart';
 import 'package:smart_control/services/schedule_service.dart';
 import 'package:smart_control/widgets/loading_overlay.dart';
-import 'package:smart_control/widgets/text_field_box.dart';
-import 'package:smart_control/widgets/action_button.dart';
-import 'package:smart_control/widgets/custom_dialog.dart';
-import 'package:smart_control/widgets/modal_bottom_sheet.dart';
-import 'package:smart_control/widgets/widgets.dart';
+import 'package:smart_control/widgets/inputs/text_field_box.dart';
+import 'package:smart_control/widgets/buttons/action_button.dart';
+import 'package:smart_control/widgets/dialogs/custom_dialog.dart';
+import 'package:smart_control/widgets/modals/modal_bottom_sheet.dart';
 
 class ScheduleScreen extends StatefulWidget {
   const ScheduleScreen({Key? key}) : super(key: key);
@@ -562,7 +561,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     final confirmed = await CustomDialog.showConfirmation(
       context: context,
       title: "ยืนยันการลบ",
-      message: "ยืนยันที่จะลบเพลงตั้งเวลา $description ?",
+      message: "ยืนยันที่จะลบเพลงตั้งเวลา \"$description\" ?",
       confirmText: "ยืนยัน",
       cancelText: "ยกเลิก",
       confirmColor: Colors.red[50],

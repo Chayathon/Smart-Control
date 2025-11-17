@@ -8,9 +8,9 @@ import 'package:smart_control/routes/app_routes.dart';
 import 'package:smart_control/widgets/loading_overlay.dart';
 import 'package:smart_control/services/zone_service.dart';
 import 'package:smart_control/core/network/api_service.dart';
-import '../widgets/keypad_panel.dart';
+import '../widgets/zones/keypad_panel.dart';
 import '../widgets/control_panel.dart';
-import '../widgets/zones_panel.dart';
+import '../widgets/zones/zones_panel.dart';
 import '../widgets/sidebar_panel.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 

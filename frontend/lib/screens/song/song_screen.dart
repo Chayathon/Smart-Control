@@ -3,7 +3,12 @@ import 'package:smart_control/core/alert/app_snackbar.dart';
 import 'package:smart_control/core/network/api_exceptions.dart';
 import 'package:smart_control/services/song_service.dart';
 import 'package:smart_control/widgets/song_upload/song_model.dart';
-import 'package:smart_control/widgets/widgets.dart';
+import 'package:smart_control/widgets/inputs/text_field_box.dart';
+import 'package:smart_control/widgets/inputs/file_field_box.dart';
+import 'package:smart_control/widgets/loading_overlay.dart';
+import 'package:smart_control/widgets/buttons/action_button.dart';
+import 'package:smart_control/widgets/dialogs/custom_dialog.dart';
+import 'package:smart_control/widgets/modals/modal_bottom_sheet.dart';
 
 enum UploadSource { file, youtube }
 
@@ -300,7 +305,7 @@ class _SongScreenState extends State<SongScreen>
     final confirmed = await CustomDialog.showConfirmation(
       context: context,
       title: "ยืนยันการลบ",
-      message: "ยืนยันที่จะลบเพลง $name ?",
+      message: "ยืนยันที่จะลบเพลง \"$name\" ?",
       confirmText: "ยืนยัน",
       cancelText: "ยกเลิก",
       confirmColor: Colors.red[50],
