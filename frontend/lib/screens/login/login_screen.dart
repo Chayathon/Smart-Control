@@ -6,6 +6,8 @@ import 'package:smart_control/core/color/app_colors.dart';
 import 'package:smart_control/core/network/api_service.dart';
 import 'package:smart_control/core/storage/secure_storage_service.dart';
 import 'package:smart_control/routes/app_routes.dart';
+import 'package:smart_control/widgets/text_field_box.dart';
+import 'package:smart_control/widgets/action_button.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -126,81 +128,43 @@ class _LoginScreenState extends State<LoginScreen> {
 
                         const SizedBox(height: 32),
 
-                        TextField(
+                        TextFieldBox(
                           controller: _adminController,
-                          decoration: InputDecoration(
-                            labelText: "ชื่อผู้ใช้",
-                            prefixIcon: const Icon(Icons.person_2_outlined),
-                            filled: true,
-                            fillColor: Colors.grey[100],
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(16),
-                              borderSide: BorderSide.none,
-                            ),
-                          ),
+                          hint: "ชื่อผู้ใช้",
+                          prefixIcon: const Icon(Icons.person_2_outlined),
+                          textInputAction: TextInputAction.next,
                         ),
                         const SizedBox(height: 20),
 
-                        TextField(
+                        TextFieldBox(
                           controller: _passwordController,
+                          hint: "รหัสผ่าน",
                           obscureText: _obscurePassword,
-                          decoration: InputDecoration(
-                            labelText: "รหัสผ่าน",
-                            prefixIcon: const Icon(Icons.lock_outline),
-                            suffixIcon: IconButton(
-                              icon: Icon(
-                                _obscurePassword
-                                    ? Icons.visibility_off
-                                    : Icons.visibility,
-                              ),
-                              onPressed: () {
-                                setState(
-                                  () => _obscurePassword = !_obscurePassword,
-                                );
-                              },
+                          prefixIcon: const Icon(Icons.lock_outline),
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _obscurePassword
+                                  ? Icons.visibility_off
+                                  : Icons.visibility,
                             ),
-                            filled: true,
-                            fillColor: Colors.grey[100],
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(16),
-                              borderSide: BorderSide.none,
-                            ),
+                            onPressed: () {
+                              setState(
+                                () => _obscurePassword = !_obscurePassword,
+                              );
+                            },
                           ),
+                          textInputAction: TextInputAction.done,
                         ),
 
                         const SizedBox(height: 20),
 
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton(
-                            onPressed: _isLoading
-                                ? null
-                                : _login, // ปิดปุ่มตอนกำลังโหลด
-                            style: ElevatedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 18),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                              backgroundColor: AppColors.primary,
-                            ),
-                            child: _isLoading
-                                ? const SizedBox(
-                                    width: 24,
-                                    height: 24,
-                                    child: CircularProgressIndicator(
-                                      color: Colors.white,
-                                      strokeWidth: 3,
-                                    ),
-                                  )
-                                : const Text(
-                                    "เข้าสู่ระบบ",
-                                    style: TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                          ),
+                        Button(
+                          onPressed: _isLoading ? null : _login,
+                          label: "เข้าสู่ระบบ",
+                          isLoading: _isLoading,
+                          backgroundColor: AppColors.primary,
+                          height: 54,
+                          fontSize: 18,
                         ),
                       ],
                     ),
