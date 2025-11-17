@@ -1,220 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:smart_control/core/alert/app_snackbar.dart';
 import 'package:smart_control/core/network/api_exceptions.dart';
 import 'package:smart_control/services/song_service.dart';
-import 'package:smart_control/widgets/loading_overlay.dart';
 import 'package:smart_control/widgets/song_upload/song_model.dart';
+import 'package:smart_control/widgets/widgets.dart';
 
 enum UploadSource { file, youtube }
-
-class _SongUploadScreen extends StatefulWidget {
-  const _SongUploadScreen({
-    required this.source,
-    required this.onSubmitFile,
-    required this.onSubmitYoutube,
-  });
-
-  final UploadSource source;
-  final void Function(String path, String filename, String displayName)
-  onSubmitFile;
-  final void Function(String url, String? name) onSubmitYoutube;
-
-  @override
-  State<_SongUploadScreen> createState() => _SongUploadScreenState();
-}
-
-class _SongUploadScreenState extends State<_SongUploadScreen> {
-  final _nameCtrl = TextEditingController();
-  final _urlCtrl = TextEditingController();
-  String? _fileName;
-  String? _filePath;
-
-  @override
-  Widget build(BuildContext context) {
-    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
-
-    return SafeArea(
-      top: false,
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(16, 16, 16, bottomInset + 16),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                widget.source == UploadSource.file
-                    ? 'เพิ่มเพลงจากไฟล์'
-                    : 'เพิ่มเพลงจาก YouTube',
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 18,
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              _TextFieldBox(controller: _nameCtrl, hint: 'ชื่อเพลง'),
-              const SizedBox(height: 16),
-
-              if (widget.source == UploadSource.file) ...[
-                // โซนเลือกไฟล์
-                GestureDetector(
-                  onTap: () async {
-                    final result = await FilePicker.platform.pickFiles(
-                      type: FileType.custom,
-                      allowedExtensions: ['mp3'],
-                      allowMultiple: false,
-                    );
-                    if (!mounted) return;
-                    if (result != null && result.files.isNotEmpty) {
-                      final f = result.files.first;
-                      setState(() {
-                        _fileName = f.name;
-                        _filePath = f.path;
-                      });
-                    }
-                  },
-                  child: _FileSelectBox(
-                    label: _fileName ?? 'เลือกไฟล์เพลง (.mp3)',
-                    hasFile: _fileName != null,
-                    onClear: () => setState(() {
-                      _fileName = null;
-                      _filePath = null;
-                    }),
-                  ),
-                ),
-              ] else ...[
-                // โซน URL
-                _TextFieldBox(
-                  controller: _urlCtrl,
-                  hint: 'ลิงก์ YouTube',
-                  textInputAction: TextInputAction.done,
-                ),
-              ],
-
-              const SizedBox(height: 20),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: () {
-                    if (widget.source == UploadSource.file) {
-                      final okName = _nameCtrl.text.trim().isNotEmpty;
-                      if (okName && _fileName != null && _filePath != null) {
-                        Navigator.of(context).pop();
-                        widget.onSubmitFile(
-                          _filePath!,
-                          _fileName!,
-                          _nameCtrl.text.trim(),
-                        );
-                      }
-                    } else {
-                      if (_urlCtrl.text.trim().isNotEmpty) {
-                        Navigator.of(context).pop();
-                        widget.onSubmitYoutube(
-                          _urlCtrl.text.trim(),
-                          _nameCtrl.text.trim().isEmpty
-                              ? null
-                              : _nameCtrl.text.trim(),
-                        );
-                      }
-                    }
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue,
-                    foregroundColor: Colors.white,
-                    minimumSize: const Size(double.infinity, 48),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  icon: const Icon(Icons.save_outlined),
-                  label: const Text(
-                    'เพิ่มเพลง',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _TextFieldBox extends StatelessWidget {
-  const _TextFieldBox({
-    required this.controller,
-    required this.hint,
-    this.textInputAction,
-  });
-  final TextEditingController controller;
-  final String hint;
-  final TextInputAction? textInputAction;
-
-  @override
-  Widget build(BuildContext context) {
-    return TextField(
-      controller: controller,
-      textInputAction: textInputAction ?? TextInputAction.next,
-      decoration: InputDecoration(
-        hintText: hint,
-        filled: true,
-        fillColor: Colors.grey[100],
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide.none,
-        ),
-      ),
-      style: TextStyle(fontSize: 14),
-    );
-  }
-}
-
-class _FileSelectBox extends StatelessWidget {
-  const _FileSelectBox({
-    required this.label,
-    required this.hasFile,
-    required this.onClear,
-  });
-  final String label;
-  final bool hasFile;
-  final VoidCallback onClear;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.grey[100],
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.upload_file, color: Colors.grey[600]),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontWeight: hasFile ? FontWeight.bold : FontWeight.normal,
-                color: hasFile ? Colors.black : Colors.grey[600],
-              ),
-            ),
-          ),
-          if (hasFile)
-            IconButton(
-              tooltip: 'ลบไฟล์ที่เลือก',
-              onPressed: onClear,
-              icon: const Icon(Icons.close),
-            ),
-        ],
-      ),
-    );
-  }
-}
 
 class SongScreen extends StatefulWidget {
   const SongScreen({super.key});
@@ -271,7 +62,7 @@ class _SongScreenState extends State<SongScreen>
       setState(() {
         _songs = songs;
       });
-    } catch (error, stackTrace) {
+    } catch (error) {
       print('Error loading songs: $error');
       AppSnackbar.error(
         "ล้มเหลว",
@@ -410,19 +201,76 @@ class _SongScreenState extends State<SongScreen>
   }
 
   Future<void> _showAddDialog(UploadSource source) async {
-    await showModalBottomSheet(
+    final nameCtrl = TextEditingController();
+    final urlCtrl = TextEditingController();
+    String? fileName;
+    String? filePath;
+
+    await ModalBottomSheet.showFormModal(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      title: source == UploadSource.file
+          ? 'เพิ่มเพลงจากไฟล์'
+          : 'เพิ่มเพลงจาก YouTube',
+      child: StatefulBuilder(
+        builder: (BuildContext context, StateSetter setModalState) {
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFieldBox(controller: nameCtrl, hint: 'ชื่อเพลง'),
+              const SizedBox(height: 16),
+
+              if (source == UploadSource.file) ...[
+                // โซนเลือกไฟล์
+                FileFieldBox(
+                  label: fileName ?? 'เลือกไฟล์เพลง (.mp3)',
+                  allowedExtensions: ['mp3'],
+                  onFileSelected: (path, name) {
+                    setModalState(() {
+                      fileName = name;
+                      filePath = path;
+                    });
+                  },
+                  onFileClear: () {
+                    setModalState(() {
+                      fileName = null;
+                      filePath = null;
+                    });
+                  },
+                ),
+              ] else ...[
+                // โซน URL
+                TextFieldBox(
+                  controller: urlCtrl,
+                  hint: 'ลิงก์ YouTube',
+                  textInputAction: TextInputAction.done,
+                ),
+              ],
+            ],
+          );
+        },
       ),
-      builder: (_) => _SongUploadScreen(
-        source: source,
-        onSubmitFile: (path, filename, display) =>
-            _uploadSongFile(path, filename, display),
-        onSubmitYoutube: (url, name) =>
-            _uploadSongYouTube(youtubeUrl: url, name: name),
+      actions: Button(
+        onPressed: () {
+          if (source == UploadSource.file) {
+            final okName = nameCtrl.text.trim().isNotEmpty;
+            if (okName && fileName != null && filePath != null) {
+              Navigator.of(context).pop();
+              _uploadSongFile(filePath!, fileName!, nameCtrl.text.trim());
+            }
+          } else {
+            if (urlCtrl.text.trim().isNotEmpty) {
+              Navigator.of(context).pop();
+              _uploadSongYouTube(
+                youtubeUrl: urlCtrl.text.trim(),
+                name: nameCtrl.text.trim().isEmpty
+                    ? null
+                    : nameCtrl.text.trim(),
+              );
+            }
+          }
+        },
+        label: 'เพิ่มเพลง',
+        icon: Icons.save_outlined,
       ),
     );
   }
@@ -430,124 +278,40 @@ class _SongScreenState extends State<SongScreen>
   Future<void> _showEditDialog(String id) async {
     await _loadSong(id);
 
-    showModalBottomSheet(
+    await ModalBottomSheet.showFormModal(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      title: "แก้ไขชื่อเพลง",
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [TextFieldBox(controller: _nameCtrl, hint: "ชื่อเพลง")],
       ),
-      builder: (BuildContext context) {
-        return SafeArea(
-          child: Padding(
-            padding: EdgeInsets.only(
-              bottom: MediaQuery.of(context).viewInsets.bottom,
-            ),
-            child: SingleChildScrollView(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          "แก้ไขชื่อเพลง",
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _TextFieldBox(
-                            controller: _nameCtrl,
-                            hint: "ชื่อเพลง",
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: ElevatedButton.icon(
-                            onPressed: () {
-                              _editSong(id, _nameCtrl.text);
-                              Navigator.pop(context);
-                            },
-                            label: const Text(
-                              "บันทึก",
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            icon: const Icon(Icons.save_outlined),
-                            style: ElevatedButton.styleFrom(
-                              foregroundColor: Colors.white,
-                              backgroundColor: Colors.blue,
-                              padding: EdgeInsets.symmetric(vertical: 12),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadiusGeometry.all(
-                                  Radius.circular(12),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        );
-      },
+      actions: Button(
+        onPressed: () {
+          _editSong(id, _nameCtrl.text);
+          Navigator.pop(context);
+        },
+        label: "บันทึก",
+        icon: Icons.save_outlined,
+      ),
     );
   }
 
-  void _showDeleteDialog(String id, String name) {
-    showDialog(
+  void _showDeleteDialog(String id, String name) async {
+    final confirmed = await CustomDialog.showConfirmation(
       context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text("ยืนยันการลบ"),
-          content: Text("ยืนยันที่จะลบเพลง \"${name}\" ?"),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              style: ButtonStyle(
-                backgroundColor: WidgetStateProperty.all(Colors.grey[200]),
-              ),
-              child: Text("ยกเลิก", style: TextStyle(color: Colors.grey[600])),
-            ),
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-                _deleteSong(id);
-              },
-              style: ButtonStyle(
-                backgroundColor: WidgetStateProperty.all(Colors.red[50]),
-              ),
-              child: Text(
-                "ยืนยัน",
-                style: TextStyle(
-                  color: Colors.redAccent,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ],
-        );
-      },
+      title: "ยืนยันการลบ",
+      message: "ยืนยันที่จะลบเพลง $name ?",
+      confirmText: "ยืนยัน",
+      cancelText: "ยกเลิก",
+      confirmColor: Colors.red[50],
+      cancelColor: Colors.grey[100],
+      textColor: Colors.red,
+      fontBold: true,
     );
+
+    if (confirmed == true) {
+      _deleteSong(id);
+    }
   }
 
   @override
