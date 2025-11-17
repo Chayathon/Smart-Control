@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:smart_control/core/alert/app_snackbar.dart';
 import 'package:smart_control/core/color/app_colors.dart';
-import 'package:smart_control/core/network/api_service.dart';
 import 'package:smart_control/widgets/loading_overlay.dart';
+import 'package:smart_control/services/playlist_service.dart';
 
 class PlaylistScreen extends StatefulWidget {
   const PlaylistScreen({super.key});
@@ -12,75 +12,64 @@ class PlaylistScreen extends StatefulWidget {
 }
 
 class _PlaylistScreenState extends State<PlaylistScreen> {
+  final _playlistService = PlaylistService.instance;
   List<dynamic> _playlist = [];
+  List<dynamic> _originalPlaylist = [];
   List<dynamic> _library = [];
+  bool _libraryLoaded = false;
 
-  void getSong() async {
+  void _loadPlaylist() async {
+    LoadingOverlay.show(context);
     try {
-      final api = await ApiService.private();
-      var res = await api.get("/song");
+      final playlist = await _playlistService.getPlaylist();
       setState(() {
-        _library = res['data'];
+        _playlist = playlist;
+        _originalPlaylist = List.from(playlist);
       });
     } catch (error) {
       print(error);
-    }
-  }
-
-  void getPlaylist() async {
-    try {
-      final api = await ApiService.private();
-      var res = await api.get('/playlist');
-
-      final list = res['list'] as List;
-
-      final idSongs = list.map((item) => item['id_song']).toList();
-
-      setState(() {
-        _playlist = idSongs;
-      });
-    } catch (error) {
-      print(error);
-    }
-  }
-
-  void savePlaylist() async {
-    try {
-      final mapPlaylist = _playlist.asMap().entries.map((entry) {
-        final index = entry.key;
-        final song = entry.value;
-        return {"order": index + 1, "id_song": song["_id"]};
-      }).toList();
-
-      final api = await ApiService.private();
-      final res = await api.post(
-        "/playlist/save",
-        data: {"songList": mapPlaylist},
+      AppSnackbar.error(
+        "ล้มเหลว",
+        "เกิดข้อผิดพลาดในการโหลดรายการเพลง กรุณาลองใหม่อีกครั้ง",
       );
-
-      LoadingOverlay.show(context);
-      Future.delayed(Duration(seconds: 3), () {
-        LoadingOverlay.hide();
-        AppSnackbar.success("สำเร็จ", "บันทึก Playlist เรียบร้อยแล้ว");
-      });
-    } catch (error) {
-      print("❌ Error savePlaylist: $error");
-      AppSnackbar.error("ผิดพลาด", "ไม่สามารถบันทึก Playlist ได้");
+    } finally {
+      LoadingOverlay.hide();
     }
   }
 
-  @override
-  void initState() {
-    super.initState();
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      LoadingOverlay.show(context);
-      Future.delayed(Duration(seconds: 3), () {
-        getSong();
-        getPlaylist();
-        LoadingOverlay.hide();
+  Future<void> _loadSongs() async {
+    LoadingOverlay.show(context);
+    try {
+      final songs = await _playlistService.getSongs();
+      setState(() {
+        _library = songs;
+        _libraryLoaded = true;
       });
-    });
+    } catch (error) {
+      print(error);
+      AppSnackbar.error(
+        "ล้มเหลว",
+        "เกิดข้อผิดพลาดในการโหลดเพลง กรุณาลองใหม่อีกครั้ง",
+      );
+    } finally {
+      LoadingOverlay.hide();
+    }
+  }
+
+  void _savePlaylist() async {
+    try {
+      LoadingOverlay.show(context);
+      await _playlistService.savePlaylist(_playlist);
+      setState(() {
+        _originalPlaylist = List.from(_playlist);
+      });
+      LoadingOverlay.hide();
+      AppSnackbar.success("สำเร็จ", "บันทึกรายการเพลงเรียบร้อยแล้ว");
+    } catch (error) {
+      LoadingOverlay.hide();
+      print("❌ Error savePlaylist: $error");
+      AppSnackbar.error("ล้มเหลว", "ไม่สามารถบันทึกรายการเพลงได้");
+    }
   }
 
   void _onReorder(int oldIndex, int newIndex) {
@@ -91,7 +80,11 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
     });
   }
 
-  void _addSong() {
+  Future<void> _showAddSongDialog() async {
+    if (!_libraryLoaded) {
+      await _loadSongs();
+    }
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -125,7 +118,10 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
                         });
                         Navigator.pop(context);
                       } else {
-                        AppSnackbar.info("แจ้งเตือน", "เพลงนี้ถูกเพิ่มแล้ว");
+                        AppSnackbar.info(
+                          "แจ้งเตือน",
+                          "เพลงนี้ถูกเพิ่มในรายการแล้ว",
+                        );
                       }
                     },
                   ),
@@ -141,6 +137,29 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
   void _removeSong(int index) {
     setState(() {
       _playlist.removeAt(index);
+    });
+  }
+
+  bool _hasChanges() {
+    // เช็คความยาวก่อน
+    if (_playlist.length != _originalPlaylist.length) return true;
+
+    // เช็คแต่ละ item ว่าเหมือนกันหรือไม่
+    for (int i = 0; i < _playlist.length; i++) {
+      if (_playlist[i]["_id"] != _originalPlaylist[i]["_id"]) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _playlistService.ensureInitialized();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadPlaylist();
     });
   }
 
@@ -174,7 +193,7 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
                     ),
                   ),
                   Text(
-                    "กดปุ่ม ➕ เพื่อเพิ่มเพลง",
+                    "กดปุ่ม ➕ เพื่อเพิ่มเพลงในรายการ",
                     style: TextStyle(color: Colors.grey, fontSize: 16),
                   ),
                 ],
@@ -225,11 +244,9 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
       floatingActionButton: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (_playlist.isNotEmpty)
+          if (_playlist.isNotEmpty && _hasChanges())
             FloatingActionButton.extended(
-              onPressed: () {
-                savePlaylist();
-              },
+              onPressed: _savePlaylist,
               backgroundColor: Colors.green,
               foregroundColor: Colors.white,
               icon: const Icon(Icons.save),
@@ -240,7 +257,7 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
             ),
           const SizedBox(width: 12),
           FloatingActionButton(
-            onPressed: _addSong,
+            onPressed: _showAddSongDialog,
             backgroundColor: AppColors.primary,
             foregroundColor: Colors.white,
             tooltip: "เพิ่มเพลงใหม่",

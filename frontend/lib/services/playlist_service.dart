@@ -13,6 +13,8 @@ class PlaylistState {
   final int index; // 1-based index of current song
   final int total; // total songs
   final DateTime? controlsCooldownUntil; // when controls become available again
+  final List<dynamic> playlist; // Current playlist songs
+  final List<dynamic> library; // All available songs
 
   const PlaylistState({
     this.active = false,
@@ -24,6 +26,8 @@ class PlaylistState {
     this.index = 0,
     this.total = 0,
     this.controlsCooldownUntil,
+    this.playlist = const [],
+    this.library = const [],
   });
 
   bool get isControlsCoolingDown =>
@@ -41,6 +45,8 @@ class PlaylistState {
     int? total,
     DateTime? controlsCooldownUntil,
     bool applyNullCooldown = false,
+    List<dynamic>? playlist,
+    List<dynamic>? library,
   }) {
     return PlaylistState(
       active: active ?? this.active,
@@ -54,6 +60,8 @@ class PlaylistState {
       controlsCooldownUntil: applyNullCooldown
           ? null
           : (controlsCooldownUntil ?? this.controlsCooldownUntil),
+      playlist: playlist ?? this.playlist,
+      library: library ?? this.library,
     );
   }
 }
@@ -280,6 +288,33 @@ class PlaylistService with ChangeNotifier {
     _controlsCooldownTimer = Timer(delay, () {
       state.value = state.value.copyWith(applyNullCooldown: true);
     });
+  }
+
+  // Fetch all songs from library
+  Future<List<dynamic>> getSongs() async {
+    final api = await ApiService.private();
+    final result = await api.get("/song");
+    return (result['data'] as List<dynamic>?) ?? [];
+  }
+
+  // Fetch current playlist
+  Future<List<dynamic>> getPlaylist() async {
+    final api = await ApiService.private();
+    final result = await api.get('/playlist');
+    final list = (result['list'] as List<dynamic>?) ?? [];
+    return list.map((item) => item['id_song']).toList();
+  }
+
+  // Save playlist to backend
+  Future<void> savePlaylist(List<dynamic> playlist) async {
+    final mapPlaylist = playlist.asMap().entries.map((entry) {
+      final index = entry.key;
+      final song = entry.value;
+      return {"order": index + 1, "id_song": song["_id"]};
+    }).toList();
+
+    final api = await ApiService.private();
+    await api.post("/playlist/save", data: {"songList": mapPlaylist});
   }
 
   @override
