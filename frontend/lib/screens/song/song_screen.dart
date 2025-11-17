@@ -1,10 +1,8 @@
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:http_parser/http_parser.dart';
 import 'package:smart_control/core/alert/app_snackbar.dart';
 import 'package:smart_control/core/network/api_exceptions.dart';
-import 'package:smart_control/core/network/api_service.dart';
+import 'package:smart_control/services/song_service.dart';
 import 'package:smart_control/widgets/loading_overlay.dart';
 import 'package:smart_control/widgets/song_upload/song_model.dart';
 
@@ -231,13 +229,10 @@ class _SongScreenState extends State<SongScreen>
   final _nameCtrl = TextEditingController();
   late final AnimationController _fabCtrl;
   late final Animation<double> _rotate;
-  bool isLoading = false;
-  bool _isDeletingSong = false;
 
   @override
   void initState() {
     super.initState();
-    getSongList();
 
     _fabCtrl = AnimationController(
       vsync: this,
@@ -248,6 +243,10 @@ class _SongScreenState extends State<SongScreen>
       begin: 0,
       end: 0.25,
     ).animate(CurvedAnimation(parent: _fabCtrl, curve: Curves.easeOut));
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadSongs();
+    });
   }
 
   @override
@@ -264,88 +263,53 @@ class _SongScreenState extends State<SongScreen>
     }
   }
 
-  void getSongList() async {
+  void _loadSongs() async {
+    LoadingOverlay.show(context);
     try {
-      final api = await ApiService.private();
-      final result = await api.get("/song");
+      final songs = await SongService.getSongs();
 
-      LoadingOverlay.show(context);
+      setState(() {
+        _songs = songs;
+      });
+    } catch (error, stackTrace) {
+      print('Error loading songs: $error');
+      AppSnackbar.error(
+        "ล้มเหลว",
+        "เกิดข้อผิดพลาดในการโหลดเพลง กรุณาลองใหม่อีกครั้ง",
+      );
+    } finally {
+      LoadingOverlay.hide();
+    }
+  }
 
-      Future.delayed(Duration(milliseconds: 100), () {
-        LoadingOverlay.hide();
-        setState(() {
-          _songs = (result["data"] as List)
-              .map((item) => Song.fromJson(item))
-              .toList();
-        });
+  Future<void> _loadSong(String id) async {
+    try {
+      final song = await SongService.getSongById(id);
+      setState(() {
+        _nameCtrl.text = song.name;
       });
     } catch (error) {
       print(error);
     }
   }
 
-  Future<void> getSong(String id) async {
-    try {
-      final api = await ApiService.private();
-
-      final result = await api.get("/song/$id");
-
-      if (result['ok'] == true && result['data'] != null) {
-        final song = Song.fromJson(result['data']);
-        setState(() {
-          _nameCtrl.text = song.name;
-        });
-      }
-    } catch (error) {
-      print(error);
-    }
-  }
-
-  String _normalizeYouTubeUrl(String raw) {
-    final text = raw.trim();
-    final short = RegExp(r'^https?:\/\/youtu\.be\/([A-Za-z0-9_-]{6,})');
-    final m = short.firstMatch(text);
-    if (m != null) {
-      return 'https://www.youtube.com/watch?v=${m.group(1)!}';
-    }
-    return text;
-  }
-
-  bool _looksLikeYouTubeUrl(String url) {
-    final u = url.toLowerCase();
-    return u.contains('youtube.com/watch') || u.contains('youtu.be/');
-  }
-
-  Future<void> uploadSongFile(
+  Future<void> _uploadSongFile(
     String filePath,
     String fileName,
     String name,
   ) async {
-    final normalizedFileName = fileName.toLowerCase().endsWith('.mp3')
-        ? fileName
-        : '$fileName.mp3';
-
     try {
       LoadingOverlay.show(context);
 
-      final formData = FormData.fromMap({
-        'filename': name,
-        'song': await MultipartFile.fromFile(
-          filePath,
-          filename: normalizedFileName,
-          contentType: MediaType('audio', 'mpeg'),
-        ),
-      });
-
-      final api = await ApiService.private();
-      final res = await api.post<Map<String, dynamic>>(
-        "/song/uploadSongFile",
-        data: formData,
+      final res = await SongService.uploadSongFile(
+        filePath: filePath,
+        fileName: fileName,
+        displayName: name,
       );
 
       if (res['ok'] == true) {
         AppSnackbar.success("สำเร็จ", "อัปโหลดเพลงสำเร็จ");
-        getSongList();
+        _loadSongs();
         return;
       }
     } on ApiException catch (error) {
@@ -360,68 +324,50 @@ class _SongScreenState extends State<SongScreen>
     }
   }
 
-  Future<void> uploadSongYouTube({
+  Future<void> _uploadSongYouTube({
     required String youtubeUrl,
     String? name,
   }) async {
     try {
-      final normalizedUrl = _normalizeYouTubeUrl(youtubeUrl);
-
-      if (!_looksLikeYouTubeUrl(normalizedUrl)) {
-        AppSnackbar.error("ล้มเหลว", "URL ไม่ใช่ลิงก์ YouTube ที่รองรับ");
-        return;
-      }
-
       LoadingOverlay.show(context);
 
-      final api = await ApiService.private();
-      final payload = {
-        "url": normalizedUrl,
-        if (name != null && name.trim().isNotEmpty) "filename": name.trim(),
-      };
-
-      final res = await api.post<Map<String, dynamic>>(
-        "/song/uploadSongYT",
-        data: payload,
-        options: Options(
-          sendTimeout: const Duration(minutes: 1),
-          receiveTimeout: const Duration(minutes: 6),
-        ),
+      final res = await SongService.uploadSongYouTube(
+        youtubeUrl: youtubeUrl,
+        name: name,
       );
 
       if (res['ok'] == true) {
         AppSnackbar.success("สำเร็จ", "อัปโหลดเพลงสำเร็จ");
+        _loadSongs();
+        return;
       }
-
-      try {
-        getSongList();
-      } catch (_) {}
     } on ApiException catch (error) {
       AppSnackbar.error("ล้มเหลว", error.message);
-    } catch (_) {
-      AppSnackbar.error(
-        "ล้มเหลว",
-        "เกิดข้อผิดพลาดในการอัปโหลดเพลง กรุณาลองใหม่อีกครั้ง",
-      );
+    } catch (error) {
+      if (error.toString().contains('YouTube')) {
+        AppSnackbar.error(
+          "ล้มเหลว",
+          error.toString().replaceAll('Exception: ', ''),
+        );
+      } else {
+        AppSnackbar.error(
+          "ล้มเหลว",
+          "เกิดข้อผิดพลาดในการอัปโหลดเพลง กรุณาลองใหม่อีกครั้ง",
+        );
+      }
     } finally {
       LoadingOverlay.hide();
     }
   }
 
-  Future<void> editSong(String id, String newName) async {
+  Future<void> _editSong(String id, String newName) async {
+    LoadingOverlay.show(context);
     try {
-      LoadingOverlay.show(context);
-
-      final api = await ApiService.private();
-
-      final res = await api.patch(
-        "/song/update/$id",
-        data: {'newName': newName},
-      );
+      final res = await SongService.updateSong(id, newName);
 
       if (res['ok'] == true && res['data']['name'] == newName) {
         AppSnackbar.success("สำเร็จ", "แก้ไขชื่อเพลงสำเร็จ");
-        getSongList();
+        _loadSongs();
         return;
       }
     } on ApiException catch (e) {
@@ -431,30 +377,25 @@ class _SongScreenState extends State<SongScreen>
     }
   }
 
-  Future<void> deleteSong(String id) async {
-    if (_isDeletingSong) return;
-    _isDeletingSong = true;
-
+  Future<void> _deleteSong(String id) async {
     try {
       if (context.mounted) LoadingOverlay.show(context);
 
-      final api = await ApiService.private();
-      final res = await api.delete<Map<String, dynamic>>('/song/remove/$id');
+      final res = await SongService.deleteSong(id);
 
       if (res['ok'] == true) {
         AppSnackbar.success('สำเร็จ', 'ลบเพลงสำเร็จแล้ว');
-        getSongList();
+        _loadSongs();
         return;
       }
     } on ApiException catch (e) {
       AppSnackbar.error('ล้มเหลว', e.message);
     } finally {
       if (context.mounted) LoadingOverlay.hide();
-      _isDeletingSong = false;
     }
   }
 
-  Future<void> showAddSongDialog(UploadSource source) async {
+  Future<void> _showAddDialog(UploadSource source) async {
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -465,15 +406,15 @@ class _SongScreenState extends State<SongScreen>
       builder: (_) => _SongUploadScreen(
         source: source,
         onSubmitFile: (path, filename, display) =>
-            uploadSongFile(path, filename, display),
+            _uploadSongFile(path, filename, display),
         onSubmitYoutube: (url, name) =>
-            uploadSongYouTube(youtubeUrl: url, name: name),
+            _uploadSongYouTube(youtubeUrl: url, name: name),
       ),
     );
   }
 
-  Future<void> _editDialog(String id) async {
-    await getSong(id);
+  Future<void> _showEditDialog(String id) async {
+    await _loadSong(id);
 
     showModalBottomSheet(
       context: context,
@@ -523,11 +464,11 @@ class _SongScreenState extends State<SongScreen>
                         Expanded(
                           child: ElevatedButton.icon(
                             onPressed: () {
-                              editSong(id, _nameCtrl.text);
+                              _editSong(id, _nameCtrl.text);
                               Navigator.pop(context);
                             },
                             label: const Text(
-                              "บักทึก",
+                              "บันทึก",
                               style: TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.bold,
@@ -558,7 +499,7 @@ class _SongScreenState extends State<SongScreen>
     );
   }
 
-  void _deleteDialog(String id, String name) {
+  void _showDeleteDialog(String id, String name) {
     showDialog(
       context: context,
       builder: (BuildContext context) {
@@ -576,7 +517,7 @@ class _SongScreenState extends State<SongScreen>
             TextButton(
               onPressed: () {
                 Navigator.pop(context);
-                deleteSong(id);
+                _deleteSong(id);
               },
               style: ButtonStyle(
                 backgroundColor: WidgetStateProperty.all(Colors.red[50]),
@@ -671,12 +612,12 @@ class _SongScreenState extends State<SongScreen>
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         IconButton(
-                          onPressed: () => _editDialog(song.id.toString()),
+                          onPressed: () => _showEditDialog(song.id.toString()),
                           icon: Icon(Icons.edit, color: Colors.amber),
                         ),
                         IconButton(
                           onPressed: () =>
-                              _deleteDialog(song.id.toString(), song.name),
+                              _showDeleteDialog(song.id.toString(), song.name),
                           icon: const Icon(Icons.delete, color: Colors.red),
                         ),
                       ],
@@ -708,7 +649,7 @@ class _SongScreenState extends State<SongScreen>
                           heroTag: 'fab_child_1',
                           onPressed: () {
                             _toggleFabMenu();
-                            showAddSongDialog(UploadSource.file);
+                            _showAddDialog(UploadSource.file);
                           },
                           tooltip: 'แนบไฟล์',
                           child: const Icon(Icons.library_music),
@@ -737,7 +678,7 @@ class _SongScreenState extends State<SongScreen>
                           heroTag: 'fab_child_2',
                           onPressed: () {
                             _toggleFabMenu();
-                            showAddSongDialog(UploadSource.youtube);
+                            _showAddDialog(UploadSource.youtube);
                           },
                           tooltip: 'แนบลิงก์',
                           child: const Icon(Icons.link),
