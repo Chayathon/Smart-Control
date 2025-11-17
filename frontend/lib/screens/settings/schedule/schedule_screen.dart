@@ -87,7 +87,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
       if (mounted) {
         AppSnackbar.error(
           "ล้มเหลว",
-          "เกิดข้อผิดพลาดในการโหลดข้อมูลเพลงตั้งเวลา",
+          "เกิดข้อผิดพลาดในการโหลดข้อมูลเพลงตั้งเวลา กรุณาลองใหม่อีกครั้ง",
         );
       }
     } finally {
@@ -122,7 +122,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
       if (mounted) {
         AppSnackbar.error(
           "ล้มเหลว",
-          "เกิดข้อผิดพลาดในการโหลดข้อมูลเพลงตั้งเวลา",
+          "เกิดข้อผิดพลาดในการโหลดข้อมูล กรุณาลองใหม่อีกครั้ง",
         );
       }
     } finally {
@@ -144,7 +144,10 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     } catch (error) {
       print("Error loading songs: $error");
       if (mounted) {
-        AppSnackbar.error("ล้มเหลว", "เกิดข้อผิดพลาดในการโหลดรายการเพลง");
+        AppSnackbar.error(
+          "ล้มเหลว",
+          "เกิดข้อผิดพลาดในการโหลดข้อมูลเพลง กรุณาลองใหม่อีกครั้ง",
+        );
       }
     }
   }
@@ -170,7 +173,10 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     } catch (error) {
       print("Error changing schedule status: $error");
       if (mounted) {
-        AppSnackbar.error("ล้มเหลว", "เกิดข้อผิดพลาดในการเปลี่ยนสถานะ");
+        AppSnackbar.error(
+          "ล้มเหลว",
+          "เกิดข้อผิดพลาดในการเปลี่ยนสถานะ กรุณาลองใหม่อีกครั้ง",
+        );
         // Revert optimistic update
         if (index != -1) {
           setState(() {
@@ -198,7 +204,10 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     } catch (error) {
       print("Error deleting schedule: $error");
       if (mounted) {
-        AppSnackbar.error("ล้มเหลว", "เกิดข้อผิดพลาดในการลบรายการเพลงตั้งเวลา");
+        AppSnackbar.error(
+          "ล้มเหลว",
+          "เกิดข้อผิดพลาดในการลบรายการเพลงตั้งเวลา กรุณาลองใหม่อีกครั้ง",
+        );
       }
     } finally {
       if (mounted) {
@@ -260,7 +269,10 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     } catch (error) {
       print("Error saving schedule: $error");
       if (mounted) {
-        AppSnackbar.error("ล้มเหลว", "เกิดข้อผิดพลาดในการบันทึกข้อมูล");
+        AppSnackbar.error(
+          "ล้มเหลว",
+          "เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง",
+        );
       }
     } finally {
       if (mounted) {
@@ -302,7 +314,10 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     } catch (error) {
       print("Error updating schedule: $error");
       if (mounted) {
-        AppSnackbar.error("ล้มเหลว", "เกิดข้อผิดพลาดในการอัปเดตข้อมูล");
+        AppSnackbar.error(
+          "ล้มเหลว",
+          "เกิดข้อผิดพลาดในการอัปเดตข้อมูล กรุณาลองใหม่อีกครั้ง",
+        );
       }
     } finally {
       if (mounted) {
