@@ -103,7 +103,7 @@ class _ControlPanelState extends State<ControlPanel> {
       final api = await ApiService.private();
       final response = await api.get('/settings/micVolume');
 
-      if (response['status'] == 'success' && response['value'] != null) {
+      if (response['ok'] == true && response['value'] != null) {
         final value = response['value'];
         if (mounted) {
           setState(() {
