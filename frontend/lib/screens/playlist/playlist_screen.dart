@@ -91,34 +91,80 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
 
     ModalBottomSheet.showDraggable(
       context: context,
-      initialChildSize: 0.5,
-      minChildSize: 0.25,
+      initialChildSize: 0.7,
+      minChildSize: 0.5,
       maxChildSize: 0.95,
-      builder: (context, scrollController) {
+      showSearch: true,
+      searchHint: 'ค้นหาชื่อเพลง...',
+      title: 'เลือกเพลง',
+      builder: (context, scrollController, searchQuery) {
+        // Filter songs based on search query
+        final filteredSongs = searchQuery.isEmpty
+            ? _library
+            : _library.where((song) {
+                final name = song["name"].toString().toLowerCase();
+                final url = song["url"].toString().toLowerCase();
+                final query = searchQuery.toLowerCase();
+                return name.contains(query) || url.contains(query);
+              }).toList();
+
+        if (filteredSongs.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.search_off, size: 64, color: Colors.grey),
+                const SizedBox(height: 16),
+                Text(
+                  'ไม่พบเพลงที่ค้นหา',
+                  style: TextStyle(
+                    color: Colors.grey,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+
         return ListView.builder(
           controller: scrollController,
-          itemCount: _library.length,
+          itemCount: filteredSongs.length,
           itemBuilder: (context, index) {
-            final song = _library[index];
+            final song = filteredSongs[index];
+            final isInPlaylist = _playlist.any((s) => s["_id"] == song["_id"]);
+
             return ListTile(
-              title: Text(song["name"]),
-              subtitle: Text(song["url"]),
+              leading: Icon(
+                Icons.music_note,
+                color: isInPlaylist ? Colors.grey : AppColors.primary,
+              ),
+              title: Text(
+                song["name"],
+                style: TextStyle(
+                  color: isInPlaylist ? Colors.grey : Colors.black,
+                ),
+              ),
+              subtitle: Text(
+                song["url"],
+                style: TextStyle(
+                  color: isInPlaylist ? Colors.grey : Colors.black54,
+                ),
+              ),
               trailing: IconButton(
-                icon: const Icon(Icons.add_circle, color: AppColors.primary),
-                onPressed: () {
-                  final exists = _playlist.any((s) => s["_id"] == song["_id"]);
-                  if (!exists) {
-                    setState(() {
-                      _playlist.add(song);
-                    });
-                    Navigator.pop(context);
-                  } else {
-                    AppSnackbar.info(
-                      "แจ้งเตือน",
-                      "เพลงนี้ถูกเพิ่มในรายการแล้ว",
-                    );
-                  }
-                },
+                icon: Icon(
+                  isInPlaylist ? Icons.check_circle : Icons.add_circle,
+                  color: isInPlaylist ? Colors.grey : AppColors.primary,
+                ),
+                onPressed: isInPlaylist
+                    ? null
+                    : () {
+                        setState(() {
+                          _playlist.add(song);
+                        });
+                        Navigator.pop(context);
+                      },
               ),
             );
           },
