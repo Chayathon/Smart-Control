@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 
-/// Reusable File Selection Widget
 class FileFieldBox extends StatefulWidget {
   const FileFieldBox({
     Key? key,
@@ -12,6 +11,7 @@ class FileFieldBox extends StatefulWidget {
     this.onFileClear,
     this.allowMultiple = false,
     this.initialFileName,
+    this.validator,
   }) : super(key: key);
 
   final String label;
@@ -21,14 +21,16 @@ class FileFieldBox extends StatefulWidget {
   final VoidCallback? onFileClear;
   final bool allowMultiple;
   final String? initialFileName;
+  final String? Function(String?)? validator;
 
   @override
-  State<FileFieldBox> createState() => _FileFieldBoxState();
+  State<FileFieldBox> createState() => FileFieldBoxState();
 }
 
-class _FileFieldBoxState extends State<FileFieldBox> {
+class FileFieldBoxState extends State<FileFieldBox> {
   String? _fileName;
   String? _filePath;
+  bool _shouldValidate = false;
 
   @override
   void initState() {
@@ -36,6 +38,13 @@ class _FileFieldBoxState extends State<FileFieldBox> {
     if (widget.initialFileName != null) {
       _fileName = widget.initialFileName;
     }
+  }
+
+  String? validate() {
+    setState(() {
+      _shouldValidate = true;
+    });
+    return widget.validator?.call(_fileName);
   }
 
   Future<void> _pickFile() async {
@@ -74,45 +83,63 @@ class _FileFieldBoxState extends State<FileFieldBox> {
   @override
   Widget build(BuildContext context) {
     final hasFile = _fileName != null;
+    final validationError = _shouldValidate
+        ? widget.validator?.call(_fileName)
+        : null;
+    final hasError = validationError != null;
 
-    return GestureDetector(
-      onTap: _pickFile,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-        decoration: BoxDecoration(
-          color: Colors.grey[200],
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Row(
-          children: [
-            Icon(
-              hasFile ? Icons.check_circle : Icons.upload_file,
-              color: hasFile ? Colors.green : Colors.grey[600],
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        GestureDetector(
+          onTap: _pickFile,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+            decoration: BoxDecoration(
+              color: Colors.grey[200],
+              borderRadius: BorderRadius.circular(12),
+              border: hasError ? Border.all(color: Colors.red, width: 2) : null,
             ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                _fileName ?? widget.label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontWeight: hasFile ? FontWeight.bold : FontWeight.normal,
-                  color: hasFile ? Colors.black : Colors.grey[600],
-                  fontSize: 14,
+            child: Row(
+              children: [
+                Icon(
+                  hasFile ? Icons.check_circle : Icons.upload_file,
+                  color: hasFile ? Colors.green : Colors.grey[600],
                 ),
-              ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    _fileName ?? widget.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontWeight: hasFile ? FontWeight.bold : FontWeight.normal,
+                      color: hasFile ? Colors.black : Colors.grey[600],
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+                if (hasFile)
+                  IconButton(
+                    tooltip: 'ลบไฟล์ที่เลือก',
+                    onPressed: _clearFile,
+                    icon: const Icon(Icons.close, color: Colors.red),
+                    padding: EdgeInsets.zero,
+                    constraints: BoxConstraints(),
+                  ),
+              ],
             ),
-            if (hasFile)
-              IconButton(
-                tooltip: 'ลบไฟล์ที่เลือก',
-                onPressed: _clearFile,
-                icon: const Icon(Icons.close, color: Colors.red),
-                padding: EdgeInsets.zero,
-                constraints: BoxConstraints(),
-              ),
-          ],
+          ),
         ),
-      ),
+        if (hasError)
+          Padding(
+            padding: const EdgeInsets.only(left: 12, top: 8),
+            child: Text(
+              validationError,
+              style: TextStyle(color: Colors.red, fontSize: 12),
+            ),
+          ),
+      ],
     );
   }
 

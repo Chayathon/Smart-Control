@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-/// Reusable TextField Widget with consistent styling
 class TextFieldBox extends StatelessWidget {
   const TextFieldBox({
     Key? key,
