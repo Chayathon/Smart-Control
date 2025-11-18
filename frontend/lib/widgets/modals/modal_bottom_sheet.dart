@@ -120,29 +120,29 @@ class ModalBottomSheet {
   /// แสดง Modal Bottom Sheet แบบปรับความสูงได้ (Draggable)
   static Future<T?> showDraggable<T>({
     required BuildContext context,
-    required Widget Function(BuildContext, ScrollController) builder,
+    required Widget Function(BuildContext, ScrollController, String) builder,
     double initialChildSize = 0.5,
     double minChildSize = 0.25,
     double maxChildSize = 0.95,
     bool expand = false,
+    bool showSearch = false,
+    String? searchHint,
+    String? title,
   }) {
     return showModalBottomSheet<T>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) {
-        return Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          child: DraggableScrollableSheet(
-            initialChildSize: initialChildSize,
-            minChildSize: minChildSize,
-            maxChildSize: maxChildSize,
-            expand: expand,
-            builder: builder,
-          ),
+        return _DraggableModalContent<T>(
+          initialChildSize: initialChildSize,
+          minChildSize: minChildSize,
+          maxChildSize: maxChildSize,
+          expand: expand,
+          showSearch: showSearch,
+          searchHint: searchHint,
+          title: title,
+          builder: builder,
         );
       },
     );
@@ -217,55 +217,328 @@ class ModalBottomSheet {
     IconData Function(T)? itemIcon,
     Function(T)? onItemSelected,
     bool dismissOnSelect = true,
+    bool showSearch = false,
+    String? searchHint,
   }) {
     return showModalBottomSheet<T>(
       context: context,
       backgroundColor: Colors.transparent,
+      isScrollControlled: true,
       builder: (context) {
-        return Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
+        return _ListSelectionModalContent<T>(
+          title: title,
+          items: items,
+          itemLabel: itemLabel,
+          itemSubtitle: itemSubtitle,
+          itemIcon: itemIcon,
+          onItemSelected: onItemSelected,
+          dismissOnSelect: dismissOnSelect,
+          showSearch: showSearch,
+          searchHint: searchHint,
+        );
+      },
+    );
+  }
+}
+
+/// StatefulWidget สำหรับ Draggable Modal พร้อม Search
+class _DraggableModalContent<T> extends StatefulWidget {
+  final double initialChildSize;
+  final double minChildSize;
+  final double maxChildSize;
+  final bool expand;
+  final bool showSearch;
+  final String? searchHint;
+  final String? title;
+  final Widget Function(BuildContext, ScrollController, String) builder;
+
+  const _DraggableModalContent({
+    required this.initialChildSize,
+    required this.minChildSize,
+    required this.maxChildSize,
+    required this.expand,
+    required this.showSearch,
+    required this.searchHint,
+    required this.title,
+    required this.builder,
+  });
+
+  @override
+  State<_DraggableModalContent<T>> createState() =>
+      _DraggableModalContentState<T>();
+}
+
+class _DraggableModalContentState<T> extends State<_DraggableModalContent<T>> {
+  String _searchQuery = '';
+  final TextEditingController _searchController = TextEditingController();
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedPadding(
+      duration: const Duration(milliseconds: 150),
+      curve: Curves.easeOut,
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: DraggableScrollableSheet(
+          initialChildSize: widget.initialChildSize,
+          minChildSize: widget.minChildSize,
+          maxChildSize: widget.maxChildSize,
+          expand: widget.expand,
+          builder: (context, scrollController) {
+            return Column(
+              children: [
+                // Handle bar
+                Container(
+                  margin: EdgeInsets.only(top: 8),
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey[300],
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                // Title (if provided)
+                if (widget.title != null) ...[
+                  Padding(
+                    padding: EdgeInsets.all(16.0),
+                    child: Text(
+                      widget.title!,
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  Divider(height: 1),
+                ],
+                // Search box
+                if (widget.showSearch)
+                  Padding(
+                    padding: EdgeInsets.all(16.0),
+                    child: TextField(
+                      controller: _searchController,
+                      decoration: InputDecoration(
+                        hintText: widget.searchHint ?? 'ค้นหา...',
+                        prefixIcon: Icon(Icons.search),
+                        suffixIcon: _searchQuery.isNotEmpty
+                            ? IconButton(
+                                icon: Icon(Icons.clear),
+                                onPressed: () {
+                                  setState(() {
+                                    _searchController.clear();
+                                    _searchQuery = '';
+                                  });
+                                },
+                              )
+                            : null,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                      ),
+                      onChanged: (value) {
+                        setState(() {
+                          _searchQuery = value;
+                        });
+                      },
+                    ),
+                  ),
+                // Content
+                Expanded(
+                  child: widget.builder(
+                    context,
+                    scrollController,
+                    _searchQuery,
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+/// StatefulWidget สำหรับ List Selection Modal พร้อม Search
+class _ListSelectionModalContent<T> extends StatefulWidget {
+  final String title;
+  final List<T> items;
+  final String Function(T) itemLabel;
+  final Widget Function(T)? itemSubtitle;
+  final IconData Function(T)? itemIcon;
+  final Function(T)? onItemSelected;
+  final bool dismissOnSelect;
+  final bool showSearch;
+  final String? searchHint;
+
+  const _ListSelectionModalContent({
+    required this.title,
+    required this.items,
+    required this.itemLabel,
+    required this.itemSubtitle,
+    required this.itemIcon,
+    required this.onItemSelected,
+    required this.dismissOnSelect,
+    required this.showSearch,
+    required this.searchHint,
+  });
+
+  @override
+  State<_ListSelectionModalContent<T>> createState() =>
+      _ListSelectionModalContentState<T>();
+}
+
+class _ListSelectionModalContentState<T>
+    extends State<_ListSelectionModalContent<T>> {
+  String _searchQuery = '';
+  final TextEditingController _searchController = TextEditingController();
+
+  List<T> get _filteredItems {
+    if (_searchQuery.isEmpty) return widget.items;
+    return widget.items.where((item) {
+      final label = widget.itemLabel(item).toLowerCase();
+      return label.contains(_searchQuery.toLowerCase());
+    }).toList();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final filteredItems = _filteredItems;
+
+    return AnimatedPadding(
+      duration: const Duration(milliseconds: 150),
+      curve: Curves.easeOut,
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Title
+            Padding(
+              padding: EdgeInsets.all(16.0),
+              child: Text(
+                widget.title,
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+            ),
+            Divider(height: 1),
+            // Search box
+            if (widget.showSearch)
               Padding(
                 padding: EdgeInsets.all(16.0),
-                child: Text(
-                  title,
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-              ),
-              Divider(height: 1),
-              Flexible(
-                child: ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: items.length,
-                  itemBuilder: (context, index) {
-                    final item = items[index];
-                    return ListTile(
-                      leading: itemIcon != null ? Icon(itemIcon(item)) : null,
-                      title: Text(itemLabel(item)),
-                      subtitle: itemSubtitle != null
-                          ? itemSubtitle(item)
-                          : null,
-                      onTap: () {
-                        if (onItemSelected != null) {
-                          onItemSelected(item);
-                        }
-                        if (dismissOnSelect) {
-                          Navigator.pop(context, item);
-                        }
-                      },
-                    );
+                child: TextField(
+                  controller: _searchController,
+                  decoration: InputDecoration(
+                    hintText: widget.searchHint ?? 'ค้นหา...',
+                    prefixIcon: Icon(Icons.search),
+                    suffixIcon: _searchQuery.isNotEmpty
+                        ? IconButton(
+                            icon: Icon(Icons.clear),
+                            onPressed: () {
+                              setState(() {
+                                _searchController.clear();
+                                _searchQuery = '';
+                              });
+                            },
+                          )
+                        : null,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    contentPadding: EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                  ),
+                  onChanged: (value) {
+                    setState(() {
+                      _searchQuery = value;
+                    });
                   },
                 ),
               ),
-            ],
-          ),
-        );
-      },
+            // List
+            Flexible(
+              child: filteredItems.isEmpty
+                  ? Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(32.0),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.search_off,
+                              size: 48,
+                              color: Colors.grey,
+                            ),
+                            SizedBox(height: 16),
+                            Text(
+                              'ไม่พบรายการที่ค้นหา',
+                              style: TextStyle(
+                                color: Colors.grey,
+                                fontSize: 16,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  : ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: filteredItems.length,
+                      itemBuilder: (context, index) {
+                        final item = filteredItems[index];
+                        return ListTile(
+                          leading: widget.itemIcon != null
+                              ? Icon(widget.itemIcon!(item))
+                              : null,
+                          title: Text(widget.itemLabel(item)),
+                          subtitle: widget.itemSubtitle != null
+                              ? widget.itemSubtitle!(item)
+                              : null,
+                          onTap: () {
+                            if (widget.onItemSelected != null) {
+                              widget.onItemSelected!(item);
+                            }
+                            if (widget.dismissOnSelect) {
+                              Navigator.pop(context, item);
+                            }
+                          },
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
