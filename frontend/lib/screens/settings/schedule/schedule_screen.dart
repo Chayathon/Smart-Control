@@ -5,7 +5,7 @@ import 'package:smart_control/services/schedule_service.dart';
 import 'package:smart_control/widgets/loading_overlay.dart';
 import 'package:smart_control/widgets/inputs/text_field_box.dart';
 import 'package:smart_control/widgets/buttons/action_button.dart';
-import 'package:smart_control/widgets/dialogs/custom_dialog.dart';
+import 'package:smart_control/widgets/dialogs/alert_dialog.dart';
 import 'package:smart_control/widgets/modals/modal_bottom_sheet.dart';
 
 class ScheduleScreen extends StatefulWidget {
