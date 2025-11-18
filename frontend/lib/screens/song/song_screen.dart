@@ -7,7 +7,7 @@ import 'package:smart_control/widgets/inputs/text_field_box.dart';
 import 'package:smart_control/widgets/inputs/file_field_box.dart';
 import 'package:smart_control/widgets/loading_overlay.dart';
 import 'package:smart_control/widgets/buttons/action_button.dart';
-import 'package:smart_control/widgets/dialogs/custom_dialog.dart';
+import 'package:smart_control/widgets/dialogs/alert_dialog.dart';
 import 'package:smart_control/widgets/modals/modal_bottom_sheet.dart';
 
 enum UploadSource { file, youtube }
@@ -206,6 +206,8 @@ class _SongScreenState extends State<SongScreen>
   }
 
   Future<void> _showAddDialog(UploadSource source) async {
+    final formKey = GlobalKey<FormState>();
+    final fileFieldKey = GlobalKey<FileFieldBoxState>();
     final nameCtrl = TextEditingController();
     final urlCtrl = TextEditingController();
     String? fileName;
@@ -216,62 +218,97 @@ class _SongScreenState extends State<SongScreen>
       title: source == UploadSource.file
           ? 'เพิ่มเพลงจากไฟล์'
           : 'เพิ่มเพลงจาก YouTube',
-      child: StatefulBuilder(
-        builder: (BuildContext context, StateSetter setModalState) {
-          return Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextFieldBox(controller: nameCtrl, hint: 'ชื่อเพลง'),
-              const SizedBox(height: 16),
-
-              if (source == UploadSource.file) ...[
-                // โซนเลือกไฟล์
-                FileFieldBox(
-                  label: fileName ?? 'เลือกไฟล์เพลง (.mp3)',
-                  allowedExtensions: ['mp3'],
-                  onFileSelected: (path, name) {
-                    setModalState(() {
-                      fileName = name;
-                      filePath = path;
-                    });
-                  },
-                  onFileClear: () {
-                    setModalState(() {
-                      fileName = null;
-                      filePath = null;
-                    });
-                  },
-                ),
-              ] else ...[
-                // โซน URL
+      child: Form(
+        key: formKey,
+        child: StatefulBuilder(
+          builder: (BuildContext context, StateSetter setModalState) {
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
                 TextFieldBox(
-                  controller: urlCtrl,
-                  hint: 'ลิงก์ YouTube',
-                  textInputAction: TextInputAction.done,
+                  controller: nameCtrl,
+                  hint: 'ชื่อเพลง',
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'กรุณากรอกชื่อเพลง';
+                    }
+                    return null;
+                  },
                 ),
+                const SizedBox(height: 16),
+
+                if (source == UploadSource.file) ...[
+                  // โซนเลือกไฟล์
+                  FileFieldBox(
+                    key: fileFieldKey,
+                    label: 'เลือกไฟล์เพลง (.mp3)',
+                    allowedExtensions: ['mp3'],
+                    onFileSelected: (path, name) {
+                      setModalState(() {
+                        fileName = name;
+                        filePath = path;
+                      });
+                    },
+                    onFileClear: () {
+                      setModalState(() {
+                        fileName = null;
+                        filePath = null;
+                      });
+                    },
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'กรุณาเลือกไฟล์เพลง';
+                      }
+                      return null;
+                    },
+                  ),
+                ] else ...[
+                  // โซน URL
+                  TextFieldBox(
+                    controller: urlCtrl,
+                    hint: 'ลิงก์ YouTube',
+                    textInputAction: TextInputAction.done,
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'กรุณากรอกลิงก์ YouTube';
+                      }
+                      return null;
+                    },
+                  ),
+                ],
               ],
-            ],
-          );
-        },
+            );
+          },
+        ),
       ),
       actions: Button(
         onPressed: () {
+          // Validate form
+          bool isValid = formKey.currentState?.validate() ?? false;
+
+          // Validate file field separately if source is file
           if (source == UploadSource.file) {
-            final okName = nameCtrl.text.trim().isNotEmpty;
-            if (okName && fileName != null && filePath != null) {
+            final fileError = fileFieldKey.currentState?.validate();
+            if (fileError != null) {
+              isValid = false;
+            }
+          }
+
+          if (!isValid) {
+            return; // หยุดถ้า validation ไม่ผ่าน
+          }
+
+          if (source == UploadSource.file) {
+            if (fileName != null && filePath != null) {
               Navigator.of(context).pop();
               _uploadSongFile(filePath!, fileName!, nameCtrl.text.trim());
             }
           } else {
-            if (urlCtrl.text.trim().isNotEmpty) {
-              Navigator.of(context).pop();
-              _uploadSongYouTube(
-                youtubeUrl: urlCtrl.text.trim(),
-                name: nameCtrl.text.trim().isEmpty
-                    ? null
-                    : nameCtrl.text.trim(),
-              );
-            }
+            Navigator.of(context).pop();
+            _uploadSongYouTube(
+              youtubeUrl: urlCtrl.text.trim(),
+              name: nameCtrl.text.trim().isEmpty ? null : nameCtrl.text.trim(),
+            );
           }
         },
         label: 'เพิ่มเพลง',
