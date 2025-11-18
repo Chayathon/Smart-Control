@@ -367,40 +367,71 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.w400),
               ),
               SizedBox(height: 8),
-              Container(
-                decoration: BoxDecoration(
-                  color: Colors.grey[200],
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: DropdownButtonFormField<String>(
-                  value: _selectedSongId,
-                  decoration: InputDecoration(
-                    hintText: "เลือกเพลง",
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none,
-                    ),
-                    contentPadding: EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 12,
-                    ),
-                  ),
-                  items: _songs.map((song) {
-                    return DropdownMenuItem<String>(
-                      value: song['_id'].toString(),
-                      child: Text(
-                        song['name'] ?? 'ไม่มีชื่อ',
-                        style: TextStyle(fontSize: 14),
-                      ),
-                    );
-                  }).toList(),
-                  onChanged: (value) {
+              InkWell(
+                onTap: () async {
+                  final selectedSong =
+                      await ModalBottomSheet.showListSelection<
+                        Map<String, dynamic>
+                      >(
+                        context: context,
+                        title: "เลือกเพลง",
+                        items: _songs.cast<Map<String, dynamic>>(),
+                        itemLabel: (song) => song['name'] ?? 'ไม่มีชื่อ',
+                        itemSubtitle: (song) => Text(
+                          song['url'] ?? '',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                        itemIcon: (song) => Icons.music_note,
+                        showSearch: true,
+                        searchHint: 'ค้นหาเพลง...',
+                      );
+
+                  if (selectedSong != null) {
                     setModalState(() {
                       setState(() {
-                        _selectedSongId = value;
+                        _selectedSongId = selectedSong['_id'].toString();
                       });
                     });
-                  },
+                  }
+                },
+                child: Container(
+                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[200],
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.grey[300]!, width: 1),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          _selectedSongId != null
+                              ? _songs.firstWhere(
+                                      (song) =>
+                                          song['_id'].toString() ==
+                                          _selectedSongId,
+                                      orElse: () => {'name': 'เลือกเพลง'},
+                                    )['name'] ??
+                                    'เลือกเพลง'
+                              : 'เลือกเพลง',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: _selectedSongId != null
+                                ? FontWeight.w500
+                                : FontWeight.normal,
+                            color: _selectedSongId != null
+                                ? Colors.black87
+                                : Colors.grey[600],
+                          ),
+                        ),
+                      ),
+                      Icon(Icons.arrow_drop_down, color: Colors.grey[600]),
+                    ],
+                  ),
                 ),
               ),
               SizedBox(height: 20),
