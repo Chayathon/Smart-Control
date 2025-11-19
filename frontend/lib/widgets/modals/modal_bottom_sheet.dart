@@ -164,7 +164,7 @@ class ModalBottomSheet {
           duration: const Duration(milliseconds: 100),
           curve: Curves.easeOut,
           padding: EdgeInsets.only(
-            bottom: MediaQuery.of(context).viewInsets.bottom,
+            bottom: MediaQuery.of(modalContext).viewInsets.bottom,
           ),
           child: Container(
             decoration: BoxDecoration(
