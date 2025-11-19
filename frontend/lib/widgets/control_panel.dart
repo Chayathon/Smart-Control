@@ -15,6 +15,17 @@ import 'package:smart_control/widgets/modals/modal_bottom_sheet.dart';
 
 enum PlaybackMode { none, playlist, file, youtube, schedule }
 
+// Constants
+class _ControlPanelConstants {
+  static const Duration controlsCooldown = Duration(seconds: 8);
+  static const Duration micCooldown = Duration(seconds: 2);
+  static const Duration refreshDebounce = Duration(milliseconds: 300);
+  static const Duration minRefreshInterval = Duration(milliseconds: 150);
+  static const int micStopDelayMs = 10000;
+  static const int micStartDelayMs = 5000;
+  static const double defaultMicVolume = 1.5;
+}
+
 class ControlPanel extends StatefulWidget {
   const ControlPanel({Key? key}) : super(key: key);
 
@@ -30,7 +41,7 @@ class _ControlPanelState extends State<ControlPanel> {
 
   bool micOn = false;
   bool streamEnabled = true;
-  double micVolume = 1.5;
+  double micVolume = _ControlPanelConstants.defaultMicVolume;
 
   bool _micUiDisabled = false;
   Timer? _micUiCooldownTimer;
@@ -111,7 +122,9 @@ class _ControlPanelState extends State<ControlPanel> {
         final value = response['value'];
         if (mounted) {
           setState(() {
-            micVolume = (value is num) ? value.toDouble() : 1.5;
+            micVolume = (value is num)
+                ? value.toDouble()
+                : _ControlPanelConstants.defaultMicVolume;
           });
           print('🎚️ Mic Volume from DB: $micVolume');
         }
@@ -120,7 +133,7 @@ class _ControlPanelState extends State<ControlPanel> {
       print('⚠️ ไม่สามารถดึง Mic Volume จาก DB ได้: $error');
       if (mounted) {
         setState(() {
-          micVolume = 1.5;
+          micVolume = _ControlPanelConstants.defaultMicVolume;
         });
       }
     }
@@ -308,7 +321,7 @@ class _ControlPanelState extends State<ControlPanel> {
   }
 
   void _scheduleRefreshFromDb([
-    Duration delay = const Duration(milliseconds: 300),
+    Duration delay = _ControlPanelConstants.refreshDebounce,
   ]) {
     _refreshDebounce?.cancel();
     _refreshDebounce = Timer(delay, () {
@@ -319,8 +332,9 @@ class _ControlPanelState extends State<ControlPanel> {
   Future<bool> _refreshFromDb() async {
     final now = DateTime.now();
     if (_lastRefreshAt != null &&
-        now.difference(_lastRefreshAt!) < const Duration(milliseconds: 150)) {
-      _scheduleRefreshFromDb(const Duration(milliseconds: 150));
+        now.difference(_lastRefreshAt!) <
+            _ControlPanelConstants.minRefreshInterval) {
+      _scheduleRefreshFromDb(_ControlPanelConstants.minRefreshInterval);
       return true;
     }
     if (_refreshInFlight) {
@@ -469,9 +483,12 @@ class _ControlPanelState extends State<ControlPanel> {
   void _startLocalControlsCooldown() {
     _localControlsCooldownTimer?.cancel();
     setState(() => isControlsCoolingDown = true);
-    _localControlsCooldownTimer = Timer(const Duration(seconds: 8), () {
-      if (mounted) setState(() => isControlsCoolingDown = false);
-    });
+    _localControlsCooldownTimer = Timer(
+      _ControlPanelConstants.controlsCooldown,
+      () {
+        if (mounted) setState(() => isControlsCoolingDown = false);
+      },
+    );
   }
 
   @override
@@ -494,11 +511,10 @@ class _ControlPanelState extends State<ControlPanel> {
     try {
       if (micOn) {
         await _micService.stopStreaming();
-        final elapsed = DateTime.now().difference(start).inMilliseconds;
-        final remain = 10000 - elapsed;
-        if (remain > 0) {
-          await Future.delayed(Duration(milliseconds: remain));
-        }
+        await _delayForRemainingTime(
+          start,
+          _ControlPanelConstants.micStopDelayMs,
+        );
         if (mounted) {
           setState(() {
             micOn = false;
@@ -511,28 +527,26 @@ class _ControlPanelState extends State<ControlPanel> {
           // No pre-action required; open mic immediately
         } else {
           try {
-            final api = await ApiService.private();
             if (playbackMode == PlaybackMode.playlist ||
                 playbackMode == PlaybackMode.file) {
-              await api.get('/stream/pause');
-            } else if (playbackMode == PlaybackMode.youtube) {
-              await api.get('/stream/stop');
+              await _streamService.pause();
+            } else if (playbackMode == PlaybackMode.youtube ||
+                playbackMode == PlaybackMode.schedule) {
+              await _streamService.stop();
             }
           } catch (_) {
             // Continue attempting to open mic even if pre-action fails
           }
 
-          await Future.delayed(const Duration(seconds: 8));
+          await Future.delayed(_ControlPanelConstants.controlsCooldown);
         }
 
         final success = await _micService.startStreaming(_micServerUrl);
 
-        final elapsed = DateTime.now().difference(start).inMilliseconds;
-        final int targetMs = playbackMode == PlaybackMode.none ? 5000 : 10000;
-        final remain = targetMs - elapsed;
-        if (remain > 0) {
-          await Future.delayed(Duration(milliseconds: remain));
-        }
+        final int targetMs = playbackMode == PlaybackMode.none
+            ? _ControlPanelConstants.micStartDelayMs
+            : _ControlPanelConstants.micStopDelayMs;
+        await _delayForRemainingTime(start, targetMs);
 
         if (success) {
           if (mounted) {
@@ -555,12 +569,20 @@ class _ControlPanelState extends State<ControlPanel> {
   void _startMicControlsCooldown() {
     _micUiCooldownTimer?.cancel();
     _micUiDisabled = true;
-    _micUiCooldownTimer = Timer(const Duration(seconds: 2), () {
+    _micUiCooldownTimer = Timer(_ControlPanelConstants.micCooldown, () {
       if (!mounted) return;
       setState(() {
         _micUiDisabled = false;
       });
     });
+  }
+
+  Future<void> _delayForRemainingTime(DateTime start, int targetMs) async {
+    final elapsed = DateTime.now().difference(start).inMilliseconds;
+    final remain = targetMs - elapsed;
+    if (remain > 0) {
+      await Future.delayed(Duration(milliseconds: remain));
+    }
   }
 
   Future<void> _toggleStream() async {
@@ -607,7 +629,7 @@ class _ControlPanelState extends State<ControlPanel> {
               onTap: () async {
                 Navigator.of(context).pop();
                 try {
-                  await _playlist.start();
+                  await _streamService.playPlaylist();
                   await _refreshFromDb();
                 } catch (e) {
                   AppSnackbar.error('ข้อผิดพลาด', e.toString());
@@ -744,7 +766,6 @@ class _ControlPanelState extends State<ControlPanel> {
 
       LoadingOverlay.show(context);
       try {
-        final api = await ApiService.private();
         final id =
             (selectedSong['_id'] ??
                     selectedSong['id'] ??
@@ -754,7 +775,7 @@ class _ControlPanelState extends State<ControlPanel> {
           AppSnackbar.error('ข้อผิดพลาด', 'ข้อมูลเพลงไม่ถูกต้อง');
           return;
         }
-        await api.get('/stream/start-file', query: {'songId': id});
+        await _streamService.playFile(id);
         await _refreshFromDb();
         AppSnackbar.success('สำเร็จ', 'เริ่มเล่นไฟล์เพลงแล้ว');
       } catch (e) {
@@ -794,8 +815,7 @@ class _ControlPanelState extends State<ControlPanel> {
           Navigator.of(context).pop();
           LoadingOverlay.show(context);
           try {
-            final api = await ApiService.private();
-            await api.get('/stream/start-youtube', query: {'url': url});
+            await _streamService.playYoutube(url);
             await _refreshFromDb();
             AppSnackbar.success('สำเร็จ', 'เริ่มเล่นจาก YouTube แล้ว');
           } catch (e) {
@@ -826,17 +846,15 @@ class _ControlPanelState extends State<ControlPanel> {
           'แจ้งเตือน',
           _playlist.state.value.isPaused ? 'หยุดชั่วคราว' : 'เล่นต่อ',
         );
-
         _startLocalControlsCooldown();
       } else if (playbackMode == PlaybackMode.file ||
           playbackMode == PlaybackMode.schedule) {
-        final api = await ApiService.private();
         if (isPaused) {
-          await api.get('/stream/resume');
+          await _streamService.resume();
           if (mounted) setState(() => isPaused = false);
           AppSnackbar.success('สำเร็จ', 'เล่นต่อ');
         } else {
-          await api.get('/stream/pause');
+          await _streamService.pause();
           if (mounted) setState(() => isPaused = true);
           AppSnackbar.success('สำเร็จ', 'หยุดชั่วคราว');
         }
@@ -854,8 +872,7 @@ class _ControlPanelState extends State<ControlPanel> {
 
   Future<void> _stopActive() async {
     try {
-      final api = await ApiService.private();
-      await api.get('/stream/stop');
+      await _streamService.stop();
       await _refreshFromDb();
       AppSnackbar.success('สำเร็จ', 'หยุดการเล่นแล้ว');
     } catch (e) {

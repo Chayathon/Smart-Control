@@ -30,4 +30,51 @@ class StreamService {
       decoder: (data) => data as List<dynamic>,
     );
   }
+
+  // Playback control methods
+  Future<void> playPlaylist() async {
+    final api = await ApiService.private();
+    await api.get('/stream/start-playlist');
+  }
+
+  Future<void> playFile(String songId) async {
+    final api = await ApiService.private();
+    await api.get('/stream/start-file', query: {'songId': songId});
+  }
+
+  Future<void> playYoutube(String url) async {
+    final api = await ApiService.private();
+    await api.get('/stream/start-youtube', query: {'url': url});
+  }
+
+  Future<void> pause() async {
+    final api = await ApiService.private();
+    await api.get('/stream/pause');
+  }
+
+  Future<void> resume() async {
+    final api = await ApiService.private();
+    await api.get('/stream/resume');
+  }
+
+  Future<void> stop() async {
+    final api = await ApiService.private();
+    await api.get('/stream/stop');
+  }
+
+  Future<void> next() async {
+    final api = await ApiService.private();
+    await api.get('/stream/next-track');
+  }
+
+  Future<void> prev() async {
+    final api = await ApiService.private();
+    await api.get('/stream/prev-track');
+  }
+
+  Future<Map<String, dynamic>> getStreamStatus() async {
+    final api = await ApiService.private();
+    final response = await api.get('/stream/status');
+    return response['data'] ?? response;
+  }
 }
