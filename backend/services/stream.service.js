@@ -128,9 +128,6 @@ function emitStatus({ event, extra = {} }) {
     });
 }
 
-// -------------------------------------------------
-// DRY helpers for spawning FFmpeg to Icecast
-// -------------------------------------------------
 function icecastOutputArgs({
     bitrate = '128k',
     sampleRate = '44100',
@@ -776,7 +773,6 @@ function pause() {
         }
         pausedState = { kind: 'playlist', index: currentIndex, resumeMs: lastKnownElapsedMs };
     } else if (activeMode === 'schedule') {
-        // schedule สามารถ pause ได้
         pausedState = { kind: 'schedule', path: currentStreamUrl, resumeMs: lastKnownElapsedMs };
     } else if (activeMode === 'youtube') {
         throw new Error('cannot pause youtube');
