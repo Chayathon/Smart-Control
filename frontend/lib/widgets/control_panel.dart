@@ -5,9 +5,13 @@ import 'package:smart_control/core/network/api_service.dart';
 import 'package:smart_control/services/mic_stream_service.dart';
 import 'package:smart_control/services/stream_service.dart';
 import 'package:smart_control/core/alert/app_snackbar.dart';
+import 'package:smart_control/widgets/buttons/action_button.dart';
+import 'package:smart_control/widgets/dialogs/alert_dialog.dart';
+import 'package:smart_control/widgets/inputs/text_field_box.dart';
 import 'package:smart_control/widgets/loading_overlay.dart';
 import 'package:smart_control/core/services/StreamStatusService.dart';
 import 'package:smart_control/core/config/app_config.dart';
+import 'package:smart_control/widgets/modals/modal_bottom_sheet.dart';
 
 enum PlaybackMode { none, playlist, file, youtube, schedule }
 
@@ -590,46 +594,45 @@ class _ControlPanelState extends State<ControlPanel> {
       return;
     }
 
-    showModalBottomSheet<void>(
+    ModalBottomSheet.show(
       context: context,
-      builder: (ctx) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: const Icon(Icons.playlist_play),
-                title: const Text('รายการเพลง'),
-                onTap: () async {
-                  Navigator.of(ctx).pop();
-                  try {
-                    await _playlist.start();
-                    await _refreshFromDb();
-                  } catch (e) {
-                    AppSnackbar.error('ข้อผิดพลาด', e.toString());
-                  }
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.library_music),
-                title: const Text('ไฟล์เพลง'),
-                onTap: () {
-                  Navigator.of(ctx).pop();
-                  _showSongFilePicker();
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.video_library),
-                title: const Text('YouTube (URL)'),
-                onTap: () {
-                  Navigator.of(ctx).pop();
-                  _showYoutubeInput();
-                },
-              ),
-            ],
-          ),
-        );
-      },
+      child: Padding(
+        padding: const EdgeInsets.all(8.0),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.playlist_play),
+              title: const Text('รายการเพลง'),
+              onTap: () async {
+                Navigator.of(context).pop();
+                try {
+                  await _playlist.start();
+                  await _refreshFromDb();
+                } catch (e) {
+                  AppSnackbar.error('ข้อผิดพลาด', e.toString());
+                }
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.library_music),
+              title: const Text('ไฟล์เพลง'),
+              onTap: () {
+                Navigator.of(context).pop();
+                _showSongFilePicker();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.video_library),
+              title: const Text('YouTube (URL)'),
+              onTap: () {
+                Navigator.of(context).pop();
+                _showYoutubeInput();
+              },
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -649,92 +652,117 @@ class _ControlPanelState extends State<ControlPanel> {
 
     if (!mounted) return;
 
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      builder: (ctx) {
-        return SafeArea(
-          child: SizedBox(
-            height: MediaQuery.of(ctx).size.height * 0.7,
-            child: Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.all(12.0),
-                  child: Text(
-                    'เลือกไฟล์เพลง',
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
+    if (songs.isEmpty) {
+      AppSnackbar.info('แจ้งเตือน', 'ไม่มีไฟล์เพลงในระบบ');
+      return;
+    }
+
+    final selectedSong =
+        await ModalBottomSheet.showDraggable<Map<String, dynamic>>(
+          context: context,
+          title: 'เลือกไฟล์เพลง',
+          initialChildSize: 0.7,
+          minChildSize: 0.5,
+          maxChildSize: 0.95,
+          showSearch: true,
+          searchHint: 'ค้นหาเพลง...',
+          builder: (context, scrollController, searchQuery) {
+            // Filter songs based on search query
+            final filteredSongs = searchQuery.isEmpty
+                ? songs
+                : songs.where((song) {
+                    final name =
+                        (song['name'] ?? song['title'] ?? song['url'] ?? '')
+                            .toString()
+                            .toLowerCase();
+                    final url = (song['url'] ?? song['file'] ?? '')
+                        .toString()
+                        .toLowerCase();
+                    final query = searchQuery.toLowerCase();
+                    return name.contains(query) || url.contains(query);
+                  }).toList();
+
+            if (filteredSongs.isEmpty) {
+              return Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.search_off, size: 64, color: Colors.grey),
+                    const SizedBox(height: 16),
+                    Text(
+                      'ไม่พบไฟล์เพลงที่ค้นหา',
+                      style: TextStyle(
+                        color: Colors.grey,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
+                  ],
+                ),
+              );
+            }
+
+            return ListView.builder(
+              controller: scrollController,
+              itemCount: filteredSongs.length,
+              itemBuilder: (context, index) {
+                final song = filteredSongs[index];
+                final title =
+                    (song['name'] ??
+                            song['title'] ??
+                            song['url'] ??
+                            'ไม่ทราบชื่อ')
+                        .toString();
+                final filename = (song['url'] ?? song['file'] ?? '').toString();
+
+                return ListTile(
+                  leading: Icon(Icons.music_note, color: Colors.blue[700]),
+                  title: Text(
+                    title,
+                    style: TextStyle(fontWeight: FontWeight.w500),
                   ),
-                ),
-                const Divider(height: 1),
-                Expanded(
-                  child: songs.isEmpty
-                      ? const Center(child: Text('ไม่มีไฟล์เพลง'))
-                      : ListView.separated(
-                          itemCount: songs.length,
-                          separatorBuilder: (_, __) => const Divider(height: 1),
-                          itemBuilder: (c, i) {
-                            final s = songs[i];
-                            final title =
-                                (s['name'] ??
-                                        s['title'] ??
-                                        s['url'] ??
-                                        'ไม่ทราบชื่อ')
-                                    .toString();
-                            final filename = (s['url'] ?? s['file'] ?? '')
-                                .toString();
-                            return ListTile(
-                              title: Text(title),
-                              subtitle: Text(filename),
-                              onTap: () async {
-                                Navigator.of(ctx).pop();
-                                if (filename.isEmpty) {
-                                  AppSnackbar.error(
-                                    'ข้อผิดพลาด',
-                                    'ไฟล์ไม่สามารถใช้งานได้',
-                                  );
-                                  return;
-                                }
-                                try {
-                                  final api = await ApiService.private();
-                                  final id =
-                                      (s['_id'] ?? s['id'] ?? s['songId'])
-                                          ?.toString();
-                                  if (id == null || id.isEmpty) {
-                                    AppSnackbar.error(
-                                      'ข้อผิดพลาด',
-                                      'ข้อมูลเพลงไม่ถูกต้อง',
-                                    );
-                                    return;
-                                  }
-                                  await api.get(
-                                    '/stream/start-file',
-                                    query: {'songId': id},
-                                  );
-                                  await _refreshFromDb();
-                                  AppSnackbar.success(
-                                    'สำเร็จ',
-                                    'เริ่มเล่นไฟล์เพลงแล้ว',
-                                  );
-                                } catch (e) {
-                                  AppSnackbar.error(
-                                    'ข้อผิดพลาด',
-                                    'ไม่สามารถเริ่มไฟล์เพลงได้',
-                                  );
-                                }
-                              },
-                            );
-                          },
-                        ),
-                ),
-              ],
-            ),
-          ),
+                  subtitle: Text(
+                    filename,
+                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                  ),
+                  onTap: () {
+                    Navigator.pop(context, song);
+                  },
+                );
+              },
+            );
+          },
         );
-      },
-    );
+
+    if (selectedSong != null) {
+      final filename = (selectedSong['url'] ?? selectedSong['file'] ?? '')
+          .toString();
+      if (filename.isEmpty) {
+        AppSnackbar.error('ข้อผิดพลาด', 'ไฟล์ไม่สามารถใช้งานได้');
+        return;
+      }
+
+      LoadingOverlay.show(context);
+      try {
+        final api = await ApiService.private();
+        final id =
+            (selectedSong['_id'] ??
+                    selectedSong['id'] ??
+                    selectedSong['songId'])
+                ?.toString();
+        if (id == null || id.isEmpty) {
+          AppSnackbar.error('ข้อผิดพลาด', 'ข้อมูลเพลงไม่ถูกต้อง');
+          return;
+        }
+        await api.get('/stream/start-file', query: {'songId': id});
+        await _refreshFromDb();
+        AppSnackbar.success('สำเร็จ', 'เริ่มเล่นไฟล์เพลงแล้ว');
+      } catch (e) {
+        AppSnackbar.error('ข้อผิดพลาด', 'ไม่สามารถเริ่มไฟล์เพลงได้');
+      } finally {
+        LoadingOverlay.hide();
+      }
+    }
   }
 
   Future<void> _showYoutubeInput() async {
@@ -746,53 +774,43 @@ class _ControlPanelState extends State<ControlPanel> {
       return s.contains('youtube.com') || s.contains('youtu.be');
     }
 
-    showDialog<void>(
+    await ModalBottomSheet.showFormModal(
       context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          title: const Text('เล่นจาก YouTube'),
-          content: TextField(
-            controller: ctrl,
-            decoration: const InputDecoration(
-              hintText: 'วางลิงก์ YouTube ที่นี่',
-            ),
-            keyboardType: TextInputType.url,
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('ยกเลิก'),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                final url = ctrl.text.trim();
-                if (url.isEmpty) return;
-                if (!isValidYoutubeUrl(url)) {
-                  AppSnackbar.error('ข้อผิดพลาด', 'URL YouTube ไม่ถูกต้อง');
-                  return;
-                }
-                Navigator.of(ctx).pop();
-                LoadingOverlay.show(context);
-                try {
-                  final api = await ApiService.private();
-                  await api.get('/stream/start-youtube', query: {'url': url});
-                  await _refreshFromDb();
-                  AppSnackbar.success('สำเร็จ', 'เริ่มเล่นจาก YouTube แล้ว');
-                } catch (e) {
-                  LoadingOverlay.hide();
-                  AppSnackbar.error(
-                    'ข้อผิดพลาด',
-                    'ไม่สามารถเริ่มเล่นจาก YouTube ได้',
-                  );
-                } finally {
-                  LoadingOverlay.hide();
-                }
-              },
-              child: const Text('เริ่มเล่น'),
-            ),
-          ],
-        );
-      },
+      title: 'เล่นจาก YouTube',
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextFieldBox(controller: ctrl, hint: 'วางลิงก์ YouTube ที่นี่'),
+        ],
+      ),
+      actions: Button(
+        onPressed: () async {
+          final url = ctrl.text.trim();
+          if (url.isEmpty) return;
+          if (!isValidYoutubeUrl(url)) {
+            AppSnackbar.error('ข้อผิดพลาด', 'URL YouTube ไม่ถูกต้อง');
+            return;
+          }
+          Navigator.of(context).pop();
+          LoadingOverlay.show(context);
+          try {
+            final api = await ApiService.private();
+            await api.get('/stream/start-youtube', query: {'url': url});
+            await _refreshFromDb();
+            AppSnackbar.success('สำเร็จ', 'เริ่มเล่นจาก YouTube แล้ว');
+          } catch (e) {
+            LoadingOverlay.hide();
+            AppSnackbar.error(
+              'ข้อผิดพลาด',
+              'ไม่สามารถเริ่มเล่นจาก YouTube ได้',
+            );
+          } finally {
+            LoadingOverlay.hide();
+          }
+        },
+        label: 'เริ่มเล่น',
+        icon: Icons.play_arrow,
+      ),
     );
   }
 
