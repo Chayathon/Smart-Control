@@ -50,12 +50,12 @@ class _MicPageState extends State<MicPage> {
   }
 
   Future<void> _toggleRecording() async {
-    if (_micService.isStopping) return;
+    if (_streamService.isStopping) return;
 
     if (_isRecording) {
-      await _micService.stopStreaming();
+      await _streamService.stopMicStreaming();
     } else {
-      final success = await _micService.startStreaming(_serverUrl);
+      final success = await _streamService.startMicStreaming(_serverUrl);
       if (!success && mounted) {
         _showSnackBar('ไม่สามารถเริ่มการสตรีมได้', isError: true);
       }
@@ -64,7 +64,7 @@ class _MicPageState extends State<MicPage> {
 
   @override
   void dispose() {
-    _micService.dispose();
+    _streamService.dispose();
     super.dispose();
   }
 
@@ -131,10 +131,10 @@ class _MicPageState extends State<MicPage> {
       width: 200,
       height: 60,
       child: ElevatedButton.icon(
-        onPressed: _micService.isStopping ? null : _toggleRecording,
+        onPressed: _streamService.isStopping ? null : _toggleRecording,
         icon: Icon(_isRecording ? Icons.stop : Icons.mic, size: 28),
         label: Text(
-          _micService.isStopping
+          _streamService.isStopping
               ? "กำลังหยุด..."
               : (_isRecording ? "หยุดไมค์" : "เริ่มไมค์"),
           style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
