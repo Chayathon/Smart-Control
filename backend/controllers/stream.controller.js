@@ -2,6 +2,30 @@ const stream = require('../services/stream.service');
 const Song = require('../models/Song');
 const path = require('path');
 
+function status(_req, res) {
+    res.json({ status: 'success', data: stream.getStatus() });
+}
+
+async function enableStream(_req, res) {
+    try {
+        const result = await stream.enableStream();
+        return res.json({ status: 'success', message: result.message });
+    } catch (e) {
+        console.error('Error enableStreamAll:', e);
+        return res.status(500).json({ status: 'error', message: e.message || 'enable stream failed' });
+    }
+}
+
+async function disableStream(_req, res) {
+    try {
+        const result = await stream.disableStream();
+        return res.json({ status: 'success', message: result.message });
+    } catch (e) {
+        console.error('Error disableStreamAll:', e);
+        return res.status(500).json({ status: 'error', message: e.message || 'disable stream failed' });
+    }
+}
+
 async function startFile(req, res) {
     let filePath = req.query.path || req.body?.path;
     const songId = req.query.songId || req.body?.songId;
@@ -42,21 +66,7 @@ async function startYoutube(req, res) {
     }
 }
 
-function status(_req, res) {
-    res.json({ status: 'success', data: stream.getStatus() });
-}
-
-async function stopMic(_req, res) {
-    try {
-        await stream.stopMicStream();
-        res.json({ status: 'success', message: 'Mic stream stopped' });
-    } catch (e) {
-        console.error('Error stopping mic stream:', e);
-        res.status(500).json({ status: 'error', message: e.message });
-    }
-}
-
-async function playPlaylist(req, res) {
+async function startPlaylist(req, res) {
     try {
         const loop = req.query.loop === 'true' || req.body?.loop === true;
         const result = await stream.playPlaylist({ loop });
@@ -68,13 +78,23 @@ async function playPlaylist(req, res) {
     }
 }
 
-async function stopAll(_req, res) {
+async function pause(_req, res) {
     try {
-        const result = await stream.stop();
-        return res.json({ status: 'success', message: result.message });
+        stream.pause();
+        return res.json({ status: 'success', message: 'หยุดชั่วคราว' });
     } catch (e) {
-        console.error('Error stopPlaylist:', e);
-        return res.status(500).json({ status: 'error', message: e.message || 'stop playlist failed' });
+        console.error('Error pausePlaylist:', e);
+        return res.status(500).json({ status: 'error', message: e.message || 'pause failed' });
+    }
+}
+
+async function resume(_req, res) {
+    try {
+        stream.resume();
+        return res.json({ status: 'success', message: 'เล่นต่อ' });
+    } catch (e) {
+        console.error('Error resumePlaylist:', e);
+        return res.status(500).json({ status: 'error', message: e.message || 'resume failed' });
     }
 }
 
@@ -104,57 +124,26 @@ async function prevTrack(_req, res) {
     }
 }
 
-async function pause(_req, res) {
+async function stopAll(_req, res) {
     try {
-        stream.pause();
-        return res.json({ status: 'success', message: 'หยุดชั่วคราว' });
-    } catch (e) {
-        console.error('Error pausePlaylist:', e);
-        return res.status(500).json({ status: 'error', message: e.message || 'pause failed' });
-    }
-}
-
-async function resume(_req, res) {
-    try {
-        stream.resume();
-        return res.json({ status: 'success', message: 'เล่นต่อ' });
-    } catch (e) {
-        console.error('Error resumePlaylist:', e);
-        return res.status(500).json({ status: 'error', message: e.message || 'resume failed' });
-    }
-}
-
-async function enableStream(_req, res) {
-    try {
-        const result = await stream.enableStream();
+        const result = await stream.stop();
         return res.json({ status: 'success', message: result.message });
     } catch (e) {
-        console.error('Error enableStreamAll:', e);
-        return res.status(500).json({ status: 'error', message: e.message || 'enable stream failed' });
-    }
-}
-
-async function disableStream(_req, res) {
-    try {
-        const result = await stream.disableStream();
-        return res.json({ status: 'success', message: result.message });
-    } catch (e) {
-        console.error('Error disableStreamAll:', e);
-        return res.status(500).json({ status: 'error', message: e.message || 'disable stream failed' });
+        console.error('Error stopPlaylist:', e);
+        return res.status(500).json({ status: 'error', message: e.message || 'stop playlist failed' });
     }
 }
 
 module.exports = { 
     status,
-    stopMic,
-    startFile,
-    startYoutube,
-    playPlaylist,
-    stopAll,
-    nextTrack,
-    prevTrack,
-    pause,
-    resume,
     enableStream,
     disableStream,
+    startFile,
+    startYoutube,
+    startPlaylist,
+    pause,
+    resume,
+    nextTrack,
+    prevTrack,
+    stopAll,
 };
