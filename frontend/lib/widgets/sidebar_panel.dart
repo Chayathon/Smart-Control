@@ -41,7 +41,7 @@ class _SidebarPanelState extends State<SidebarPanel> {
       'ตรวจสอบสถานะ',
       () => Get.toNamed(AppRoutes.monitoring),
     ),
-    _MenuItem(Icons.mic, 'ทดสอบไมค์', () => Get.toNamed(AppRoutes.test)),
+    _MenuItem(Icons.abc, 'ตัวอย่าง', () => Get.toNamed(AppRoutes.example)),
     _MenuItem(Icons.logout, 'ออกจากระบบ', widget.onLogout),
   ];
 
