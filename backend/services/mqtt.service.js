@@ -1,6 +1,8 @@
+// D:\mass_smart_city\Smart-Control\backend\services\mqtt.service.js
 const mqtt = require('mqtt');
 const { broadcast } = require('../ws/wsServer');
 const Device = require('../models/Device');
+const deviceDataService = require('../services/deviceData.service'); // ใช้ ingestOne
 
 let deviceStatus = [];
 let seenZones = new Set();
@@ -15,6 +17,7 @@ function connectAndSend({
     password = 'admin',
     commandTopic = 'mass-radio/all/command',
     statusTopic = 'mass-radio/+/status',
+    dataTopic = 'mass-radio/+/data',
     payload = { set_stream: true }
 } = {}) {
     deviceStatus = [];
@@ -32,6 +35,13 @@ function connectAndSend({
         connected = true;
         console.log('✅ MQTT connected');
 
+        // subscribe ข้อมูลจากโหนด
+        client.subscribe(dataTopic, { qos: 1 }, (err) => {
+            if (err) console.error('📥 subscribe mass-radio/+/data error:', err.message);
+            else console.log(`📥 Subscribed to ${dataTopic}`);
+        });
+
+        // subscribe สถานะเครื่องเล่น
         client.subscribe(statusTopic, { qos: 1 }, (err) => {
             if (err) console.error('❌ Subscribe error:', err.message);
             else console.log(`📥 Subscribed to ${statusTopic}`);
@@ -82,8 +92,75 @@ function connectAndSend({
             }
             return;
         }
+    });
 
         // Handle status topic
+    client.on('message', async (topic, message, packet) => {
+        const payloadStr = message.toString();
+
+        // ---------- 1) mass-radio/noX/data -> บันทึก DeviceData ----------
+        const m = topic.match(/^mass-radio\/(no\d+)\/data$/);
+        if (m) {
+            const nodeKey = m[1];                       // เช่น "no1"
+            const noFromTopic = parseInt(nodeKey.replace(/^no/, ''), 10);
+
+            if (!payloadStr.trim()) return;
+
+            console.log('[MQTT] incoming deviceData from', nodeKey, 'payload =', payloadStr);
+
+            let json;
+            try {
+                json = JSON.parse(payloadStr);
+            } catch (e) {
+                console.error('[MQTT] invalid JSON for deviceData:', e.message);
+                return;
+            }
+
+            try {
+                const no = typeof json.no === 'number' ? json.no : noFromTopic;
+
+                const device = await Device.findOne({ no });
+                if (!device) {
+                    console.warn('[MQTT] device not found for no =', no, '(saving deviceData without deviceId)');
+                }
+
+                const timestamp = json.timestamp ? new Date(json.timestamp) : new Date();
+
+                // doc ให้ตรงกับ schema + ไม่เก็บ topic
+                const doc = {
+                    timestamp,
+                    meta: {
+                        no,
+                        deviceId: device ? device._id : null,
+                    },
+
+                    dcV: json.dcV,
+                    dcW: json.dcW,
+                    dcA: json.dcA,
+
+                    oat: json.oat,
+                    lat: json.lat,
+                    lng: json.lng,
+
+                    type: json.type,
+                    flag: json.flag,
+                };
+
+                const saved = await deviceDataService.ingestOne(doc);
+                console.log('[MQTT] saved DeviceData for', nodeKey, '-> _id =', saved._id.toString());
+
+                if (device) {
+                    device.lastSeen = timestamp;
+                    await device.save();
+                }
+            } catch (err) {
+                console.error('[MQTT] error while saving DeviceData:', err.message);
+            }
+
+            return; // ไม่ต้องเข้า block status ด้านล่าง
+        }
+
+        // ---------- 2) mass-radio/zoneX/status (ของเดิม) ----------
         const match = topic.match(/mass-radio\/([^/]+)\/status/);
         const zoneStr = match ? match[1] : null;
         if (!zoneStr) return;
@@ -213,7 +290,6 @@ async function checkOfflineZones() {
 
     if (deviceStatus.length === 0) {
         try {
-           
             await Device.updateMany(
                 {},
                 {
@@ -242,7 +318,7 @@ async function checkOfflineZones() {
         } catch (err) {
             console.error("❌ Failed to mark all devices offline:", err.message);
         }
-        return; 
+        return;
     }
 
     deviceStatus = deviceStatus.filter(d => {
