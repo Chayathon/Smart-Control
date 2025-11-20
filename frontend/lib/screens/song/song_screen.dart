@@ -325,7 +325,13 @@ class _SongScreenState extends State<SongScreen>
       title: "แก้ไขชื่อเพลง",
       child: Column(
         mainAxisSize: MainAxisSize.min,
-        children: [TextFieldBox(controller: _nameCtrl, hint: "ชื่อเพลง")],
+        children: [
+          TextFieldBox(
+            controller: _nameCtrl,
+            hint: "ชื่อเพลง",
+            textInputAction: TextInputAction.done,
+          ),
+        ],
       ),
       actions: Button(
         onPressed: () {
