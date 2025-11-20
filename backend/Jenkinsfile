@@ -1,0 +1,129 @@
+pipeline {
+    agent any
+    
+    triggers {
+        // Trigger เมื่อมี push ใน Git (ต้องตั้งค่า webhook ใน GitHub/GitLab)
+        pollSCM('H/5 * * * *') // ตรวจสอบทุก 5 นาที
+    }
+    
+    environment {
+        DOCKER_REGISTRY = '' // ใส่ registry ของคุณ เช่น 'docker.io' หรือ 'registry.gitlab.com'
+        IMAGE_NAME = 'smart-control-backend'
+        IMAGE_TAG = "${BUILD_NUMBER}"
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+        
+        stage('Prepare Environment') {
+            steps {
+                script {
+                    // สร้างไฟล์ .env จาก Jenkins credentials
+                    sh '''
+                        cd backend
+                        echo "PORT=8080" > .env
+                        echo "MONGODB_DBNAME=radio_db" >> .env
+                        echo "ACCESS_TOKEN_SECRET=${ACCESS_TOKEN_SECRET}" >> .env
+                        echo "REFRESH_TOKEN_SECRET=${REFRESH_TOKEN_SECRET}" >> .env
+                        echo "MQTT_USERNAME=admin" >> .env
+                        echo "MQTT_PASSWORD=admin" >> .env
+                    '''
+                }
+            }
+        }
+        
+        stage('Build') {
+            steps {
+                dir('backend') {
+                    script {
+                        // Build Docker images
+                        sh 'docker-compose build'
+                    }
+                }
+            }
+        }
+        
+        stage('Test') {
+            steps {
+                dir('backend') {
+                    script {
+                        // รัน tests (ถ้ามี)
+                        echo 'Running tests...'
+                        // sh 'npm test'
+                    }
+                }
+            }
+        }
+        
+        stage('Stop Old Containers') {
+            steps {
+                dir('backend') {
+                    script {
+                        // หยุด containers เก่า
+                        sh 'docker-compose down || true'
+                    }
+                }
+            }
+        }
+        
+        stage('Deploy') {
+            steps {
+                dir('backend') {
+                    script {
+                        // Deploy with docker-compose
+                        sh 'docker-compose up -d'
+                        
+                        // รอให้ services พร้อม
+                        sh 'sleep 10'
+                        
+                        // ตรวจสอบสถานะ
+                        sh 'docker-compose ps'
+                    }
+                }
+            }
+        }
+        
+        stage('Health Check') {
+            steps {
+                script {
+                    // ตรวจสอบว่า backend ทำงานปกติ
+                    retry(3) {
+                        sh 'curl -f http://localhost:8080/devices/status || exit 1'
+                    }
+                }
+            }
+        }
+        
+        stage('Cleanup') {
+            steps {
+                script {
+                    // ลบ images เก่าที่ไม่ใช้แล้ว
+                    sh 'docker system prune -f --filter "until=72h"'
+                }
+            }
+        }
+    }
+    
+    post {
+        success {
+            echo 'Deployment successful!'
+            // ส่งการแจ้งเตือนเมื่อสำเร็จ (ถ้ามี)
+        }
+        failure {
+            echo 'Deployment failed!'
+            dir('backend') {
+                // แสดง logs เมื่อเกิดข้อผิดพลาด
+                sh 'docker-compose logs --tail=100'
+            }
+            // ส่งการแจ้งเตือนเมื่อล้มเหลว (ถ้ามี)
+        }
+        always {
+            // ทำความสะอาดไฟล์ .env
+            sh 'rm -f backend/.env'
+        }
+    }
+}
