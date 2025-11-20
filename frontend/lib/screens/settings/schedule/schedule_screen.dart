@@ -370,23 +370,87 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
               InkWell(
                 onTap: () async {
                   final selectedSong =
-                      await ModalBottomSheet.showListSelection<
+                      await ModalBottomSheet.showDraggable<
                         Map<String, dynamic>
                       >(
                         context: context,
                         title: "เลือกเพลง",
-                        items: _songs.cast<Map<String, dynamic>>(),
-                        itemLabel: (song) => song['name'] ?? 'ไม่มีชื่อ',
-                        itemSubtitle: (song) => Text(
-                          song['url'] ?? '',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey[600],
-                          ),
-                        ),
-                        itemIcon: (song) => Icons.music_note,
+                        initialChildSize: 0.7,
+                        minChildSize: 0.5,
+                        maxChildSize: 0.95,
                         showSearch: true,
                         searchHint: 'ค้นหาเพลง...',
+                        builder: (context, scrollController, searchQuery) {
+                          // Filter songs based on search query
+                          final filteredSongs = searchQuery.isEmpty
+                              ? _songs
+                              : _songs.where((song) {
+                                  final name = (song['name'] ?? '')
+                                      .toString()
+                                      .toLowerCase();
+                                  final url = (song['url'] ?? '')
+                                      .toString()
+                                      .toLowerCase();
+                                  final query = searchQuery.toLowerCase();
+                                  return name.contains(query) ||
+                                      url.contains(query);
+                                }).toList();
+
+                          if (filteredSongs.isEmpty) {
+                            return Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.search_off,
+                                    size: 64,
+                                    color: Colors.grey,
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    'ไม่พบเพลงที่ค้นหา',
+                                    style: TextStyle(
+                                      color: Colors.grey,
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }
+
+                          return ListView.builder(
+                            controller: scrollController,
+                            itemCount: filteredSongs.length,
+                            itemBuilder: (context, index) {
+                              final song = filteredSongs[index];
+                              final name = song['name'] ?? 'ไม่มีชื่อ';
+                              final url = song['url'] ?? '';
+
+                              return ListTile(
+                                leading: Icon(
+                                  Icons.music_note,
+                                  color: Colors.blue[700],
+                                ),
+                                title: Text(
+                                  name,
+                                  style: TextStyle(fontWeight: FontWeight.w500),
+                                ),
+                                subtitle: Text(
+                                  url,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey[600],
+                                  ),
+                                ),
+                                onTap: () {
+                                  Navigator.pop(context, song);
+                                },
+                              );
+                            },
+                          );
+                        },
                       );
 
                   if (selectedSong != null) {
