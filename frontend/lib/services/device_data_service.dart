@@ -1,30 +1,86 @@
-// dart:convert / http not needed because ApiService (Dio) returns decoded JSON
+// lib/services/device_data_service.dart
+import 'dart:convert';
+import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:smart_control/core/network/api_service.dart';
-import '../screens/monitoring/models/device_data_model.dart';
+
+typedef Json = Map<String, dynamic>;
+
+/// ตัว model บาง ๆ (ถ้าหน้าจอเก่าอ้าง `DeviceData` เฉย ๆ จะคอมไพล์ผ่าน)
+/// หมายเหตุ: ถ้าหน้าจอเก่าคาดหวัง property แบบจิ้มผ่าน dot (เช่น data.acV)
+/// จะไม่เจอ (เพราะเราเก็บเป็น raw Map) แนะนำใช้ทางเลือก A ดีกว่า
+class DeviceData {
+  final Map<String, dynamic> raw;
+  DeviceData(this.raw);
+}
 
 class DeviceDataService {
-  // final String baseUrl = 'http://localhost:8080';
+  DeviceDataService._internal();
+  static final DeviceDataService instance = DeviceDataService._internal();
 
-  Future<List<DeviceData>> fetchDeviceData() async {
-    // final url = Uri.parse('$baseUrl/deviceData');
+  WebSocketChannel? _channel;
 
-    // final response = await http.get(url, headers: {
-    //   'Content-Type': 'application/json',
-    // });
-
-    final api = await ApiService.public();
-
-    final dynamic responseBody = await api.get('/deviceData');
-
-    if (responseBody is Map<String, dynamic>) {
-      if (responseBody['status'] == 'success' && responseBody['data'] != null) {
-        final List<dynamic> list = responseBody['data'] as List<dynamic>;
-        return list
-            .map((item) => DeviceData.fromJson(item as Map<String, dynamic>))
-            .toList();
-      }
+  /// ใหม่ (เราใช้ในโค้ดชุดล่าสุด)
+  Future<List<dynamic>> fetchAll({required String path}) async {
+    final api = await ApiService.private();
+    final res = await api.get(path);
+    if (res is Map && res['data'] is List) {
+      return List<dynamic>.from(res['data']);
     }
+    if (res is List) return res;
+    return const [];
+  }
 
-    throw Exception('รูปแบบข้อมูลไม่ถูกต้อง');
+  /// ✅ alias ให้กับชื่อเก่า
+  Future<List<dynamic>> fetchRecent(String path) => fetchAll(path: path);
+
+  /// ใหม่ (เราใช้ในโค้ดชุดล่าสุด)
+  void subscribeToRealtime(
+    void Function(Map<String, dynamic>) onData, {
+    required String url,
+  }) {
+    try {
+      _channel?.sink.close();
+    } catch (_) {}
+
+    _channel = WebSocketChannel.connect(Uri.parse(url));
+    _channel!.stream.listen(
+      (message) {
+        try {
+          final data = _safeDecode(message);
+          if (data is Map<String, dynamic>) {
+            if (data.containsKey('doc') && data['doc'] is Map) {
+              onData(Map<String, dynamic>.from(data['doc']));
+            } else {
+              onData(data);
+            }
+          }
+        } catch (_) {}
+      },
+      onError: (_) {},
+      onDone: () {},
+    );
+  }
+
+  /// ✅ alias ให้กับชื่อเก่า
+  void subscribeRealtime(
+    void Function(Map<String, dynamic>) onData, {
+    required String url,
+  }) => subscribeToRealtime(onData, url: url);
+
+  dynamic _safeDecode(dynamic message) {
+    if (message is String) {
+      return jsonDecode(message);
+    }
+    if (message is List<int>) {
+      return jsonDecode(utf8.decode(message));
+    }
+    return null;
+  }
+
+  void dispose() {
+    try {
+      _channel?.sink.close();
+    } catch (_) {}
+    _channel = null;
   }
 }

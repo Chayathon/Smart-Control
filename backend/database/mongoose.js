@@ -1,6 +1,9 @@
 // database/mongoose.js
 const mongoose = require('mongoose');
 
+// ⬇️ เพิ่ม: ดึง service สำหรับเปิด Change Stream (deviceData → WS)
+const deviceDataService = require('../services/deviceData.service');
+
 let isConnected = false;
 
 async function connectMongo({ uri, dbName }) {
@@ -28,6 +31,15 @@ async function connectMongo({ uri, dbName }) {
     conn.on('connected', () => console.log('✅ MongoDB connected'));
     conn.on('error', (err) => console.error('❌ MongoDB error:', err));
     conn.on('disconnected', () => console.warn('⚠️ MongoDB disconnected'));
+
+    // ⬇️ เรียกเปิด Change Stream สำหรับ deviceData "ครั้งเดียว" หลังเชื่อมสำเร็จ
+    conn.once('open', () => {
+        try {
+            deviceDataService.initRealtimeBridge();
+        } catch (e) {
+            console.error('❌ initRealtimeBridge error:', e?.message || e);
+        }
+    });
 
     // ปิดอย่างนุ่มนวลตอน process ถูก kill
     process.on('SIGINT', async () => {
