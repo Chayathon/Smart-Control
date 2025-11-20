@@ -1,15 +1,19 @@
 pipeline {
-    agent any
+    agent {
+        label 'raspberry-pi' // ใช้ Jenkins agent บน Raspberry Pi
+    }
     
     triggers {
-        // Trigger เมื่อมี push ใน Git (ต้องตั้งค่า webhook ใน GitHub/GitLab)
+        // Trigger เมื่อมี push ใน Git
         pollSCM('H/5 * * * *') // ตรวจสอบทุก 5 นาที
+        // หรือใช้ githubPush() ถ้าตั้งค่า webhook
     }
     
     environment {
-        DOCKER_REGISTRY = '' // ใส่ registry ของคุณ เช่น 'docker.io' หรือ 'registry.gitlab.com'
+        DOCKER_REGISTRY = '' // ใส่ registry ของคุณ
         IMAGE_NAME = 'smart-control-backend'
         IMAGE_TAG = "${BUILD_NUMBER}"
+        DOCKER_BUILDKIT = '1' // เปิดใช้ BuildKit สำหรับ build เร็วขึ้น
     }
     
     stages {
@@ -40,8 +44,11 @@ pipeline {
             steps {
                 dir('backend') {
                     script {
-                        // Build Docker images
-                        sh 'docker-compose build'
+                        // Build Docker images สำหรับ ARM64 (Raspberry Pi)
+                        sh '''
+                            export DOCKER_BUILDKIT=1
+                            docker-compose build --build-arg BUILDPLATFORM=linux/arm64
+                        '''
                     }
                 }
             }

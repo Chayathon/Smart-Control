@@ -1,4 +1,5 @@
 # Stage 1: Build stage
+# Multi-architecture support (amd64, arm64 for Raspberry Pi)
 FROM node:18-alpine AS builder
 
 # Set working directory
