@@ -1,5 +1,4 @@
 import 'package:get/get.dart';
-import 'package:smart_control/mic.dart';
 import 'package:smart_control/screens/home_screen.dart';
 import 'package:smart_control/screens/login/login_screen.dart';
 import 'package:smart_control/screens/playlist/playlist_screen.dart';
@@ -21,6 +20,5 @@ class AppPages {
     GetPage(name: AppRoutes.system, page: () => const SystemScreen()),
     GetPage(name: AppRoutes.schedule, page: () => const ScheduleScreen()),
     GetPage(name: AppRoutes.splash, page: () => const SplashScreen()),
-    GetPage(name: AppRoutes.test, page: () => const MicPage()),
   ];
 }
