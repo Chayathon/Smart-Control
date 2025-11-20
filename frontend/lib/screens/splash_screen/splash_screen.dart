@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:lottie/lottie.dart';
 import 'package:animated_text_kit/animated_text_kit.dart';
-import 'package:smart_control/core/color/app_colors.dart';
 import 'package:smart_control/routes/app_routes.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
@@ -66,7 +65,7 @@ class _SplashScreenState extends State<SplashScreen>
                 style: TextStyle(
                   fontSize: 28,
                   fontWeight: FontWeight.bold,
-                  color: AppColors.primary,
+                  color: Colors.blue,
                 ),
               ),
               const SizedBox(height: 10),
@@ -108,7 +107,7 @@ class _SplashScreenState extends State<SplashScreen>
                           minHeight: 4,
                           borderRadius: BorderRadius.circular(8),
                           backgroundColor: Colors.grey[200],
-                          color: AppColors.primary,
+                          color: Colors.blue,
                         ),
                         const SizedBox(height: 8),
                         Text(
@@ -116,7 +115,7 @@ class _SplashScreenState extends State<SplashScreen>
                           style: const TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w500,
-                            color: AppColors.primary,
+                            color: Colors.blue,
                           ),
                         ),
                       ],
