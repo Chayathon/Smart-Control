@@ -102,9 +102,11 @@ class _HomeScreenState extends State<HomeScreen> {
     final textColor = Colors.grey[900]!;
 
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       body: Stack(
         children: [
           Scaffold(
+            resizeToAvoidBottomInset: false,
             backgroundColor: whiteBg,
             appBar: PreferredSize(
               preferredSize: const Size.fromHeight(80),
