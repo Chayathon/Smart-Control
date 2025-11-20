@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:lottie/lottie.dart';
 import 'package:smart_control/core/alert/app_snackbar.dart';
-import 'package:smart_control/core/color/app_colors.dart';
 import 'package:smart_control/core/network/api_service.dart';
 import 'package:smart_control/core/storage/secure_storage_service.dart';
 import 'package:smart_control/routes/app_routes.dart';
@@ -17,16 +16,21 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final TextEditingController _adminController = TextEditingController();
+  final _formKey = GlobalKey<FormState>();
+  final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   bool _obscurePassword = true;
   bool _isLoading = false;
 
   void _login() async {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
     setState(() {
       _isLoading = true;
     });
-    if (_adminController.text.isNotEmpty &&
+    if (_usernameController.text.isNotEmpty &&
         _passwordController.text.isNotEmpty) {
       try {
         ApiService.resetSessionGuard();
@@ -35,7 +39,7 @@ class _LoginScreenState extends State<LoginScreen> {
         final result = await api.post(
           "/auth/login",
           data: {
-            "username": _adminController.text,
+            "username": _usernameController.text,
             "password": _passwordController.text,
           },
         );
@@ -50,23 +54,23 @@ class _LoginScreenState extends State<LoginScreen> {
             result['result']['username'],
           );
           ApiService.resetSessionGuard();
-          AppSnackbar.success("แจ้งเตือน", "เข้าสู่ระบบสำเร็จ");
+          AppSnackbar.success("สำเร็จ", "เข้าสู่ระบบสำเร็จ");
           Get.offAllNamed(AppRoutes.home);
           return;
         }
 
-        AppSnackbar.error("แจ้งเตือน", "เข้าสู่ระบบไม่สำเร็จ");
+        AppSnackbar.error("ล้มเหลว", "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง");
       } catch (e) {
         setState(() {
           _isLoading = false;
         });
-        AppSnackbar.error("แจ้งเตือน", "เข้าสู่ระบบไม่สำเร็จ");
+        AppSnackbar.error("ล้มเหลว", "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง");
       }
     } else {
       setState(() {
         _isLoading = false;
       });
-      AppSnackbar.error("แจ้งเตือน", "เข้าสู่ระบบไม่สำเร็จ");
+      AppSnackbar.error("ล้มเหลว", "กรุณากรอกชื่อผู้ใช้และรหัสผ่าน");
     }
   }
 
@@ -91,7 +95,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 child: Card(
                   elevation: 50,
-                  shadowColor: Colors.black26,
+                  shadowColor: Colors.black45,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(24),
                   ),
@@ -111,9 +115,9 @@ class _LoginScreenState extends State<LoginScreen> {
                         Text(
                           "Smart Control",
                           style: TextStyle(
-                            fontSize: 30,
+                            fontSize: 36,
                             fontWeight: FontWeight.bold,
-                            color: AppColors.primary,
+                            color: Colors.blue,
                           ),
                         ),
                         const SizedBox(height: 8),
@@ -128,43 +132,64 @@ class _LoginScreenState extends State<LoginScreen> {
 
                         const SizedBox(height: 32),
 
-                        TextFieldBox(
-                          controller: _adminController,
-                          hint: "ชื่อผู้ใช้",
-                          prefixIcon: const Icon(Icons.person_2_outlined),
-                          textInputAction: TextInputAction.next,
-                        ),
-                        const SizedBox(height: 20),
+                        Form(
+                          key: _formKey,
+                          child: Column(
+                            children: [
+                              TextFieldBox(
+                                controller: _usernameController,
+                                hint: "ชื่อผู้ใช้",
+                                prefixIcon: const Icon(
+                                  Icons.person_outline_rounded,
+                                ),
+                                validator: (value) {
+                                  if (value == null || value.isEmpty) {
+                                    return 'กรุณากรอกชื่อผู้ใช้';
+                                  }
+                                  return null;
+                                },
+                                textInputAction: TextInputAction.next,
+                              ),
+                              const SizedBox(height: 8),
 
-                        TextFieldBox(
-                          controller: _passwordController,
-                          hint: "รหัสผ่าน",
-                          obscureText: _obscurePassword,
-                          prefixIcon: const Icon(Icons.lock_outline),
-                          suffixIcon: IconButton(
-                            icon: Icon(
-                              _obscurePassword
-                                  ? Icons.visibility_off
-                                  : Icons.visibility,
-                            ),
-                            onPressed: () {
-                              setState(
-                                () => _obscurePassword = !_obscurePassword,
-                              );
-                            },
+                              TextFieldBox(
+                                controller: _passwordController,
+                                hint: "รหัสผ่าน",
+                                obscureText: _obscurePassword,
+                                prefixIcon: const Icon(Icons.lock_outline),
+                                suffixIcon: IconButton(
+                                  icon: Icon(
+                                    _obscurePassword
+                                        ? Icons.visibility_off
+                                        : Icons.visibility,
+                                  ),
+                                  onPressed: () {
+                                    setState(
+                                      () =>
+                                          _obscurePassword = !_obscurePassword,
+                                    );
+                                  },
+                                ),
+                                validator: (value) {
+                                  if (value == null || value.isEmpty) {
+                                    return 'กรุณากรอกรหัสผ่าน';
+                                  }
+                                  return null;
+                                },
+                                textInputAction: TextInputAction.done,
+                              ),
+
+                              const SizedBox(height: 16),
+
+                              Button(
+                                onPressed: _isLoading ? null : _login,
+                                label: 'เข้าสู่ระบบ',
+                                icon: Icons.login,
+                                isLoading: _isLoading,
+                                backgroundColor: Colors.blue,
+                              ),
+                            ],
                           ),
-                          textInputAction: TextInputAction.done,
-                        ),
-
-                        const SizedBox(height: 20),
-
-                        Button(
-                          onPressed: _isLoading ? null : _login,
-                          label: "เข้าสู่ระบบ",
-                          isLoading: _isLoading,
-                          backgroundColor: AppColors.primary,
-                          height: 54,
-                          fontSize: 18,
                         ),
                       ],
                     ),
