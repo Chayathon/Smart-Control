@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:smart_control/core/alert/app_snackbar.dart';
-import 'package:smart_control/core/color/app_colors.dart';
 import 'package:smart_control/widgets/loading_overlay.dart';
 import 'package:smart_control/services/playlist_service.dart';
 import 'package:smart_control/widgets/modals/modal_bottom_sheet.dart';
@@ -138,7 +137,7 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
             return ListTile(
               leading: Icon(
                 Icons.music_note,
-                color: isInPlaylist ? Colors.grey : AppColors.primary,
+                color: isInPlaylist ? Colors.grey : Colors.blue,
               ),
               title: Text(
                 song["name"],
@@ -155,7 +154,7 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
               trailing: IconButton(
                 icon: Icon(
                   isInPlaylist ? Icons.check_circle : Icons.add_circle,
-                  color: isInPlaylist ? Colors.grey : AppColors.primary,
+                  color: isInPlaylist ? Colors.grey : Colors.blue,
                 ),
                 onPressed: isInPlaylist
                     ? null
@@ -257,7 +256,7 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
                   child: ListTile(
                     contentPadding: const EdgeInsets.symmetric(horizontal: 16),
                     leading: CircleAvatar(
-                      backgroundColor: AppColors.primary,
+                      backgroundColor: Colors.blue,
                       foregroundColor: Colors.white,
                       child: Text("${index + 1}"),
                     ),
@@ -297,7 +296,7 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
           const SizedBox(width: 12),
           FloatingActionButton(
             onPressed: _showAddSongDialog,
-            backgroundColor: AppColors.primary,
+            backgroundColor: Colors.blue,
             foregroundColor: Colors.white,
             tooltip: "เพิ่มเพลงใหม่",
             shape: RoundedRectangleBorder(
