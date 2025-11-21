@@ -16,15 +16,6 @@ pipeline {
             }
         }
 
-        stage('Install dependencies (backend)') {
-            steps {
-                dir('backend') {
-                    echo "==> Install npm dependencies in backend/"
-                    sh 'npm install'
-                }
-            }
-        }
-
         stage('Deploy to target folder') {
             steps {
                 echo "==> Sync project to ${TARGET_DIR}"
@@ -34,16 +25,6 @@ pipeline {
                         --exclude='.git' \
                         --exclude='node_modules' \
                         ${WORKSPACE}/backend/ ${TARGET_DIR}/
-                """
-            }
-        }
-
-        stage('Install dependencies on target (production)') {
-            steps {
-                echo "==> npm install --production in ${TARGET_DIR}"
-                sh """
-                    cd ${TARGET_DIR}
-                    npm install --production
                 """
             }
         }
