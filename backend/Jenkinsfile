@@ -1,7 +1,5 @@
 pipeline {
-    agent {
-        label 'raspberry-pi' // ใช้ Jenkins agent บน Raspberry Pi
-    }
+    agent any
     
     triggers {
         // Trigger เมื่อมี push ใน Git
