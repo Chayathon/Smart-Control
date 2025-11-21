@@ -9,7 +9,7 @@ pipeline {
     
     environment {
         // ตั้งค่าสำหรับ Raspberry Pi deployment
-        TARGET_DIR = '/opt/Backend_Node_radio'
+        TARGET_DIR = '/var/lib/jenkins/Backend_Node_radio'
         PM2_APP_NAME = 'node-audio'
         GITHUB_REPO = credentials('github-repo-url') // เก็บ URL ของ repo ใน Jenkins credentials
     }
