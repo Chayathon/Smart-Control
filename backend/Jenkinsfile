@@ -1,37 +1,49 @@
 pipeline {
     agent any
-    
-    triggers {
-        // Trigger เมื่อมี push ใน Git (ใช้ webhook จาก GitHub)
-        githubPush()
-        // หรือใช้ pollSCM('H/5 * * * *') เพื่อตรวจสอบทุก 5 นาที
-    }
-    
+
     environment {
-        // ตั้งค่าสำหรับ Raspberry Pi deployment
-        TARGET_DIR = '/var/lib/jenkins/Backend_Node_radio'
-        PM2_APP_NAME = 'node-audio'
-        GITHUB_REPO = credentials('github-repo-url') // เก็บ URL ของ repo ใน Jenkins credentials
+        // โฟลเดอร์ปลายทางบนเครื่อง Jenkins/Raspberry Pi
+        TARGET_DIR   = '/var/lib/jenkins/Backend_Node_radio'
+        PM2_APP_NAME = 'node-audio'   // ชื่อโปรเซส pm2
+        PM2_BIN      = '/home/mass/.nvm/versions/node/v22.17.1/bin/pm2'
     }
-    
+
     stages {
         stage('Checkout') {
             steps {
-                echo '📥 Pulling latest code from GitHub...'
+                echo "📥 Pulling latest code from GitHub..."
                 checkout scm
+            }
+        }
+
+        stage('Install dependencies (backend)') {
+            steps {
+                dir('backend') {
+                    echo "==> Install npm dependencies in backend/"
+                    sh 'npm install'
+                }
             }
         }
 
         stage('Deploy to target folder') {
             steps {
                 echo "==> Sync project to ${TARGET_DIR}"
-                // ใช้ rsync จะเร็วและเคลียร์กว่า cp
                 sh """
                     mkdir -p ${TARGET_DIR}
                     rsync -av --delete \
                         --exclude='.git' \
                         --exclude='node_modules' \
-                        ${WORKSPACE}/ ${TARGET_DIR}/
+                        ${WORKSPACE}/backend/ ${TARGET_DIR}/
+                """
+            }
+        }
+
+        stage('Install dependencies on target (production)') {
+            steps {
+                echo "==> npm install --production in ${TARGET_DIR}"
+                sh """
+                    cd ${TARGET_DIR}
+                    npm install --production
                 """
             }
         }
@@ -41,12 +53,12 @@ pipeline {
                 echo "==> Restart PM2 app: ${PM2_APP_NAME}"
                 sh """
                     cd ${TARGET_DIR}
-                    # ถ้าคุณใช้ ecosystem.config.js ให้ใช้บรรทัดนี้แทน
-                    # pm2 startOrRestart ecosystem.config.js
 
-                    # ถ้าใช้ชื่อโปรเซสตรง ๆ:
-                    pm2 restart ${PM2_APP_NAME} || pm2 start app.js --name ${PM2_APP_NAME}
-                    pm2 save
+                    # เรียก pm2 ในนาม user pi
+                    sudo -u pi ${PM2_BIN} restart ${PM2_APP_NAME} \
+                      || sudo -u pi ${PM2_BIN} start server.js --name ${PM2_APP_NAME}
+
+                    sudo -u pi ${PM2_BIN} save
                 """
             }
         }
