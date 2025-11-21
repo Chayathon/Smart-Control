@@ -5,11 +5,13 @@ import 'package:flutter/material.dart';
 /// ความสูงการ์ดทุกใบ ให้เท่ากันหมด
 const double _kTileHeight = 110;
 
-/// metric key ที่ใช้กับค่าจริงจาก backend (เหลือเฉพาะ DC เท่านั้น)
+/// metric key ที่ใช้กับค่าจริงจาก backend (เหลือแค่ 4 ตัว)
+/// oat = On Air Target (ไม่ใช่อุณหภูมิ)
 enum MetricKey {
   dcV,
   dcA,
   dcW,
+  oat,
 }
 
 String metricLabel(MetricKey k) {
@@ -20,6 +22,8 @@ String metricLabel(MetricKey k) {
       return 'DC Current';
     case MetricKey.dcW:
       return 'DC Power';
+    case MetricKey.oat:
+      return 'On Air Target';
   }
 }
 
@@ -31,6 +35,9 @@ String unitOf(MetricKey k) {
       return 'A';
     case MetricKey.dcW:
       return 'W';
+    case MetricKey.oat:
+      // OAT = On Air Target → ไม่มีหน่วย
+      return '';
   }
 }
 
@@ -42,6 +49,8 @@ Color metricColor(MetricKey k) {
       return const Color(0xFF14B8A6); // เขียวอมฟ้า
     case MetricKey.dcW:
       return const Color(0xFFEF4444); // แดง
+    case MetricKey.oat:
+      return const Color(0xFFFB923C); // OAT โทนส้มอุ่น ๆ
   }
 }
 
@@ -56,15 +65,11 @@ class MiniStats extends StatelessWidget {
   /// เปลี่ยน metric (ให้ parent setState)
   final void Function(MetricKey) onSelectMetric;
 
-  /// กด toggle lighting (เคยใช้กับ NODE1, ตอนนี้ไม่ใช้แล้วแต่เก็บ signature ไว้กันพัง)
-  final VoidCallback onToggleLighting;
-
   const MiniStats({
     super.key,
     required this.current,
     required this.activeMetric,
     required this.onSelectMetric,
-    required this.onToggleLighting,
   });
 
   static const Color kBorderNormal = Color(0x1A000000);
@@ -91,8 +96,6 @@ class MiniStats extends StatelessWidget {
     }
 
     final online = _onlineOf(row);
-    final hasDC = _hasDC(row);
-    final onAir = _onAirTarget(row);
 
     return Container(
       decoration: BoxDecoration(
@@ -108,12 +111,9 @@ class MiniStats extends StatelessWidget {
             child: LayoutBuilder(
               builder: (context, constraints) {
                 const spacing = 12.0;
-
                 final specs = _buildTiles(
                   row,
                   online: online,
-                  hasDC: hasDC,
-                  onAir: onAir,
                 );
 
                 if (specs.isEmpty) {
@@ -139,10 +139,6 @@ class MiniStats extends StatelessWidget {
                         online: t.boolValue ?? false,
                         deviceName: t.title ?? '-',
                       );
-
-                    case _TileKind.lightingStatus:
-                      // ตอนนี้ไม่ใช้แล้ว (ไม่เรียกใช้ใน _buildTiles)
-                      return _SpacerTile(width: colW);
 
                     case _TileKind.onAirTarget:
                       return _OnAirTargetTile(
@@ -193,8 +189,6 @@ class MiniStats extends StatelessWidget {
   List<_TileSpec> _buildTiles(
     Map<String, dynamic> row, {
     required bool online,
-    required bool hasDC,
-    required bool onAir,
   }) {
     final tiles = <_TileSpec>[];
 
@@ -208,16 +202,15 @@ class MiniStats extends StatelessWidget {
       ),
     );
 
-    // ระบบปัจจุบัน = ระบบไร้สาย (DC) ทุกโหนด
-    if (hasDC) {
-      _maybeAddMetricTile(row, tiles, 'DC Voltage', MetricKey.dcV);
-      _maybeAddMetricTile(row, tiles, 'DC Current', MetricKey.dcA);
-      _maybeAddMetricTile(row, tiles, 'DC Power', MetricKey.dcW);
-    }
+    // Metric ที่เหลือจริงจาก backend: DC
+    _maybeAddMetricTile(row, tiles, 'DC Voltage', MetricKey.dcV);
+    _maybeAddMetricTile(row, tiles, 'DC Current', MetricKey.dcA);
+    _maybeAddMetricTile(row, tiles, 'DC Power', MetricKey.dcW);
+    // **ลบการ์ด On Air Target (ตัวเลข) ออก ตาม requirement**
+    // _maybeAddMetricTile(row, tiles, 'On Air Target', MetricKey.oat);
 
-    // ตอนนี้ไม่มี Battery / RSSI / SNR แล้ว ไม่ต้องเพิ่มการ์ดพวกนี้
-
-    // การ์ด On Air Target (สถานะเป้าหมาย)
+    // สถานะ OnAir (ใช้ oat + เช็ค online)
+    final onAir = _onAirTarget(row);
     tiles.add(_TileSpec.onAirTarget(onAir));
 
     // ให้เป็นจำนวนคู่ (2 คอลัมน์)
@@ -249,28 +242,23 @@ class MiniStats extends StatelessWidget {
   // ===================== helpers =====================
 
   String _nameOf(Map<String, dynamic> row) {
-    // ✅ ดึงจาก meta ก่อน
-    final meta = row['meta'];
-    if (meta is Map) {
-      final no = meta['no']?.toString().trim();
-      final deviceId = meta['deviceId']?.toString().trim();
-
-      // ถ้ามี no → ใช้เป็น NODE{no} เช่น NODE1, NODE2
-      if (no != null && no.isNotEmpty) {
-        return 'NODE$no';
-      }
-
-      // ถ้าไม่มี no แต่มี deviceId → ใช้ deviceId
-      if (deviceId != null && deviceId.isNotEmpty) {
-        return deviceId;
-      }
-    }
-
-    // ถัดมาลองใช้ name ถ้ามี
+    // 1) ถ้ามี name ให้ใช้ก่อน
     final name = (row['name'] ?? '').toString().trim();
     if (name.isNotEmpty) return name;
 
-    // fallback สุดท้าย devEui (ถ้ามีจากที่อื่น)
+    // 2) ถ้าไม่มี name ให้ใช้เลข no แล้วขึ้นต้นด้วย "Node"
+    final meta = row['meta'];
+    if (meta is Map) {
+      final noMeta = meta['no'];
+      if (noMeta is int) return 'Node$noMeta';
+      if (noMeta is String && noMeta.isNotEmpty) return 'Node$noMeta';
+    }
+
+    final rootNo = row['no'];
+    if (rootNo is int) return 'Node$rootNo';
+    if (rootNo is String && rootNo.isNotEmpty) return 'Node$rootNo';
+
+    // 3) สุดท้าย fallback เป็น devEui
     final devEui =
         (row['devEui'] ?? row['meta']?['devEui'] ?? '').toString();
     if (devEui.isNotEmpty) return devEui;
@@ -279,43 +267,57 @@ class MiniStats extends StatelessWidget {
   }
 
   bool _onlineOf(Map<String, dynamic> row) {
-    final s = (row['status'] ?? '').toString().toLowerCase();
-    if (s == 'on') return true;
-    if (s == 'off') return false;
-    if (row['online'] is bool) return row['online'] as bool;
-    return false;
+    final tsRaw = row['timestamp'];
+
+    DateTime? ts;
+    if (tsRaw is DateTime) {
+      ts = tsRaw.toUtc();
+    } else if (tsRaw is String && tsRaw.isNotEmpty) {
+      ts = DateTime.tryParse(tsRaw)?.toUtc();
+    } else if (tsRaw is int) {
+      // เผื่อเก็บเป็น millisecondsSinceEpoch
+      ts = DateTime.fromMillisecondsSinceEpoch(tsRaw, isUtc: true);
+    }
+
+    if (ts == null) return false;
+
+    final diff = DateTime.now().toUtc().difference(ts);
+    return diff.inSeconds <= 5;
   }
 
-  bool _lightingOn(Map<String, dynamic> row) {
-    final v = _toInt(row['lighting']);
-    return v == 1;
-  }
-
+  /// แปลงค่า oat เป็นสถานะ On Air Target (กำลังประกาศ / ไม่ได้ประกาศ)
   bool _onAirTarget(Map<String, dynamic> row) {
-    // ✅ ลำดับการอ่านค่า: oat -> onAirTarget -> on_air_target -> onAir
-    final raw =
-        row['oat'] ?? row['onAirTarget'] ?? row['on_air_target'] ?? row['onAir'];
+    // ถ้าอุปกรณ์ Offline ให้ถือว่า "ไม่ได้ประกาศ" เสมอ
+    if (!_onlineOf(row)) return false;
+
+    final raw = row['oat']; // ใช้เฉพาะ oat ตัวเดียว
 
     if (raw is bool) return raw;
     if (raw is num) return raw != 0;
-    if (raw is String) {
-      final s = raw.toLowerCase();
-      if (s == 'true' || s == 'on' || s == 'yes' || s == '1') return true;
-      if (s == 'false' || s == 'off' || s == '0') return false;
+
+    if (raw is String && raw.trim().isNotEmpty) {
+      final s = raw.trim().toLowerCase();
+
+      if (s == 'true' || s == 'on' || s == 'yes') return true;
+      if (s == 'false' || s == 'off' || s == 'no') return false;
+
+      final n = double.tryParse(s);
+      if (n != null) return n != 0;
     }
+
     return false;
   }
 
-  bool _hasDC(Map<String, dynamic> row) {
-    // ✅ ตอนนี้ดูแค่ dcV/dcA/dcW ตาม backend
-    return row['dcV'] != null ||
-        row['dcA'] != null ||
-        row['dcW'] != null;
-  }
-
   int _decimalPlaces(MetricKey k) {
-    // ตอนนี้ใช้ 2 หลักทศนิยมเหมือนกันหมด
-    return 2;
+    switch (k) {
+      case MetricKey.oat:
+        // OAT เป็นค่า target ธรรมดา (ไม่ใช่ °C) แต่ให้แสดงทศนิยม 2 ตำแหน่งเหมือนเดิม
+        return 2;
+      case MetricKey.dcV:
+      case MetricKey.dcA:
+      case MetricKey.dcW:
+        return 2;
+    }
   }
 
   double? _metricValue(Map<String, dynamic> row, MetricKey k) {
@@ -330,7 +332,16 @@ class MiniStats extends StatelessWidget {
       case MetricKey.dcW:
         raw = row['dcW'];
         break;
+      case MetricKey.oat:
+        raw = row['oat'];
+
+        // ถ้า Offline ให้บังคับแสดงเป็น 0 ทันที
+        if (!_onlineOf(row)) {
+          raw = 0;
+        }
+        break;
     }
+
     final v = _toDouble(raw);
     if (v == null) return null;
     final dp = _decimalPlaces(k);
@@ -362,7 +373,6 @@ class MiniStats extends StatelessWidget {
 enum _TileKind {
   metric,
   status,
-  lightingStatus,
   onAirTarget,
   spacer,
 }
@@ -408,9 +418,6 @@ class _TileSpec {
         title: deviceName,
       );
 
-  factory _TileSpec.lightStatus(bool isOn) =>
-      _TileSpec._(_TileKind.lightingStatus, boolValue: isOn);
-
   factory _TileSpec.onAirTarget(bool v) =>
       _TileSpec._(_TileKind.onAirTarget, boolValue: v);
 
@@ -452,7 +459,7 @@ class _MetricTile extends StatelessWidget {
       borderRadius: BorderRadius.circular(16),
       child: Container(
         width: width,
-        height: _kTileHeight, // ✅ ให้สูงเท่ากับการ์ดอื่น
+        height: _kTileHeight,
         decoration: BoxDecoration(
           color: bgColor,
           borderRadius: BorderRadius.circular(16),
@@ -492,25 +499,27 @@ class _MetricTile extends StatelessWidget {
                         color: Colors.black,
                       ),
                     ),
-                    const SizedBox(width: 6),
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 3.0),
-                      child: Text(
-                        unit,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.black54,
+                    if (unit.isNotEmpty) ...[
+                      const SizedBox(width: 6),
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 3.0),
+                        child: Text(
+                          unit,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.black54,
+                          ),
                         ),
                       ),
-                    ),
+                    ],
                   ],
                 ),
               ],
             ),
             const SizedBox(height: 12),
             SizedBox(
-              height: 34, // ลดลงนิดให้พอดีกับ _kTileHeight
+              height: 34,
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 4.0),
                 child: CustomPaint(
@@ -618,7 +627,7 @@ class _StatusTile extends StatelessWidget {
 
     return Container(
       width: width,
-      height: _kTileHeight, // ✅ เท่าการ์ดอื่น
+      height: _kTileHeight,
       decoration: BoxDecoration(
         color: bgColor,
         borderRadius: BorderRadius.circular(16),
@@ -704,107 +713,6 @@ class _StatusTile extends StatelessWidget {
   }
 }
 
-// ------------------- Lighting Tile (ตอนนี้ไม่ใช้แล้ว) -------------------
-
-class _LightingTile extends StatelessWidget {
-  final double width;
-  final bool isOn;
-  final VoidCallback onToggle;
-
-  const _LightingTile({
-    super.key,
-    required this.width,
-    required this.isOn,
-    required this.onToggle,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    const borderColor = MiniStats.kBorderNormal;
-    const bgColor = Colors.white;
-
-    final circleColor =
-        isOn ? Colors.amber.shade400 : Colors.grey.shade400;
-    final statusText = isOn ? 'เปิดไฟ' : 'ปิดไฟ';
-
-    return Material(
-      color: Colors.transparent,
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        onTap: onToggle,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          width: width,
-          height: _kTileHeight,
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-          decoration: BoxDecoration(
-            color: bgColor,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: borderColor, width: 1.0),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.05),
-                blurRadius: 4,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.max,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'สถานะไฟ',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.black54,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    statusText,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.black87,
-                    ),
-                  ),
-                  Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: circleColor,
-                      shape: BoxShape.circle,
-                      boxShadow: isOn
-                          ? [
-                              BoxShadow(
-                                color: circleColor.withOpacity(0.45),
-                                blurRadius: 18,
-                                spreadRadius: 4,
-                              ),
-                            ]
-                          : [],
-                    ),
-                    child: const Icon(
-                      Icons.lightbulb,
-                      color: Colors.white,
-                      size: 25,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 // ------------------- _OnAirTargetTile -------------------
 
 class _OnAirTargetTile extends StatelessWidget {
@@ -819,7 +727,6 @@ class _OnAirTargetTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 🎨 สีตามเงื่อนไข
     final Color circleColor = value
         ? const Color(0xFF48CAE4) // กำลังประกาศ = ฟ้า
         : Colors.grey.shade400;   // ไม่ได้ประกาศ = เทา
@@ -834,7 +741,7 @@ class _OnAirTargetTile extends StatelessWidget {
       color: Colors.transparent,
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
-        onTap: () {}, // แค่แสดงผล ไม่ต้องกดได้
+        onTap: () {}, // แสดงสถานะอย่างเดียว
         borderRadius: BorderRadius.circular(16),
         child: Container(
           width: width,
@@ -857,7 +764,7 @@ class _OnAirTargetTile extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'สถานะเป้าหมาย',
+                'สถานะ On Air Target',
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
