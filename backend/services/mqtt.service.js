@@ -201,17 +201,21 @@ function connectAndSend({
                     ? `$S${zoneStr}Y$`  // เปิดโซน
                     : `$S${zoneStr}N$`; // ปิดโซน
 
-                console.log('[RadioZone] MQTT zone command -> UART:', {
-                    zone,
-                    set_stream: json.set_stream,
-                    uartCmd: cmd,
-                });
+                // console.log('[RadioZone] MQTT zone command -> UART:', {
+                //     zone,
+                //     set_stream: json.set_stream,
+                //     uartCmd: cmd,
+                // });
 
-                try {
-                    await uart.writeString(cmd, 'ascii');
-                } catch (err) {
-                    console.error('[RadioZone] UART write error for zone command:', err.message);
-                }
+                await sendZoneUartCommand(zone, cmd);
+                console.log('[RadioZone] sent UART command for zone', zone);
+                console.log('UART Command:', cmd);
+
+                // try {
+                //     await uart.writeString(cmd, 'ascii');
+                // } catch (err) {
+                //     console.error('[RadioZone] UART write error for zone command:', err.message);
+                // }
             }
 
             // ถ้าจะรองรับ volume ในอนาคต เช่น json.volume
