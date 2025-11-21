@@ -1,13 +1,15 @@
-// D:\mass_smart_city\Smart-Control\backend\services\mqtt.service.js
 const mqtt = require('mqtt');
 const { broadcast } = require('../ws/wsServer');
 const Device = require('../models/Device');
-const deviceDataService = require('../services/deviceData.service'); // ใช้ ingestOne
+const DeviceData = require('../models/DeviceData');
+const uart = require('./uart.handle');
 
 let deviceStatus = [];
 let seenZones = new Set();
 let client = null;
 let connected = false;
+let lastUartCmd = null;
+let lastUartTs = 0;
 
 const pendingRequestsByZone = {};
 
@@ -35,19 +37,26 @@ function connectAndSend({
         connected = true;
         console.log('✅ MQTT connected');
 
-        // subscribe ข้อมูลจากโหนด
         client.subscribe(dataTopic, { qos: 1 }, (err) => {
             if (err) console.error('📥 subscribe mass-radio/+/data error:', err.message);
-            else console.log(`📥 Subscribed to ${dataTopic}`);
+            else console.log('📥 subscribed mass-radio/+/data');
         });
 
-        // subscribe สถานะเครื่องเล่น
+        client.subscribe('mass-radio/+/command', { qos: 1 }, (err) => {
+            if (err) console.error('❌ Subscribe error for zone/command:', err.message);
+            else console.log('📥 Subscribed to mass-radio/+/command');
+        });
+
+        // client.subscribe('mass-radio/+/cmd', { qos: 1 }, (err) => {
+        //     if (err) console.error('❌ Subscribe error for zone/cmd:', err.message);
+        //     else console.log('📥 Subscribed to mass-radio/+/cmd');
+        // });
+
         client.subscribe(statusTopic, { qos: 1 }, (err) => {
             if (err) console.error('❌ Subscribe error:', err.message);
             else console.log(`📥 Subscribed to ${statusTopic}`);
         });
 
-        // Subscribe to select command topic for zone-specific commands
         client.subscribe('mass-radio/select/command', { qos: 1 }, (err) => {
             if (err) console.error('❌ Subscribe error for select/command:', err.message);
             else console.log(`📥 Subscribed to mass-radio/select/command`);
@@ -69,42 +78,45 @@ function connectAndSend({
         console.warn('⚠️ MQTT connection closed');
     });
 
-    client.on('message', (topic, message, packet) => {
-        // Handle select command topic
-        if (topic === 'mass-radio/select/command') {
-            if (!message || !message.toString().trim()) return;
-            try {
-                const data = JSON.parse(message.toString());
-                console.log(`📨 Received select command:`, data);
-                
-                // Forward the command to specific zones
-                if (data.zone && Array.isArray(data.zone)) {
-                    data.zone.forEach(zoneNo => {
-                        const zoneTopic = `mass-radio/zone${zoneNo}/command`;
-                        const zonePayload = { ...data };
-                        delete zonePayload.zone; // Remove zone array from payload
-                        publish(zoneTopic, zonePayload);
-                        console.log(`📤 Forwarded to zone ${zoneNo}`);
-                    });
-                }
-            } catch (err) {
-                console.error(`❌ Failed to parse select command:`, err.message);
-            }
+    async function sendZoneUartCommand(zone, set_stream) {
+        const zoneStr = String(zone).padStart(4, '0');
+        const baseCmd = set_stream
+            ? `$S${zoneStr}Y$`  // เปิดโซน
+            : `$S${zoneStr}N$`; // ปิดโซน
+
+        const now = Date.now();
+        const key = `${baseCmd}`;
+
+        // กันยิงซ้ำในเวลาใกล้ ๆ กัน (เช่น จาก 2 path พร้อมกัน)
+        if (lastUartCmd === key && (now - lastUartTs) < 300) {
+            console.log('[RadioZone] skip duplicate UART cmd:', key);
             return;
         }
-    });
+        lastUartCmd = key;
+        lastUartTs = now;
 
-        // Handle status topic
+        console.log('[RadioZone] MQTT zone command -> UART:', {
+            zone,
+            set_stream,
+            uartCmd: baseCmd,
+        });
+
+        try {
+            await uart.writeString(baseCmd, 'ascii');
+        } catch (err) {
+            console.error('[RadioZone] UART write error for zone command:', err.message);
+        }
+    }
+
+
     client.on('message', async (topic, message, packet) => {
+
         const payloadStr = message.toString();
-
-        // ---------- 1) mass-radio/noX/data -> บันทึก DeviceData ----------
         const m = topic.match(/^mass-radio\/(no\d+)\/data$/);
-        if (m) {
-            const nodeKey = m[1];                       // เช่น "no1"
-            const noFromTopic = parseInt(nodeKey.replace(/^no/, ''), 10);
 
-            if (!payloadStr.trim()) return;
+        if (m) {
+            const nodeKey = m[1];
+            const noFromTopic = parseInt(nodeKey.replace(/^no/, ''), 10);
 
             console.log('[MQTT] incoming deviceData from', nodeKey, 'payload =', payloadStr);
 
@@ -121,12 +133,11 @@ function connectAndSend({
 
                 const device = await Device.findOne({ no });
                 if (!device) {
-                    console.warn('[MQTT] device not found for no =', no, '(saving deviceData without deviceId)');
+                    console.warn('[MQTT] device not found for no =', no, 'still saving deviceData without deviceId');
                 }
 
                 const timestamp = json.timestamp ? new Date(json.timestamp) : new Date();
 
-                // doc ให้ตรงกับ schema + ไม่เก็บ topic
                 const doc = {
                     timestamp,
                     meta: {
@@ -138,15 +149,24 @@ function connectAndSend({
                     dcW: json.dcW,
                     dcA: json.dcA,
 
+                    acV: json.acV,
+                    acW: json.acW,
+                    acA: json.acA,
+
                     oat: json.oat,
                     lat: json.lat,
                     lng: json.lng,
 
-                    type: json.type,
                     flag: json.flag,
+
+                    type: json.type,
+
+                    status: json.status || undefined,
+
+                    no,
                 };
 
-                const saved = await deviceDataService.ingestOne(doc);
+                const saved = await DeviceData.create(doc);
                 console.log('[MQTT] saved DeviceData for', nodeKey, '-> _id =', saved._id.toString());
 
                 if (device) {
@@ -157,10 +177,76 @@ function connectAndSend({
                 console.error('[MQTT] error while saving DeviceData:', err.message);
             }
 
-            return; // ไม่ต้องเข้า block status ด้านล่าง
+            return;
         }
 
-        // ---------- 2) mass-radio/zoneX/status (ของเดิม) ----------
+        // ---------- 2) mass-radio/zoneX/command -> สั่ง UART ----------
+        const cmdMatch = topic.match(/^mass-radio\/zone(\d+)\/command$/);
+        if (cmdMatch) {
+            const zone = parseInt(cmdMatch[1], 10);
+
+            let json;
+            try {
+                json = JSON.parse(payloadStr);
+            } catch (e) {
+                console.error('[MQTT] invalid JSON on zone command:', e.message, 'payload =', payloadStr);
+                return;
+            }
+
+            // ตอนนี้เรารองรับแค่ set_stream ก่อน
+            if (typeof json.set_stream === 'boolean') {
+                // แปลง zone -> 4 หลัก เช่น 1 -> "0001", 12 -> "0012"
+                const zoneStr = String(zone).padStart(4, '0');
+                const cmd = json.set_stream
+                    ? `$S${zoneStr}Y$`  // เปิดโซน
+                    : `$S${zoneStr}N$`; // ปิดโซน
+
+                console.log('[RadioZone] MQTT zone command -> UART:', {
+                    zone,
+                    set_stream: json.set_stream,
+                    uartCmd: cmd,
+                });
+
+                try {
+                    await uart.writeString(cmd, 'ascii');
+                } catch (err) {
+                    console.error('[RadioZone] UART write error for zone command:', err.message);
+                }
+            }
+
+            // ถ้าจะรองรับ volume ในอนาคต เช่น json.volume
+            // ก็สามารถทำ mapping เพิ่มตรงนี้ได้ ($V000115$ ฯลฯ)
+
+
+            return;
+        }
+
+        
+        // else console.log("cmdMatch isn't maching");
+
+        if (topic === 'mass-radio/select/command') {
+            if (!message || !message.toString().trim()) return;
+            try {
+                const data = JSON.parse(message.toString());
+                console.log(`📨 Received select command:`, data);
+
+                if (data.zone && Array.isArray(data.zone)) {
+                    data.zone.forEach(zoneNo => {
+                        const zoneTopic = `mass-radio/zone${zoneNo}/command`;
+                        const zonePayload = { ...data };
+                        delete zonePayload.zone;
+                        publish(zoneTopic, zonePayload);
+                        console.log(`📤 Forwarded to zone ${zoneNo}`);
+                    });
+                }
+            } catch (err) {
+                console.error(`❌ Failed to parse select command:`, err.message);
+            }
+            return;
+        }
+
+        
+
         const match = topic.match(/mass-radio\/([^/]+)\/status/);
         const zoneStr = match ? match[1] : null;
         if (!zoneStr) return;
@@ -290,6 +376,7 @@ async function checkOfflineZones() {
 
     if (deviceStatus.length === 0) {
         try {
+
             await Device.updateMany(
                 {},
                 {
@@ -364,9 +451,9 @@ async function checkOfflineZones() {
     }
 }
 
-module.exports = { 
-    connectAndSend, 
-    getStatus, 
-    publish, 
+module.exports = {
+    connectAndSend,
+    getStatus,
+    publish,
     publishAndWaitByZone
 };
