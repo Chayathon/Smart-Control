@@ -137,19 +137,85 @@ function parseStatusFrame(rawStr) {
  * - publish raw ขึ้น MQTT topic 'radio/rsp' (เลียนแบบระบบเก่า)
  * - ถ้า parse ได้ -> publish zone status/volume เพิ่ม
  */
+// function onRxFrame(frameBuf) {
+//   const raw = frameBuf.toString('ascii');  // เช่น "$S0001Y$\r\n"
+//   console.log('[RadioZone] UART RX frame (raw):', JSON.stringify(raw));
+
+//   // 1) ทำเหมือนระบบเก่า: ส่ง raw ขึ้น MQTT ที่ topic radio/rsp
+//   try {
+//     mqttSvc.publish('radio/cmd', raw, { qos: 1, retain: false });
+//     console.log('[RadioZone] MQTT TX -> [radio/cmd]', JSON.stringify(raw));
+//   } catch (e) {
+//     console.error('[RadioZone] MQTT publish error (radio/rsp):', e.message);
+//   }
+
+//   // 2) พยายาม parse ให้รู้ zone / status / volume
+//   const parsed = parseStatusFrame(raw);
+//   if (!parsed) {
+//     return;
+//   }
+
+//   const { type, zone } = parsed;
+//   const isAll = zone === 1111;
+
+//   if (type === 'stream') {
+//     const topicStatus = isAll
+//       ? 'mass-radio/all/command'
+//       : `mass-radio/zone${zone}/command`;
+
+//     const payloadStatus = {
+//       zone,
+//       set_stream: parsed.set_stream,
+//       source: 'manual', // กดจากเครื่อง
+//       raw: parsed.raw,
+//     };
+
+//     try {
+//       mqttSvc.publish(topicStatus, payloadStatus, { qos: 1, retain: false });
+//       console.log(
+//         '[RadioZone] MQTT TX ->',
+//         topicStatus,
+//         JSON.stringify(payloadStatus)
+//       );
+//     } catch (e) {
+//       console.error('[RadioZone] MQTT publish error (status):', e.message);
+//     }
+//   } else if (type === 'volume') {
+//     const topicVol = isAll
+//       ? 'mass-radio/all/volume'
+//       : `mass-radio/zone${zone}/volume`;
+
+//     const payloadVol = {
+//       zone,
+//       volume: parsed.volume,
+//       source: 'manual', // กดจากเครื่อง
+//       raw: parsed.raw,
+//     };
+
+//     try {
+//       mqttSvc.publish(topicVol, payloadVol, { qos: 1, retain: false });
+//       console.log(
+//         '[RadioZone] MQTT TX ->',
+//         topicVol,
+//         JSON.stringify(payloadVol)
+//       );
+//     } catch (e) {
+//       console.error('[RadioZone] MQTT publish error (volume):', e.message);
+//     }
+//   }
+// }
+
 function onRxFrame(frameBuf) {
   const raw = frameBuf.toString('ascii');  // เช่น "$S0001Y$\r\n"
   console.log('[RadioZone] UART RX frame (raw):', JSON.stringify(raw));
 
-  // 1) ทำเหมือนระบบเก่า: ส่ง raw ขึ้น MQTT ที่ topic radio/rsp
   try {
     mqttSvc.publish('radio/cmd', raw, { qos: 1, retain: false });
     console.log('[RadioZone] MQTT TX -> [radio/cmd]', JSON.stringify(raw));
   } catch (e) {
-    console.error('[RadioZone] MQTT publish error (radio/rsp):', e.message);
+    console.error('[RadioZone] MQTT publish error (radio/cmd):', e.message);
   }
 
-  // 2) พยายาม parse ให้รู้ zone / status / volume
   const parsed = parseStatusFrame(raw);
   if (!parsed) {
     return;
@@ -160,12 +226,13 @@ function onRxFrame(frameBuf) {
 
   if (type === 'stream') {
     const topicStatus = isAll
-      ? 'mass-radio/all/command'
-      : `mass-radio/zone${zone}/command`;
+      ? 'mass-radio/all/status'
+      : `mass-radio/zone${zone}/status`;
 
     const payloadStatus = {
       zone,
-      set_stream: parsed.set_stream,
+      stream_enabled: parsed.set_stream,
+      is_playing: parsed.set_stream,
       source: 'manual', // กดจากเครื่อง
       raw: parsed.raw,
     };
@@ -180,30 +247,10 @@ function onRxFrame(frameBuf) {
     } catch (e) {
       console.error('[RadioZone] MQTT publish error (status):', e.message);
     }
-  } else if (type === 'volume') {
-    const topicVol = isAll
-      ? 'mass-radio/all/volume'
-      : `mass-radio/zone${zone}/volume`;
-
-    const payloadVol = {
-      zone,
-      volume: parsed.volume,
-      source: 'manual', // กดจากเครื่อง
-      raw: parsed.raw,
-    };
-
-    try {
-      mqttSvc.publish(topicVol, payloadVol, { qos: 1, retain: false });
-      console.log(
-        '[RadioZone] MQTT TX ->',
-        topicVol,
-        JSON.stringify(payloadVol)
-      );
-    } catch (e) {
-      console.error('[RadioZone] MQTT publish error (volume):', e.message);
-    }
   }
 }
+
+
 
 /**
  * เรียกตอน start server เพื่อ:
