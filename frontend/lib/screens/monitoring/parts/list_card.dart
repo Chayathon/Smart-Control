@@ -1,7 +1,7 @@
-// lib/screens/monitoring/parts/list_card.dart
 import 'package:flutter/material.dart';
 
 /// ===== ตัวกรองและชนิดอุปกรณ์ =====
+/// เก็บ enum เดิมไว้ให้ไฟล์อื่น import ได้เหมือนเดิม
 enum TypeFilter { all, lighting, wave, sim }
 enum StatusFilter { all, online, offline }
 enum MonitoringKind { lighting, wirelessWave, wirelessSim }
@@ -11,15 +11,15 @@ typedef Json = Map<String, dynamic>;
 /// ===== แผงลิสต์ + ส่วนตัวกรอง (ค่าจริง) =====
 class MonitoringListPanel extends StatelessWidget {
   final List<Json> items; // ใช้ Json (ค่าจริง)
-  final String? selectedId; // devEui / deviceId ที่เลือก
+  final String? selectedId; // id ของโหนดที่เลือก
   final Color cardBg, border, accent, textColor;
   final ScrollController listController;
 
   final ValueChanged<Json> onSelectEntry;
-
-  /// ยังรับไว้เพื่อไม่ให้กระทบโค้ดเดิม แต่จะไม่ถูกใช้งานแล้ว
+  // ยังรับ onToggleLighting ไว้เหมือนเดิมเพื่อไม่ให้ไฟล์อื่น error
   final void Function(Json row, int nextLighting) onToggleLighting;
 
+  // ยังรับ typeFilter / onChangeTypeFilter ไว้เหมือนเดิม
   final TypeFilter typeFilter;
   final ValueChanged<TypeFilter> onChangeTypeFilter;
 
@@ -54,67 +54,55 @@ class MonitoringListPanel extends StatelessWidget {
     required this.onlineOf,
   });
 
-  /// ตอนนี้ใช้ระบบเดียว = ระบบไร้สาย (ซิม)
+  /// ตอนนี้ระบบเหลือแค่ไร้สายแบบซิม → ให้แสดงชื่อระบบเดียว
   String _systemTitle(MonitoringKind k) {
     return 'ระบบไร้สาย (ซิม)';
   }
 
-  /// ====== ดึง ID หลักของโหนด ======
-  /// ลำดับ:
-  /// 1) meta.deviceId
-  /// 2) meta.devEui
-  /// 3) meta.no
-  /// 4) row.devEui
   String? _idOf(Json row) {
     final meta = row['meta'];
     if (meta is Map) {
-      final deviceId = meta['deviceId'];
-      if (deviceId is String && deviceId.isNotEmpty) {
-        return deviceId;
+      final noMeta = meta['no'];
+      if (noMeta is int) {
+        return 'no$noMeta';
       }
-
-      final devEui = meta['devEui'];
-      if (devEui is String && devEui.isNotEmpty) {
-        return devEui;
-      }
-
-      final no = meta['no'];
-      if (no != null) {
-        return no.toString();
+      if (noMeta is String && noMeta.isNotEmpty) {
+        // กรณี backend ส่งมาเป็น "no1"
+        return noMeta;
       }
     }
 
-    final devEui = row['devEui'];
-    if (devEui is String && devEui.isNotEmpty) {
-      return devEui;
+    final rootNo = row['no'];
+    if (rootNo is int) {
+      return 'no$rootNo';
+    }
+    if (rootNo is String && rootNo.isNotEmpty) {
+      return rootNo;
     }
 
     return null;
   }
 
-  /// ====== ดึงชื่อที่ใช้แสดงในลิสต์ ======
-  /// ลำดับการเลือกชื่อ:
-  /// 1) row.name
-  /// 2) meta.name
-  /// 3) meta.no   → "NODE{no}"
-  /// 4) _idOf(row)
-  /// 5) '-'
+  /// ชื่อที่แสดงในลิสต์
+  /// ถ้ามี field name ให้ใช้ name
+  /// ถ้าไม่มีก็ใช้เลข no สร้างเป็น "Node <no>"
   String _nameOf(Json row) {
     final name = (row['name'] ?? '').toString().trim();
     if (name.isNotEmpty) return name;
 
+    dynamic no;
     final meta = row['meta'];
-    if (meta is Map) {
-      final metaName = (meta['name'] ?? '').toString().trim();
-      if (metaName.isNotEmpty) return metaName;
-
-      final no = meta['no'];
-      if (no != null) {
-        final noStr = no.toString();
-        return 'NODE$noStr';
-      }
+    if (meta is Map && meta['no'] != null) {
+      no = meta['no'];
+    } else if (row['no'] != null) {
+      no = row['no'];
     }
 
+    if (no != null) {
+      return 'Node ${no.toString()}';
+    }
+
+    // เผื่อกรณีไม่มี no จริง ๆ
     return _idOf(row) ?? '-';
   }
 
@@ -122,7 +110,9 @@ class MonitoringListPanel extends StatelessWidget {
     try {
       if (v == null) return null;
       if (v is DateTime) return v.toLocal();
-      if (v is int) return DateTime.fromMillisecondsSinceEpoch(v).toLocal();
+      if (v is int) {
+        return DateTime.fromMillisecondsSinceEpoch(v).toLocal();
+      }
       if (v is String && v.isNotEmpty) return DateTime.parse(v).toLocal();
     } catch (_) {}
     return null;
@@ -152,12 +142,13 @@ class MonitoringListPanel extends StatelessWidget {
         ),
         child: Column(
           children: [
-            // ===== แถบตัวกรอง (ตัดตัวกรองระบบออก เหลือเฉพาะสถานะ) =====
+            // ===== แถบตัวกรอง (เหลือเฉพาะ All / Online / Offline) =====
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               child: Row(
                 children: [
-                  // ไม่ใช้ TypeDropdown แล้ว เหลือเฉพาะปุ่มสถานะ
+                  // ตัด TypeDropdown ออกตาม requirement
                   Expanded(
                     child: SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
@@ -234,8 +225,7 @@ class MonitoringListPanel extends StatelessWidget {
                               boxShadow: isSelected
                                   ? [
                                       BoxShadow(
-                                        color:
-                                            Colors.blue.withOpacity(0.15),
+                                        color: Colors.blue.withOpacity(0.15),
                                         blurRadius: 12,
                                         spreadRadius: 1,
                                         offset: const Offset(0, 4),
@@ -251,7 +241,7 @@ class MonitoringListPanel extends StatelessWidget {
                     final systemTitle = _systemTitle(k);
                     final order = i + 1;
 
-                    // ตอนนี้ใช้แต่ Wireless Tile จริงทั้งหมด
+                    // ตอนนี้ทุกอย่างถือเป็นระบบไร้สาย (ซิม) → ใช้ WirelessTile อย่างเดียว
                     return wrap(
                       _WirelessTileReal(
                         row: row,
@@ -276,7 +266,8 @@ class MonitoringListPanel extends StatelessWidget {
   }
 }
 
-/// ===== ดรอปดาวน์ (ปุ่ม 3D) — ยังเก็บ class ไว้แต่ไม่ได้ใช้งานใน UI แล้ว =====
+/// ===== ดรอปดาวน์ (ปุ่ม 3D) =====
+/// เก็บไว้เฉย ๆ เผื่อไฟล์อื่นใช้ TypeDropdown อยู่ แต่ตอนนี้ไม่ใช้ใน UI แล้ว
 class TypeDropdown extends StatelessWidget {
   final TypeFilter value;
   final ValueChanged<TypeFilter> onChanged;
@@ -353,7 +344,11 @@ class TypeDropdown extends StatelessWidget {
             shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12)),
             position: RelativeRect.fromLTRB(
-                left, top, right, overlay.size.height - top),
+              left,
+              top,
+              right,
+              overlay.size.height - top,
+            ),
             items: _buildItems(menuW),
           );
 
@@ -379,7 +374,7 @@ class _TypeDropdownButton3D extends StatelessWidget {
           onTap: () => onTap(buttonContext),
           borderRadius: BorderRadius.circular(12),
           child: SizedBox(
-            width: 150,
+            width: 150, // ปุ่มตัวกรองชนิด
             child: Container(
               padding:
                   const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -424,7 +419,7 @@ class _TypeDropdownButton3D extends StatelessWidget {
   }
 }
 
-/// ===== ปุ่มสถานะ 3D =====
+/// ===== ปุ่มสถานะ 3D (เลือกสีตามชนิดสถานะ) =====
 class Status3DButton extends StatelessWidget {
   final String label;
   final bool selected;
@@ -542,11 +537,14 @@ class _WirelessTileReal extends StatelessWidget {
     final t = _toDate(ts);
     final timeLabel = t != null ? _hhmmss(t) : '-';
 
-    // DC metrics จากฐานข้อมูลปัจจุบัน
+    final rawOat = row['oat'];
+    // ถ้า Offline ให้แสดง On Air Target เป็น 0 ทันที
+    final oat = isOnline ? rawOat : 0;
+
+    // DC metrics จาก backend ใหม่: dcV / dcA / dcW
     final dcV = row['dcV'];
     final dcA = row['dcA'];
     final dcW = row['dcW'];
-    final oat = row['oat'];
 
     const vGapBetweenTitleAndBelow = 8.0;
 
@@ -567,7 +565,7 @@ class _WirelessTileReal extends StatelessWidget {
             color: Colors.black.withOpacity(0.05),
             blurRadius: 12,
             offset: const Offset(0, 6),
-          ),
+          )
         ],
       ),
       padding: const EdgeInsets.all(14),
@@ -608,13 +606,14 @@ class _WirelessTileReal extends StatelessWidget {
 
           const SizedBox(height: vGapBetweenTitleAndBelow),
 
-          // Metrics — ✅ เอาเฉพาะ DC + OAT (ตัด battery / RSSI / SNR ออก)
+          // Metrics → เหลือเฉพาะ 4 ค่า: Voltage / Current / Power / OAT (On Air Target)
           MetricList(
             items: [
-              MetricItem('DC Voltage', _fmtNum(dcV, suffix: ' V')),
-              MetricItem('DC Current', _fmtNum(dcA, suffix: ' A')),
-              MetricItem('DC Power', _fmtNum(dcW, suffix: ' W')),
-              MetricItem('OAT', _fmtNum(oat)), // จะระบุหน่วยเพิ่มก็ได้ เช่น ' °C'
+              MetricItem('Voltage', _fmtNum(dcV, suffix: ' V')),
+              MetricItem('Current', _fmtNum(dcA, suffix: ' A')),
+              MetricItem('Power', _fmtNum(dcW, suffix: ' W')),
+              // เปลี่ยนจากอุณหภูมิเป็น On Air Target และตัดหน่วย °C ออก
+              MetricItem('On Air Target', _fmtNum(oat)),
             ],
           ),
         ],
@@ -640,9 +639,7 @@ class _WirelessTileReal extends StatelessWidget {
       if (v is int) {
         return DateTime.fromMillisecondsSinceEpoch(v).toLocal();
       }
-      if (v is String && v.isNotEmpty) {
-        return DateTime.parse(v).toLocal();
-      }
+      if (v is String && v.isNotEmpty) return DateTime.parse(v).toLocal();
     } catch (_) {}
     return null;
   }
@@ -729,38 +726,16 @@ class _SystemPill extends StatelessWidget {
     required MonitoringKind kind,
     required String text,
   }) {
-    switch (kind) {
-      case MonitoringKind.lighting:
-        return _SystemPill(
-          text: text,
-          icon: Icons.light_mode_outlined,
-          gradient: const LinearGradient(
-            colors: [Color(0xFFF59E0B), Color(0xFFEA580C)],
-            begin: Alignment.centerLeft,
-            end: Alignment.centerRight,
-          ),
-        );
-      case MonitoringKind.wirelessWave:
-        return _SystemPill(
-          text: text,
-          icon: Icons.wifi_tethering,
-          gradient: const LinearGradient(
-            colors: [Color(0xFF4F46E5), Color(0xFF06B6D4)],
-            begin: Alignment.centerLeft,
-            end: Alignment.centerRight,
-          ),
-        );
-      case MonitoringKind.wirelessSim:
-        return _SystemPill(
-          text: text,
-          icon: Icons.sim_card,
-          gradient: const LinearGradient(
-            colors: [Color(0xFF4F46E5), Color(0xFF06B6D4)],
-            begin: Alignment.centerLeft,
-            end: Alignment.centerRight,
-          ),
-        );
-    }
+    // ตอนนี้เหลือแค่ระบบไร้สาย (ซิม) → ใช้สไตล์เดียวตลอด
+    return _SystemPill(
+      text: text,
+      icon: Icons.sim_card,
+      gradient: const LinearGradient(
+        colors: [Color(0xFF4F46E5), Color(0xFF06B6D4)], // ฟ้าไล่เฉด
+        begin: Alignment.centerLeft,
+        end: Alignment.centerRight,
+      ),
+    );
   }
 
   @override
@@ -837,16 +812,13 @@ class OnlineGlowBadge extends StatelessWidget {
   }
 }
 
+/// ===== รายการ Metric ธรรมดา (label + value) =====
 class MetricList extends StatelessWidget {
   final List<MetricItem> items;
-
-  /// callback สำหรับ tap ดวงไฟ Lighting (ตอนนี้ไม่ใช้แล้ว)
-  final void Function(bool currentOn)? onToggleLighting;
 
   const MetricList({
     super.key,
     required this.items,
-    this.onToggleLighting,
   });
 
   @override
@@ -868,20 +840,12 @@ class MetricList extends StatelessWidget {
                       ),
                     ),
                   ),
-                  if (m.isLighting && m.lightingOn != null)
-                    _LightingStatusIcon(
-                      isOn: m.lightingOn!,
-                      onTap: onToggleLighting == null
-                          ? null
-                          : () => onToggleLighting!(m.lightingOn!),
-                    )
-                  else
-                    Text(
-                      m.value,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w700,
-                      ),
+                  Text(
+                    m.value,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
                     ),
+                  ),
                 ],
               ),
             ),
@@ -895,62 +859,5 @@ class MetricItem {
   final String label;
   final String value;
 
-  /// ใช้สำหรับ row Lighting
-  final bool isLighting;
-  final bool? lightingOn;
-
-  MetricItem(this.label, this.value)
-      : isLighting = false,
-        lightingOn = null;
-
-  /// constructor พิเศษสำหรับ Lighting (ตอนนี้ไม่ถูกเรียกใช้แล้ว)
-  MetricItem.lighting({required bool isOn})
-      : label = 'Lighting',
-        value = isOn ? 'เปิด' : 'ปิด',
-        isLighting = true,
-        lightingOn = isOn;
-}
-
-/// ดวงไฟสถานะ (ใช้แทนข้อความ เปิด/ปิด ใน Metric "Lighting")
-class _LightingStatusIcon extends StatelessWidget {
-  final bool isOn;
-  final VoidCallback? onTap;
-
-  const _LightingStatusIcon({
-    required this.isOn,
-    this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final circleColor =
-        isOn ? Colors.amber.shade400 : Colors.grey.shade400;
-
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(999),
-      child: Container(
-        width: 40,
-        height: 40,
-        decoration: BoxDecoration(
-          color: circleColor,
-          shape: BoxShape.circle,
-          boxShadow: isOn
-              ? [
-                  BoxShadow(
-                    color: circleColor.withOpacity(0.45),
-                    blurRadius: 14,
-                    spreadRadius: 3,
-                  ),
-                ]
-              : [],
-        ),
-        child: const Icon(
-          Icons.lightbulb,
-          color: Colors.white,
-          size: 22,
-        ),
-      ),
-    );
-  }
+  MetricItem(this.label, this.value);
 }
