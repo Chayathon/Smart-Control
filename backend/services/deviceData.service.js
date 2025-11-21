@@ -173,3 +173,11 @@ module.exports = {
   initRealtimeBridge,
   decodeFlag,
 };
+
+module.exports = {
+  ingestOne,
+  ingestMany,
+  getDeviceDataList,
+  initRealtimeBridge,
+  decodeFlag,
+};
