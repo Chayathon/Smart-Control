@@ -33,3 +33,15 @@ coverage/
 *.tmp
 *.swp
 *.swo
+
+# PM2
+.pm2/
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# Data directories
+data/
+storage/
+uploads/

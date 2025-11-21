@@ -4,7 +4,14 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "nodemon server.js"
+    "dev": "nodemon server.js",
+    "start": "node server.js",
+    "pm2:start": "pm2 start ecosystem.config.js",
+    "pm2:stop": "pm2 stop node-audio",
+    "pm2:restart": "pm2 restart node-audio",
+    "pm2:delete": "pm2 delete node-audio",
+    "pm2:logs": "pm2 logs node-audio",
+    "pm2:monit": "pm2 monit"
   },
   "keywords": [],
   "author": "",

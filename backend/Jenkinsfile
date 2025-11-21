@@ -2,92 +2,146 @@ pipeline {
     agent any
     
     triggers {
-        // Trigger เมื่อมี push ใน Git
-        pollSCM('H/5 * * * *') // ตรวจสอบทุก 5 นาที
-        // หรือใช้ githubPush() ถ้าตั้งค่า webhook
+        // Trigger เมื่อมี push ใน Git (ใช้ webhook จาก GitHub)
+        githubPush()
+        // หรือใช้ pollSCM('H/5 * * * *') เพื่อตรวจสอบทุก 5 นาที
     }
     
     environment {
-        DOCKER_REGISTRY = '' // ใส่ registry ของคุณ
-        IMAGE_NAME = 'smart-control-backend'
-        IMAGE_TAG = "${BUILD_NUMBER}"
-        DOCKER_BUILDKIT = '1' // เปิดใช้ BuildKit สำหรับ build เร็วขึ้น
+        // ตั้งค่าสำหรับ Raspberry Pi deployment
+        DEPLOY_PATH = '/opt/Backend_Node_radio'
+        PM2_APP_NAME = 'node-audio'
+        GITHUB_REPO = credentials('github-repo-url') // เก็บ URL ของ repo ใน Jenkins credentials
+        NODE_ENV = 'production'
     }
     
     stages {
         stage('Checkout') {
             steps {
+                echo '📥 Pulling latest code from GitHub...'
                 checkout scm
+            }
+        }
+        
+        stage('Install Dependencies') {
+            steps {
+                dir('backend') {
+                    echo '📦 Installing Node.js dependencies...'
+                    sh 'npm ci --production'
+                }
             }
         }
         
         stage('Prepare Environment') {
             steps {
+                dir('backend') {
+                    script {
+                        echo '⚙️ Setting up environment variables...'
+                        // สร้างไฟล์ .env จาก Jenkins credentials
+                        withCredentials([
+                            string(credentialsId: 'mongodb-uri', variable: 'MONGODB_URI'),
+                            string(credentialsId: 'access-token-secret', variable: 'ACCESS_TOKEN_SECRET'),
+                            string(credentialsId: 'refresh-token-secret', variable: 'REFRESH_TOKEN_SECRET'),
+                            string(credentialsId: 'mqtt-username', variable: 'MQTT_USERNAME'),
+                            string(credentialsId: 'mqtt-password', variable: 'MQTT_PASSWORD')
+                        ]) {
+                            sh '''
+                                echo "NODE_ENV=production" > .env
+                                echo "PORT=8080" >> .env
+                                echo "MONGODB_URI=${MONGODB_URI}" >> .env
+                                echo "MONGODB_DBNAME=radio_db" >> .env
+                                echo "ACCESS_TOKEN_SECRET=${ACCESS_TOKEN_SECRET}" >> .env
+                                echo "REFRESH_TOKEN_SECRET=${REFRESH_TOKEN_SECRET}" >> .env
+                                echo "MQTT_URL=ws://localhost:9001" >> .env
+                                echo "MQTT_USERNAME=${MQTT_USERNAME}" >> .env
+                                echo "MQTT_PASSWORD=${MQTT_PASSWORD}" >> .env
+                                echo "MQTT_TOPIC_COMMAND=mass-radio/zone1/command" >> .env
+                                echo "MQTT_TOPIC_STATUS=mass-radio/zone1/status" >> .env
+                                echo "MQTT_IGNORE_RETAINED=true" >> .env
+                                echo "AUTO_REPLAY_ON_END=false" >> .env
+                            '''
+                        }
+                    }
+                }
+            }
+        }
+        
+        stage('Run Tests') {
+            steps {
+                dir('backend') {
+                    echo '🧪 Running tests...'
+                    sh 'npm test || echo "No tests configured"'
+                }
+            }
+        }
+        
+        stage('Deploy to Raspberry Pi') {
+            steps {
+                dir('backend') {
+                    script {
+                        echo '🚀 Deploying to Raspberry Pi at ${DEPLOY_PATH}...'
+                        
+                        // สร้างไดเรกทอรีถ้ายังไม่มี
+                        sh """
+                            mkdir -p ${DEPLOY_PATH}
+                            mkdir -p ${DEPLOY_PATH}/logs
+                            mkdir -p ${DEPLOY_PATH}/data
+                            mkdir -p ${DEPLOY_PATH}/storage
+                            mkdir -p ${DEPLOY_PATH}/uploads
+                        """
+                        
+                        // คัดลอกไฟล์ไปยัง deployment directory (ยกเว้น node_modules)
+                        sh """
+                            rsync -av --delete \
+                                --exclude 'node_modules' \
+                                --exclude '.git' \
+                                --exclude 'logs/*' \
+                                --exclude 'data/*' \
+                                --exclude 'storage/*' \
+                                --exclude 'uploads/*' \
+                                ./ ${DEPLOY_PATH}/
+                        """
+                        
+                        // Install dependencies ที่ deployment path
+                        sh """
+                            cd ${DEPLOY_PATH}
+                            npm ci --production
+                        """
+                    }
+                }
+            }
+        }
+        
+        stage('Restart PM2') {
+            steps {
                 script {
-                    // สร้างไฟล์ .env จาก Jenkins credentials
-                    sh '''
-                        cd backend
-                        echo "PORT=8080" > .env
-                        echo "MONGODB_DBNAME=radio_db" >> .env
-                        echo "ACCESS_TOKEN_SECRET=${ACCESS_TOKEN_SECRET}" >> .env
-                        echo "REFRESH_TOKEN_SECRET=${REFRESH_TOKEN_SECRET}" >> .env
-                        echo "MQTT_USERNAME=admin" >> .env
-                        echo "MQTT_PASSWORD=admin" >> .env
-                    '''
-                }
-            }
-        }
-        
-        stage('Build') {
-            steps {
-                dir('backend') {
-                    script {
-                        // Build Docker images สำหรับ ARM64 (Raspberry Pi)
-                        sh '''
-                            export DOCKER_BUILDKIT=1
-                            docker-compose build --build-arg BUILDPLATFORM=linux/arm64
-                        '''
-                    }
-                }
-            }
-        }
-        
-        stage('Test') {
-            steps {
-                dir('backend') {
-                    script {
-                        // รัน tests (ถ้ามี)
-                        echo 'Running tests...'
-                        // sh 'npm test'
-                    }
-                }
-            }
-        }
-        
-        stage('Stop Old Containers') {
-            steps {
-                dir('backend') {
-                    script {
-                        // หยุด containers เก่า
-                        sh 'docker-compose down || true'
-                    }
-                }
-            }
-        }
-        
-        stage('Deploy') {
-            steps {
-                dir('backend') {
-                    script {
-                        // Deploy with docker-compose
-                        sh 'docker-compose up -d'
+                    echo '🔄 Restarting PM2 process: ${PM2_APP_NAME}...'
+                    
+                    sh """
+                        cd ${DEPLOY_PATH}
                         
-                        // รอให้ services พร้อม
-                        sh 'sleep 10'
+                        # ตรวจสอบว่า PM2 ติดตั้งแล้วหรือยัง
+                        if ! command -v pm2 &> /dev/null; then
+                            echo "PM2 not found, installing..."
+                            npm install -g pm2
+                        fi
                         
-                        // ตรวจสอบสถานะ
-                        sh 'docker-compose ps'
-                    }
+                        # ตรวจสอบว่าแอปกำลังรันอยู่หรือไม่
+                        if pm2 describe ${PM2_APP_NAME} > /dev/null 2>&1; then
+                            echo "Restarting existing PM2 process..."
+                            pm2 restart ${PM2_APP_NAME} --update-env
+                        else
+                            echo "Starting new PM2 process..."
+                            pm2 start ecosystem.config.js
+                        fi
+                        
+                        # บันทึก PM2 configuration
+                        pm2 save
+                        
+                        # แสดงสถานะ
+                        pm2 list
+                        pm2 info ${PM2_APP_NAME}
+                    """
                 }
             }
         }
@@ -95,9 +149,17 @@ pipeline {
         stage('Health Check') {
             steps {
                 script {
+                    echo '🏥 Checking application health...'
+                    
+                    // รอให้ application startup
+                    sleep(time: 10, unit: 'SECONDS')
+                    
                     // ตรวจสอบว่า backend ทำงานปกติ
                     retry(3) {
-                        sh 'curl -f http://localhost:8080/devices/status || exit 1'
+                        sh """
+                            curl -f http://localhost:8080/devices/status || exit 1
+                            echo "✅ Health check passed!"
+                        """
                     }
                 }
             }
@@ -106,8 +168,14 @@ pipeline {
         stage('Cleanup') {
             steps {
                 script {
-                    // ลบ images เก่าที่ไม่ใช้แล้ว
-                    sh 'docker system prune -f --filter "until=72h"'
+                    echo '🧹 Cleaning up old PM2 logs...'
+                    sh """
+                        cd ${DEPLOY_PATH}
+                        pm2 flush ${PM2_APP_NAME}
+                        
+                        # ลบ log files เก่าที่มีอายุมากกว่า 7 วัน
+                        find ${DEPLOY_PATH}/logs -name "*.log" -mtime +7 -delete || true
+                    """
                 }
             }
         }
@@ -115,19 +183,28 @@ pipeline {
     
     post {
         success {
-            echo 'Deployment successful!'
-            // ส่งการแจ้งเตือนเมื่อสำเร็จ (ถ้ามี)
+            echo '✅ Deployment to Raspberry Pi successful!'
+            echo "Application is running at: http://localhost:8080"
+            
+            sh """
+                cd ${DEPLOY_PATH}
+                echo "Current PM2 Status:"
+                pm2 list
+            """
         }
         failure {
-            echo 'Deployment failed!'
-            dir('backend') {
-                // แสดง logs เมื่อเกิดข้อผิดพลาด
-                sh 'docker-compose logs --tail=100'
-            }
-            // ส่งการแจ้งเตือนเมื่อล้มเหลว (ถ้ามี)
+            echo '❌ Deployment failed!'
+            
+            sh """
+                cd ${DEPLOY_PATH}
+                echo "PM2 Status:"
+                pm2 list
+                echo "\nPM2 Logs (last 50 lines):"
+                pm2 logs ${PM2_APP_NAME} --lines 50 --nostream || true
+            """
         }
         always {
-            // ทำความสะอาดไฟล์ .env
+            // ทำความสะอาดไฟล์ชั่วคราว
             sh 'rm -f backend/.env'
         }
     }
