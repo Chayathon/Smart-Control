@@ -40,6 +40,7 @@ pipeline {
                         // สร้างไฟล์ .env จาก Jenkins credentials
                         withCredentials([
                             string(credentialsId: 'mongodb-uri', variable: 'MONGODB_URI'),
+                            string(credentialsId: 'mongodb-name', variable: 'MONGODB_DBNAME'),
                             string(credentialsId: 'access-token-secret', variable: 'ACCESS_TOKEN_SECRET'),
                             string(credentialsId: 'refresh-token-secret', variable: 'REFRESH_TOKEN_SECRET'),
                             string(credentialsId: 'mqtt-username', variable: 'MQTT_USERNAME'),
@@ -49,7 +50,7 @@ pipeline {
                                 echo "NODE_ENV=production" > .env
                                 echo "PORT=8080" >> .env
                                 echo "MONGODB_URI=${MONGODB_URI}" >> .env
-                                echo "MONGODB_DBNAME=radio_db" >> .env
+                                echo "MONGODB_DBNAME=${MONGODB_DBNAME}" >> .env
                                 echo "ACCESS_TOKEN_SECRET=${ACCESS_TOKEN_SECRET}" >> .env
                                 echo "REFRESH_TOKEN_SECRET=${REFRESH_TOKEN_SECRET}" >> .env
                                 echo "MQTT_URL=ws://localhost:9001" >> .env
