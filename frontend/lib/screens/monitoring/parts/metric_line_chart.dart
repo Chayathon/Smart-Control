@@ -32,7 +32,7 @@ class MetricLineChart extends StatefulWidget {
 class _MetricLineChartState extends State<MetricLineChart> {
   int? _hitIndex;
 
-  /// เริ่มต้นที่ 1D
+  /// ✅ เริ่มต้นที่ 1D
   HistorySpan _selectedSpan = HistorySpan.day1;
 
   @override
@@ -54,42 +54,94 @@ class _MetricLineChartState extends State<MetricLineChart> {
     final border = Colors.grey[200]!;
 
     return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(20),
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.white,
+          // พื้นหลังแบบ gradient บาง ๆ ให้ดู modern ขึ้น
+          gradient: const LinearGradient(
+            colors: [
+              Color(0xFFF4F7FB),
+              Color(0xFFFFFFFF),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
           border: Border.all(color: border),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.06),
-              blurRadius: 16,
-              offset: const Offset(0, 8),
+              blurRadius: 18,
+              offset: const Offset(0, 10),
             ),
           ],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // ===== Header: Title + ปุ่มช่วงเวลา =====
+            // ===== Header: Title + ปุ่มช่วงเวลา + badge ด้านขวา =====
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Expanded(
-                    child: Text(
-                      title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w900,
-                        fontSize: 18,
-                        color: Colors.black87,
+                  // icon + title
+                  Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: LinearGradient(
+                        colors: [
+                          mainColor.withOpacity(0.85),
+                          mainColor.withOpacity(0.45),
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
                       ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: mainColor.withOpacity(0.35),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: const Icon(
+                      Icons.show_chart_rounded,
+                      size: 18,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w900,
+                            fontSize: 17,
+                            color: Colors.black87,
+                            letterSpacing: .1,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Historical trend • $metricTitle${unit.isNotEmpty ? ' ($unit)' : ''}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                   const SizedBox(width: 12),
-                  _buildTimeRangeSelector(),
+                  _buildTimeRangeSelector(mainColor),
                 ],
               ),
             ),
@@ -104,6 +156,7 @@ class _MetricLineChartState extends State<MetricLineChart> {
                         style: TextStyle(
                           color: Colors.black45,
                           fontSize: 13,
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
                     )
@@ -126,7 +179,7 @@ class _MetricLineChartState extends State<MetricLineChart> {
                       },
                       child: Padding(
                         padding:
-                            const EdgeInsets.fromLTRB(12, 10, 16, 12),
+                            const EdgeInsets.fromLTRB(12, 10, 16, 16),
                         child: _ChartCanvas(
                           points: pts,
                           unit: unit,
@@ -142,8 +195,8 @@ class _MetricLineChartState extends State<MetricLineChart> {
     );
   }
 
-  /// ปุ่มเลือกช่วงเวลาแบบ segmented control
-  Widget _buildTimeRangeSelector() {
+  /// ปุ่มเลือกช่วงเวลาแบบ segmented control (ดีไซน์ใหม่)
+  Widget _buildTimeRangeSelector(Color mainColor) {
     final options = <HistorySpan, String>{
       HistorySpan.day1: '1D',
       HistorySpan.day7: '7D',
@@ -152,11 +205,18 @@ class _MetricLineChartState extends State<MetricLineChart> {
     };
 
     return Container(
-      padding: const EdgeInsets.all(2),
+      padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
-        color: Colors.grey[100],
+        color: Colors.white,
         borderRadius: BorderRadius.circular(999),
         border: Border.all(color: Colors.grey[300]!),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -176,22 +236,30 @@ class _MetricLineChartState extends State<MetricLineChart> {
                 });
               },
               child: AnimatedContainer(
-                duration: const Duration(milliseconds: 150),
+                duration: const Duration(milliseconds: 160),
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                 decoration: BoxDecoration(
-                  color: isSelected
-                      ? Colors.blue.shade600
-                      : Colors.transparent,
                   borderRadius: BorderRadius.circular(999),
+                  gradient: isSelected
+                      ? LinearGradient(
+                          colors: [
+                            mainColor,
+                            mainColor.withOpacity(0.7),
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        )
+                      : null,
+                  color: isSelected ? null : Colors.white,
                 ),
                 child: Text(
                   label,
                   style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color:
-                        isSelected ? Colors.white : Colors.black54,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: .3,
+                    color: isSelected ? Colors.white : Colors.black54,
                   ),
                 ),
               ),
@@ -248,34 +316,30 @@ class _MetricLineChartState extends State<MetricLineChart> {
       if (v == null) return null;
       if (v is DateTime) return v.toUtc();
       if (v is int) {
-        // backend: timestamp: ts (ms epoch → รองรับ int)
         return DateTime.fromMillisecondsSinceEpoch(v, isUtc: true);
       }
       if (v is String && v.isNotEmpty) {
-        // รองรับ timestamp เป็น string ISO
         return DateTime.parse(v).toUtc();
       }
     } catch (_) {}
     return null;
   }
 
-  // แปลง row -> ค่า metric (ให้ตรงกับ backend ปัจจุบัน)
+  /// แปลง row -> ค่า metric (ตอนนี้รองรับเฉพาะ dcV / dcA / dcW เท่านั้น)
   double? _valueForMetric(Json row, MetricKey metric) {
     dynamic raw;
-
     switch (metric) {
       case MetricKey.dcV:
-        raw = row['dcV']; // ✅ จาก backend
+        raw = row['dcV'];
         break;
       case MetricKey.dcA:
-        raw = row['dcA']; // ✅ จาก backend
+        raw = row['dcA'];
         break;
       case MetricKey.dcW:
-        raw = row['dcW']; // ✅ จาก backend
+        raw = row['dcW'];
         break;
-
-      // metric อื่น ๆ ตอนนี้ไม่มีในฐานข้อมูล → ไม่ต้องอ่าน key อะไร
-      default:
+      case MetricKey.oat:
+        // ❌ ไม่ใช้ oat ทำกราฟแล้ว → คืน null ไปเลย
         return null;
     }
 
@@ -293,19 +357,17 @@ class _MetricLineChartState extends State<MetricLineChart> {
     final box = ctx.findRenderObject() as RenderBox?;
     if (box == null) return 0;
     final size = box.size;
-    const left = 54.0, right = 12.0, top = 10.0, bottom = 32.0;
+    const left = 54.0, right = 12.0;
     final chartW = size.width - left - right;
 
     final minT = pts.first.t;
     final maxT = pts.last.t;
-    double totalSec =
-        maxT.difference(minT).inSeconds.toDouble();
+    double totalSec = maxT.difference(minT).inSeconds.toDouble();
     if (totalSec <= 0) totalSec = 1.0;
 
     final x = (localPos.dx - left).clamp(0, chartW);
     final sec = (x / chartW) * totalSec;
-    final target =
-        minT.add(Duration(seconds: sec.round()));
+    final target = minT.add(Duration(seconds: sec.round()));
 
     int best = 0;
     int bestDiff =
@@ -321,7 +383,7 @@ class _MetricLineChartState extends State<MetricLineChart> {
     return best;
   }
 
-  // ===== Helpers label / unit / สี (ให้ตรงกับ field ที่มีจริงตอนนี้: dcV/dcA/dcW) =====
+  // ===== Helpers label / unit / สี =====
 
   String _metricLabel(MetricKey m) {
     switch (m) {
@@ -331,10 +393,9 @@ class _MetricLineChartState extends State<MetricLineChart> {
         return 'DC Current';
       case MetricKey.dcW:
         return 'DC Power';
-
-      // metric อื่น ๆ ที่ enum ยังมีอยู่ แต่ไม่มีในฐานข้อมูลตอนนี้
-      default:
-        return m.name; // ป้องกัน error เฉย ๆ
+      case MetricKey.oat:
+        // ไม่ใช้ทำกราฟแล้ว
+        return 'Metric';
     }
   }
 
@@ -346,9 +407,8 @@ class _MetricLineChartState extends State<MetricLineChart> {
         return 'A';
       case MetricKey.dcW:
         return 'W';
-
-      // อย่างอื่นตอนนี้ไม่ใช้
-      default:
+      case MetricKey.oat:
+        // ไม่ใช้ทำกราฟแล้ว
         return '';
     }
   }
@@ -361,9 +421,9 @@ class _MetricLineChartState extends State<MetricLineChart> {
         return const Color(0xFF14B8A6); // เขียวอมฟ้า
       case MetricKey.dcW:
         return const Color(0xFFEF4444); // แดง
-
-      default:
-        return Colors.blueGrey; // fallback เฉย ๆ
+      case MetricKey.oat:
+        // ใช้สีเดียวกับ Voltage เผื่อ fallback
+        return const Color(0xFF06B6D4);
     }
   }
 }
@@ -421,8 +481,26 @@ class _ChartPainter extends CustomPainter {
     final chart =
         Rect.fromLTRB(left, top, size.width - right, size.height - bottom);
 
+    // พื้นหลัง chart เบา ๆ
+    final bgPaint = Paint()
+      ..shader = LinearGradient(
+        colors: [
+          Colors.white,
+          const Color(0xFFEFF4FB),
+        ],
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+      ).createShader(chart);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        chart.inflate(6),
+        const Radius.circular(12),
+      ),
+      bgPaint,
+    );
+
     final axis = Paint()
-      ..color = Colors.grey[300]!.withOpacity(0.35)
+      ..color = Colors.grey[300]!.withOpacity(0.6)
       ..strokeWidth = 1;
 
     final tp = TextPainter(
@@ -450,8 +528,7 @@ class _ChartPainter extends CustomPainter {
     // ==== X range ====
     final minT = points.first.t;
     final maxT = points.last.t;
-    double totalSec =
-        maxT.difference(minT).inSeconds.toDouble();
+    double totalSec = maxT.difference(minT).inSeconds.toDouble();
     if (totalSec <= 0) totalSec = 1.0;
 
     // horizontal grid + y labels
@@ -466,14 +543,23 @@ class _ChartPainter extends CustomPainter {
 
       final val = minY + (maxY - minY) * (i / yDiv);
       final digits = ((maxY - minY) > 10) ? 0 : 2;
+      final isMin = i == 0;
+      final isMax = i == yDiv;
+
       tp.text = TextSpan(
         text: '${val.toStringAsFixed(digits)} $unit',
-        style: labelStyle,
+        style: labelStyle.copyWith(
+          color: isMin || isMax
+              ? Colors.black87
+              : Colors.grey[600],
+          fontWeight:
+              isMin || isMax ? FontWeight.w700 : FontWeight.w500,
+        ),
       );
       tp.layout();
       tp.paint(
         canvas,
-        Offset(chart.left - 8 - tp.width, ty - tp.height / 2),
+        Offset(chart.left - 10 - tp.width, ty - tp.height / 2),
       );
     }
 
@@ -484,14 +570,19 @@ class _ChartPainter extends CustomPainter {
       canvas.drawLine(
         Offset(tx, chart.top),
         Offset(tx, chart.bottom),
-        axis,
+        axis..color = axis.color.withOpacity(0.5),
       );
 
       final sec = totalSec * (i / xDiv);
       final dt = minT.add(Duration(seconds: sec.round()));
-      final label =
-          _fmtTime(dt, spanSeconds: totalSec.toDouble());
-      tp.text = TextSpan(text: label, style: labelStyle);
+      final label = _fmtTime(dt, spanSeconds: totalSec.toDouble());
+      tp.text = TextSpan(
+        text: label,
+        style: labelStyle.copyWith(
+          color: Colors.grey[600],
+          fontWeight: FontWeight.w500,
+        ),
+      );
       tp.layout();
       tp.paint(
         canvas,
@@ -501,30 +592,64 @@ class _ChartPainter extends CustomPainter {
 
     // main line + เก็บตำแหน่งจุดไว้ใช้วาด marker
     final path = Path();
+    final areaPath = Path();
     final pointPositions = <Offset>[];
 
     for (int i = 0; i < points.length; i++) {
       final p = points[i];
       final nx = chart.left +
           chart.width *
-              (p.t.difference(minT).inSeconds /
-                  totalSec);
+              (p.t.difference(minT).inSeconds / totalSec);
       final ny = chart.bottom -
           chart.height *
               ((p.y - minY) / (maxY - minY));
 
-      pointPositions.add(Offset(nx, ny));
+      final pos = Offset(nx, ny);
+      pointPositions.add(pos);
 
       if (i == 0) {
         path.moveTo(nx, ny);
+        areaPath.moveTo(nx, chart.bottom);
+        areaPath.lineTo(nx, ny);
       } else {
         path.lineTo(nx, ny);
+        areaPath.lineTo(nx, ny);
       }
     }
+    // ปิด path สำหรับพื้นที่ด้านล่าง
+    if (pointPositions.isNotEmpty) {
+      final last = pointPositions.last;
+      areaPath.lineTo(last.dx, chart.bottom);
+      areaPath.close();
+    }
 
+    // วาดพื้นที่ใต้กราฟแบบ gradient
+    final areaPaint = Paint()
+      ..shader = LinearGradient(
+        colors: [
+          mainColor.withOpacity(0.25),
+          mainColor.withOpacity(0.02),
+        ],
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+      ).createShader(chart)
+      ..style = PaintingStyle.fill;
+    canvas.drawPath(areaPath, areaPaint);
+
+    // เงาเส้นบาง ๆ
+    final shadowPath = Path.from(path)
+      ..shift(const Offset(0, 2));
+    final shadowPaint = Paint()
+      ..color = Colors.black.withOpacity(0.12)
+      ..strokeWidth = 3
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+    canvas.drawPath(shadowPath, shadowPaint);
+
+    // เส้นหลัก
     final linePaint = Paint()
       ..color = mainColor
-      ..strokeWidth = 2
+      ..strokeWidth = 2.4
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round;
     canvas.drawPath(path, linePaint);
@@ -538,8 +663,8 @@ class _ChartPainter extends CustomPainter {
       ..style = PaintingStyle.fill;
 
     for (final pos in pointPositions) {
-      canvas.drawCircle(pos, 3.5, markerOuter);
-      canvas.drawCircle(pos, 2.3, markerInner);
+      canvas.drawCircle(pos, 3.7, markerOuter);
+      canvas.drawCircle(pos, 2.4, markerInner);
     }
 
     // marker + tooltip ของจุดที่เลือก
@@ -549,29 +674,31 @@ class _ChartPainter extends CustomPainter {
       final p = points[hitIndex!];
       final nx = chart.left +
           chart.width *
-              (p.t.difference(minT).inSeconds /
-                  totalSec);
+              (p.t.difference(minT).inSeconds / totalSec);
       final ny = chart.bottom -
           chart.height *
               ((p.y - minY) / (maxY - minY));
 
+      // เส้นแนวตั้ง
       final vline = Paint()
-        ..color = mainColor.withOpacity(0.5)
-        ..strokeWidth = 1;
+        ..color = mainColor.withOpacity(0.55)
+        ..strokeWidth = 1.2;
       canvas.drawLine(
         Offset(nx, chart.top),
         Offset(nx, chart.bottom),
         vline,
       );
 
+      // จุด highlight
       final dot = Paint()..color = mainColor;
-      canvas.drawCircle(Offset(nx, ny), 4, dot);
+      canvas.drawCircle(Offset(nx, ny), 4.2, dot);
       canvas.drawCircle(
         Offset(nx, ny),
-        8,
-        Paint()..color = dot.color.withOpacity(0.15),
+        9,
+        Paint()..color = dot.color.withOpacity(0.18),
       );
 
+      // tooltip
       final tooltip =
           '${p.y.toStringAsFixed(2)} $unit\n${_fmtTime(p.t, spanSeconds: totalSec)}';
       const pad = 8.0;
@@ -590,17 +717,24 @@ class _ChartPainter extends CustomPainter {
 
       final boxW = textPainter.width + pad * 2;
       final boxH = textPainter.height + pad * 2;
-      double bx = nx + 10;
-      double by = ny - boxH - 8;
-      if (bx + boxW > size.width) bx = nx - boxW - 10;
-      if (by < 0) by = ny + 8;
+      double bx = nx + 12;
+      double by = ny - boxH - 10;
+      if (bx + boxW > size.width) bx = nx - boxW - 12;
+      if (by < 0) by = ny + 10;
 
       final r = RRect.fromRectAndRadius(
         Rect.fromLTWH(bx, by, boxW, boxH),
-        const Radius.circular(8),
+        const Radius.circular(10),
       );
-      final bg =
-          Paint()..color = Colors.black.withOpacity(0.8);
+      final bg = Paint()
+        ..shader = LinearGradient(
+          colors: [
+            Colors.black.withOpacity(0.88),
+            Colors.black.withOpacity(0.80),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ).createShader(r.outerRect);
       canvas.drawRRect(r, bg);
       textPainter.paint(canvas, Offset(bx + pad, by + pad));
     }

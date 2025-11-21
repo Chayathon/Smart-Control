@@ -25,7 +25,7 @@ class MonitoringScreen extends StatefulWidget {
 class _MonitoringScreenState extends State<MonitoringScreen> {
   final _svc = DeviceDataService.instance;
 
-  /// เก็บรายการล่าสุด (1 row ต่อ 1 nodeId)
+  /// เก็บรายการล่าสุด (1 row ต่อ 1 nodeId - ใช้ meta.no)
   final List<Json> _items = [];
 
   /// history ตาม nodeId (ใช้กับกราฟ)
@@ -34,15 +34,15 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
   // UI states
   bool _loading = true;
   String? _error;
-  Timer? _tick; // ให้ time-ago รีเฟรชเองทุก 15 วินาที
-  String? _selectedId; // nodeId ที่เลือก (เดิมคือ devEui)
+  Timer? _tick; // ให้ time-ago รีเฟรชเองทุก 1 วินาที
+  String? _selectedId; // nodeId ที่เลือก (เช่น "no1")
 
   // ฟิลเตอร์
   TypeFilter _typeFilter = TypeFilter.all;
   StatusFilter _statusFilter = StatusFilter.all;
 
   // metric ปัจจุบัน (ส่งให้ MiniStats / กราฟ)
-  // ✅ ตอนนี้ใช้ DC เท่านั้น
+  // เริ่มต้นใช้ DC Voltage เป็น metric หลัก
   MetricKey _activeMetric = MetricKey.dcV;
 
   // Map camera states
@@ -53,10 +53,10 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
 
   final _listController = ScrollController();
 
-  // ===== Notification Center states (ระดับโหนด) =====
+  // ===== Notification Center states (แบบใหม่: ระดับโหนด) =====
   bool _showNotificationCenter = false;
 
-  /// key = nodeId, value = summary alarm ของโหนดนั้น ๆ
+  /// key = nodeId (เช่น "no1"), value = summary alarm ของโหนดนั้น ๆ
   final Map<String, NodeAlarmSummary> _nodeAlarms = {};
 
   /// timestamp ล่าสุดของแต่ละโหนด (ใช้ตัดสินว่า row ไหนใหม่สุด)
@@ -71,7 +71,7 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
     super.initState();
     _currentCenter = const latlng.LatLng(13.6580, 100.6608);
     _init();
-    _tick = Timer.periodic(const Duration(seconds: 15), (_) {
+    _tick = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() {});
     });
   }
@@ -103,7 +103,7 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
         );
       }
 
-      // ✅ สร้าง _nodeAlarms จาก "แถวล่าสุด" เท่านั้น (ใช้ flag ปัจจุบัน)
+      // ✅ สร้าง _nodeAlarms จาก "แถวล่าสุด" เท่านั้น
       _rebuildNodeAlarmsFromLatest();
 
       debugPrint(
@@ -118,7 +118,7 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
       _svc.subscribeToRealtime((msg) {
         final row = _normalize(msg);
         debugPrint(
-            '⚡ [Monitoring] realtime row nodeId=${_idOf(row)} flag=${row['flag'] ?? row['flags']}');
+            '⚡ [Monitoring] realtime row nodeId=${_idOf(row)} alarms=${row['alarms']} flag=${row['flag']}');
         _upsert(
           row,
           fromRealtime: true, // อัปเดต + ถือว่ามีเหตุการณ์ใหม่
@@ -135,7 +135,7 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
     }
   }
 
-  /// รวมข้อมูลเข้ากับเดิมโดยอิง nodeId (meta.deviceId / NODE{no})
+  /// รวมข้อมูลเข้ากับเดิมโดยอิง nodeId และใช้ "timestamp ล่าสุดจริง ๆ"
   /// fromRealtime:
   ///   - false = โหลดจากฐานข้อมูลครั้งแรก
   ///   - true  = ข้อมูล realtime จาก WebSocket
@@ -200,41 +200,37 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
     }
   }
 
-  /// แปลง string flags 8 หลัก เช่น "01000020" → field map
-  ///
-  /// mapping เดิม (ยังใช้ได้กับค่า flagRaw ปัจจุบัน):
-  ///  - [0] af_power
-  ///  - [1] voltage
-  ///  - [2] current
-  ///  - [3] battery_filtered
-  ///  - [4] solar_v
-  ///  - [5] solar_i
-  ///  - [6],[7] ยังไม่ใช้
-  Map<String, int> _parseFlagsToFields(String flagsRaw) {
-    final flags = flagsRaw.replaceAll(r'$', '');
-    int digit(int index) {
-      if (index < 0 || index >= flags.length) return 0;
-      final ch = flags[index];
-      final n = int.tryParse(ch);
-      return n ?? 0;
+  /// ดึง alarms จาก row ให้กลายเป็น Map<String,int>
+  /// รองรับ alarms จาก backend ใหม่:
+  /// { voltage, current, power, oat (On Air Target) }
+  Map<String, int> _extractAlarms(dynamic raw) {
+    if (raw is Map) {
+      final result = <String, int>{};
+      raw.forEach((key, value) {
+        if (value == null) return;
+        int? intVal;
+        if (value is int) {
+          intVal = value;
+        } else if (value is num) {
+          intVal = value.toInt();
+        } else if (value is String && value.isNotEmpty) {
+          intVal = int.tryParse(value);
+        }
+        if (intVal != null) {
+          result[key.toString()] = intVal;
+        }
+      });
+      return result;
     }
-
-    return <String, int>{
-      'af_power': digit(0),
-      'voltage': digit(1),
-      'current': digit(2),
-      'battery_filtered': digit(3),
-      'solar_v': digit(4),
-      'solar_i': digit(5),
-    };
+    return const {};
   }
 
   /// อัปเดต summary alarm ระดับ "โหนด" (1 การ์ดต่อโหนดใน NotificationCenter)
   ///
   /// ใช้ "ข้อมูลล่าสุดของแต่ละโหนด" เป็นตัวตัดสิน:
   /// - ถ้าแถวนี้เก่ากว่า timestamp ที่เคยจำไว้ของโหนดนั้น → ข้าม
-  /// - ถ้าแถวนี้ใหม่สุดและทุก digit ใน flag = 0 → ลบโหนดนี้ออกจาก _nodeAlarms
-  /// - ถ้าแถวนี้ใหม่สุดและมี digit != 0 → เก็บเป็น NodeAlarmSummary
+  /// - ถ้าแถวนี้ใหม่สุดและทุกค่า alarm = 0 → ลบโหนดนี้ออกจาก _nodeAlarms
+  /// - ถ้าแถวนี้ใหม่สุดและมีค่า != 0 → เก็บเป็น NodeAlarmSummary
   void _updateNodeAlarmFromRow(Json row, {required bool fromRealtime}) {
     final id = _idOf(row);
     if (id == null) return;
@@ -254,23 +250,21 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
     _latestTsById[id] = ts;
 
     final name = _nameOf(row);
-
-    // ใช้ flag ปัจจุบัน (ถ้าไม่มีให้ถือว่า "00000000")
-    final flagRaw = (row['flags'] ?? row['flag'] ?? '').toString();
-    final fields = _parseFlagsToFields(flagRaw);
+    final alarms = _extractAlarms(row['alarms']);
 
     // เก็บเฉพาะ field ที่ผิดปกติ ( != 0 )
     final abnormal = <String, int>{};
-    fields.forEach((key, value) {
+    alarms.forEach((key, value) {
       if (value != 0) {
         abnormal[key] = value;
       }
     });
 
     if (abnormal.isEmpty) {
-      // ✅ แถวล่าสุดบอกว่าทุกค่า 0 → โหนดนี้กลับสู่ปกติ → ลบออกจากแผงแจ้งเตือน
+      // ✅ แถวล่าสุดบอกว่าทุกค่า 0 (เช่น flag = 0000)
+      //    → โหนดนี้กลับสู่ปกติ → ลบออกจากแผงแจ้งเตือน
       debugPrint(
-          '✅ [Monitoring] clear alarm nodeId=$id (flag="$flagRaw" → all zeros)');
+          '✅ [Monitoring] clear alarm nodeId=$id (all zeros in latest row)');
       _nodeAlarms.remove(id);
       return;
     }
@@ -316,34 +310,26 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
 
   // ==== Helpers สำหรับข้อมูลจริง ====
 
-  /// ใช้ระบุ "ตัวตน" ของโหนด (ใช้เป็น key ใน _items / _history / _nodeAlarms)
-  ///
-  /// ลำดับ:
-  ///  1) meta.deviceId
-  ///  2) "NODE{no}" จาก meta.no
-  ///  3) meta.devEui
-  ///  4) row.deviceId
-  ///  5) row.devEui
+  /// ใช้ meta.no / row['no'] เป็นตัวระบุ nodeId เช่น "no1", "no2"
   String? _idOf(Json row) {
     final meta = row['meta'];
     if (meta is Map) {
-      final devId = meta['deviceId']?.toString().trim();
-      if (devId != null && devId.isNotEmpty) return devId;
-
-      final no = meta['no']?.toString().trim();
-      if (no != null && no.isNotEmpty) return 'NODE$no';
-
-      final devEuiMeta = meta['devEui']?.toString().trim();
-      if (devEuiMeta != null && devEuiMeta.isNotEmpty) {
-        return devEuiMeta;
+      final noMeta = meta['no'];
+      if (noMeta is int) {
+        return 'no$noMeta';
+      }
+      if (noMeta is String && noMeta.isNotEmpty) {
+        return noMeta;
       }
     }
 
-    final devIdRow = row['deviceId']?.toString().trim();
-    if (devIdRow != null && devIdRow.isNotEmpty) return devIdRow;
-
-    final devEuiRow = row['devEui']?.toString().trim();
-    if (devEuiRow != null && devEuiRow.isNotEmpty) return devEuiRow;
+    final noRoot = row['no'];
+    if (noRoot is int) {
+      return 'no$noRoot';
+    }
+    if (noRoot is String && noRoot.isNotEmpty) {
+      return noRoot;
+    }
 
     return null;
   }
@@ -373,69 +359,60 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
     return list;
   }
 
-  void _toggleLightingById(String? id) {
+  // helper เดิมของ lighting (ตอนนี้เรียกใช้จาก callback ข้างล่าง)
+  void _toggleLightingById(String? id, int nextLighting) {
     if (id == null) return;
     final idx = _items.indexWhere((e) => _idOf(e) == id);
     if (idx == -1) return;
-    final cur = _asInt(_items[idx]['lighting']) ?? 0;
-    _items[idx] = {..._items[idx], 'lighting': cur == 1 ? 0 : 1};
+    _items[idx] = {
+      ..._items[idx],
+      'lighting': nextLighting,
+    };
     setState(() {});
-    // TODO: ยิงคำสั่งจริงผ่าน API/WS ถ้าต้องการ
   }
 
-  /// ชื่อแสดงผลของโหนด (ใช้ชื่อเดียวกับ MiniStats)
+  /// ตั้งชื่อจาก name ถ้ามี, ถ้าไม่มีก็ใช้ "Node <no>"
   String _nameOf(Json row) {
-    final meta = row['meta'];
-    if (meta is Map) {
-      final no = meta['no']?.toString().trim();
-      final deviceId = meta['deviceId']?.toString().trim();
-
-      // ถ้ามี no → ใช้เป็น NODE{no} เช่น NODE1, NODE2
-      if (no != null && no.isNotEmpty) {
-        return 'NODE$no';
-      }
-
-      // ถ้าไม่มี no แต่มี deviceId → ใช้ deviceId
-      if (deviceId != null && deviceId.isNotEmpty) {
-        return deviceId;
-      }
-    }
-
-    // ถัดมาลองใช้ name ถ้ามี
     final name = (row['name'] ?? '').toString().trim();
     if (name.isNotEmpty) return name;
 
-    // fallback สุดท้าย devEui (ถ้ามี)
-    final devEui =
-        (row['devEui'] ?? row['meta']?['devEui'] ?? '').toString();
-    if (devEui.isNotEmpty) return devEui;
+    final meta = row['meta'];
+    if (meta is Map && meta['no'] != null) {
+      return 'Node ${meta['no']}';
+    }
 
-    return '-';
+    if (row['no'] != null) {
+      return 'Node ${row['no']}';
+    }
+
+    return _idOf(row) ?? '-';
   }
 
+  /// ตัดสิน online/offline จาก timestamp ล่าสุดของ record
+  /// - ถ้า timestamp ภายใน 5 วินาทีล่าสุด → online
+  /// - ถ้าเกิน 5 วินาที → offline
   bool _onlineOf(Json row) {
-    final s = (row['status'] ?? '').toString().toLowerCase();
-    if (s == 'on') return true;
-    if (s == 'off') return false;
-    if (row['online'] is bool) return row['online'] as bool;
-    return false;
+    final ts = _toDate(row['timestamp']);
+    if (ts == null) return false;
+
+    final now = DateTime.now().toUtc();
+    final diff = now.difference(ts);
+
+    // เกิน 5 วินาทีถือว่า offline
+    return diff.inSeconds <= 5;
   }
 
-  /// ประเภทโหนด (ใช้กับ list_card.dart)
-  ///
-  /// ตอนนี้หลังบ้านมี field `type` แล้ว เช่น 'wireless', 'sim'
-  /// เลยใช้ตรงนี้แทนการเช็ค acV/acA/acW แบบเดิม
+  /// แยกประเภท monitoring จาก type ใหม่ใน backend
   MonitoringKind _kindOf(Json row) {
     final type = (row['type'] ?? '').toString().toLowerCase();
-
-    if (type.contains('sim')) {
+    if (type == 'sim') {
       return MonitoringKind.wirelessSim;
     }
-    if (type.contains('wave')) {
-      return MonitoringKind.wirelessWave;
-    }
 
-    // ถ้าไม่ได้ระบุ type ชัดเจน ให้ถือว่าเป็นระบบไร้สายหลัก
+    // fallback: ใช้ชื่อเผื่ออนาคตอยากกลับมาแยก lighting
+    final name = (row['name'] ?? '').toString().toUpperCase();
+    if (name.contains('LIGHT')) return MonitoringKind.lighting;
+
     return MonitoringKind.wirelessWave;
   }
 
@@ -451,18 +428,12 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
     return null;
   }
 
-  /// normalize ให้ timestamp เป็น ISO string, meta เป็น Map, status ไม่ว่าง
-  ///
-  /// รูปแบบหลังบ้านตอนนี้:
-  ///  - timestamp: ts
-  ///  - meta: { deviceId, no, ... }
-  ///  - dcV, dcA, dcW, oat, lat, lng, type, flag
   Json _normalize(dynamic raw) {
     final Map<String, dynamic> m =
         (raw is Map) ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
 
     // timestamp: {"$date": "..."} | "..." | epoch
-    final ts = m['timestamp'] ?? m['ts'];
+    final ts = m['timestamp'];
     DateTime? t;
     if (ts is Map && ts[r'$date'] != null) {
       t = _toDate(ts[r'$date']);
@@ -471,16 +442,14 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
     }
     m['timestamp'] = (t ?? DateTime.now().toUtc()).toIso8601String();
 
-    // meta
     m['meta'] = (m['meta'] is Map)
         ? Map<String, dynamic>.from(m['meta'])
         : <String, dynamic>{};
 
-    // status (ถ้าไม่มีให้เป็น 'unknown')
+    // status ตอนนี้ไม่ได้ใช้แล้ว แต่คง field ไว้เผื่ออนาคต
     m['status'] =
-        (m['status'] ?? '').toString().isEmpty ? 'unknown' : m['status'];
+        (m['status'] ?? '').toString().isNotEmpty ? m['status'] : 'unknown';
 
-    // ค่า dcV/dcA/dcW/oat/lat/lng/type/flag จะคงตามที่ backend ส่งมา
     return m;
   }
 
@@ -499,10 +468,8 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
     }
     final lat =
         coords.map((p) => p.latitude).reduce((a, b) => a + b) / coords.length;
-    final lng = coords
-            .map((p) => p.longitude)
-            .reduce((a, b) => a + b) /
-        coords.length;
+    final lng =
+        coords.map((p) => p.longitude).reduce((a, b) => a + b) / coords.length;
     return latlng.LatLng(lat, lng);
   }
 
@@ -591,7 +558,7 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
     final size = MediaQuery.of(context).size;
     final isNarrow = size.width < 900;
 
-    // ฟิลเตอร์ชนิด (ตอนนี้ใช้ field type จาก backend)
+    // ฟิลเตอร์ชนิด
     final byType = _items.where((row) {
       final kind = _kindOf(row);
       switch (_typeFilter) {
@@ -608,8 +575,9 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
 
     // เรียงตามชื่ออุปกรณ์ (A→Z)
     byType.sort(
-      (a, b) =>
-          _nameOf(a).toUpperCase().compareTo(_nameOf(b).toUpperCase()),
+      (a, b) => _nameOf(a).toUpperCase().compareTo(
+            _nameOf(b).toUpperCase(),
+          ),
     );
 
     final totalCount = byType.length;
@@ -735,21 +703,12 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
                                                   nextLighting) {
                                             final id =
                                                 _idOf(row);
-                                            if (id == null)
+                                            if (id == null) {
                                               return;
-                                            final idx = _items
-                                                .indexWhere(
-                                                    (e) =>
-                                                        _idOf(
-                                                            e) == id);
-                                            if (idx != -1) {
-                                              _items[idx] = {
-                                                ..._items[idx],
-                                                'lighting':
-                                                    nextLighting,
-                                              };
-                                              setState(() {});
                                             }
+                                            _toggleLightingById(
+                                                id,
+                                                nextLighting);
                                           },
                                         ),
                                       ),
@@ -839,22 +798,12 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
                                                     nextLighting) {
                                               final id =
                                                   _idOf(row);
-                                              if (id == null)
+                                              if (id == null) {
                                                 return;
-                                              final idx = _items
-                                                  .indexWhere(
-                                                      (e) =>
-                                                          _idOf(
-                                                              e) == id);
-                                              if (idx != -1) {
-                                                _items[idx] = {
-                                                  ..._items[idx],
-                                                  'lighting':
-                                                      nextLighting,
-                                                };
-                                                setState(
-                                                    () {});  
                                               }
+                                              _toggleLightingById(
+                                                  id,
+                                                  nextLighting);
                                             },
                                           ),
                                         ),
@@ -878,8 +827,7 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
                                           metric:
                                               _activeMetric,
                                           deviceName:
-                                              selectedRow ==
-                                                      null
+                                              selectedRow == null
                                                   ? null
                                                   : _nameOf(
                                                       selectedRow),
@@ -897,9 +845,6 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
                                               setState(() =>
                                                   _activeMetric =
                                                       m),
-                                          onToggleLighting: () =>
-                                              _toggleLightingById(
-                                                  _selectedId),
                                         ),
                                       ),
                                     ],

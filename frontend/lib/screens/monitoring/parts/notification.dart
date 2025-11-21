@@ -1,13 +1,15 @@
-// lib/screens/monitoring/parts/notification.dart
 import 'package:flutter/material.dart';
 
 /// สรุป alarm ระดับโหนด (ใช้ 1 การ์ดต่อ 1 โหนดใน NotificationCenter)
 class NodeAlarmSummary {
-  final String nodeId; // devEui
+  final String nodeId; // id ของโหนด (เช่น devEui หรือ "no1")
   final String name; // ชื่อโหนด เช่น NODE1
   DateTime lastUpdated;
-  /// key = field เช่น 'af_power', 'voltage', value = 0/1/2
+
+  /// key = field เช่น 'voltage', 'current', 'watt', 'oat' (oat = On Air Target)
+  /// value = ระดับ 0/1/2 (0 = ปกติ, 1/2 = ผิดปกติ)
   final Map<String, int> fields;
+
   bool hasUnread;
 
   NodeAlarmSummary({
@@ -20,7 +22,7 @@ class NodeAlarmSummary {
 }
 
 class NotificationCenter extends StatefulWidget {
-  /// รายการสรุป alarm ระดับโหนด (ข้อมูลล่าสุดของแต่ละโหนด)
+  /// รายการสรุป alarm ระดับโหนด
   final List<NodeAlarmSummary> items;
 
   /// ปิดแผงแจ้งเตือน
@@ -29,7 +31,7 @@ class NotificationCenter extends StatefulWidget {
   /// Mark all as read (parent จะจัดการ state แล้วส่ง items ใหม่กลับมาเอง)
   final VoidCallback onMarkAllAsRead;
 
-  /// Mark หนึ่ง "โหนด" เป็นอ่านแล้ว — อ้างอิงด้วย nodeId (devEui)
+  /// Mark หนึ่ง "โหนด" เป็นอ่านแล้ว — อ้างอิงด้วย nodeId
   final void Function(String nodeId) onMarkOneAsRead;
 
   const NotificationCenter({
@@ -79,7 +81,7 @@ class _NotificationCenterState extends State<NotificationCenter> {
             color: Colors.transparent,
             child: SizedBox(
               width: 380,
-              height: maxHeight, // ล็อกความสูง panel ให้คงที่ 75% ของจอ
+              height: maxHeight, // 🔹 ล็อกความสูง panel ให้คงที่ 75% ของจอ
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(20),
                 child: Container(
@@ -92,12 +94,12 @@ class _NotificationCenterState extends State<NotificationCenter> {
                     ),
                   ),
                   child: Column(
-                    mainAxisSize: MainAxisSize.max,
+                    mainAxisSize: MainAxisSize.max, // 🔹 ให้กินความสูงเต็ม
                     children: [
                       _buildHeader(),
                       const Divider(height: 1, color: Color(0xFFE5E5E5)),
                       Expanded(
-                        // ส่วนนี้จะเลื่อนขึ้นลงได้เมื่อการ์ดเยอะ
+                        // 🔹 ส่วนนี้จะเลื่อนขึ้นลงได้เมื่อการ์ดเยอะ
                         child: _buildList(),
                       ),
                     ],
@@ -135,7 +137,7 @@ class _NotificationCenterState extends State<NotificationCenter> {
             ],
           ),
           const Spacer(),
-          // ปุ่ม "อ่านทั้งหมด"
+          // 🔄 ปุ่ม "อ่านทั้งหมด" แบบไม่มี icon
           TextButton(
             onPressed: widget.onMarkAllAsRead,
             style: TextButton.styleFrom(
@@ -207,7 +209,7 @@ class _NotificationCenterState extends State<NotificationCenter> {
             return const SizedBox.shrink();
           }
 
-          // ✅ ตัดสินสีตามระดับรุนแรงรวมของโหนด (1 = แดง, 2 = เหลือง, ทั้งคู่ = ส้ม)
+          // ✅ ตัดสินสีตามระดับรุนแรงรวมของโหนด
           final bool hasRed = abnormalEntries.any((e) => e.value == 1);
           final bool hasYellow = abnormalEntries.any((e) => e.value == 2);
 
@@ -284,7 +286,6 @@ class _NotificationCenterState extends State<NotificationCenter> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // บรรทัดหัวข้อ + เวลา
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
@@ -323,9 +324,7 @@ class _NotificationCenterState extends State<NotificationCenter> {
                               ),
                             ],
                           ),
-
                           const SizedBox(height: 4),
-
                           // รายละเอียดแต่ละ field แบบ chip
                           Wrap(
                             spacing: 6,
@@ -352,10 +351,7 @@ class _NotificationCenterState extends State<NotificationCenter> {
                                 ),
                             ],
                           ),
-
                           const SizedBox(height: 6),
-
-                          // สถานะอ่าน/ยังไม่อ่าน
                           Row(
                             children: [
                               if (!isRead)
@@ -399,49 +395,36 @@ class _NotificationCenterState extends State<NotificationCenter> {
     return '${diff.inDays}d ago';
   }
 
-  /// แปลงชื่อ key ใน alarms ให้เป็น label ภาษาไทยที่อ่านรู้เรื่อง
-  /// รองรับทั้งชื่อเก่า-ใหม่จากฐานข้อมูลปัจจุบัน
+  /// แปลงชื่อ key ใน alarms (ตอนนี้ใช้ 4 field หลัก)
+  /// voltage, current, watt, oat
   String _fieldLabel(String key) {
     switch (key) {
-      case 'af_power':
-      case 'afPower':
-        return 'กำลังไฟรวม';
       case 'voltage':
       case 'dcV':
-        return 'แรงดันไฟ DC';
+        return 'แรงดันไฟ ';
       case 'current':
       case 'dcA':
-        return 'กระแสไฟ DC';
+        return 'กระแสไฟ ';
+      case 'watt':
+      case 'power':
       case 'dcW':
-        return 'กำลังไฟ DC';
-      case 'battery':
-      case 'battery_filtered':
-        return 'แบตเตอรี่';
-      case 'solar_v':
-      case 'solarV':
-        return 'แรงดันโซลาร์';
-      case 'solar_i':
-      case 'solarI':
-        return 'กระแสโซลาร์';
+        return 'กำลังไฟ ';
       case 'oat':
-        return 'อุณหภูมิภายนอก';
-      case 'rssi':
-        return 'สัญญาณ RSSI';
-      case 'snr':
-        return 'ค่า SNR';
+        // เดิม: 'อุณหภูมิภายนอก '
+        return 'On Air Target ';
       default:
-        return key; // ถ้าไม่รู้จักแสดง key ตรง ๆ
+        return '$key ';
     }
   }
 
   String _severityLabel(int v) {
     switch (v) {
       case 1:
-        return ' สูงผิดปกติ';
+        return 'สูงผิดปกติ';
       case 2:
-        return ' ต่ำผิดปกติ';
+        return 'ต่ำผิดปกติ';
       default:
-        return ' ผิดปกติ';
+        return 'ผิดปกติ';
     }
   }
 }
