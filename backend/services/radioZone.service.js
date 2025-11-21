@@ -66,23 +66,23 @@ function buildUartCommandFromApp(topic, payload) {
  * ใช้เรียกจาก controller เมื่อมีคำสั่งจากแอปเข้ามา
  * ถ้า map ได้ -> ส่ง UART
  */
-async function handleAppCommand(topic, payload) {
-  const cmd = buildUartCommandFromApp(topic, payload);
-  if (!cmd) {
-    // ไม่ใช่ topic/payload ที่เรารู้จัก -> ให้ controller ตัดสินใจว่าจะทำอะไรต่อ
-    return { handled: false };
-  }
+// async function handleAppCommand(topic, payload) {
+//   const cmd = buildUartCommandFromApp(topic, payload);
+//   if (!cmd) {
+//     // ไม่ใช่ topic/payload ที่เรารู้จัก -> ให้ controller ตัดสินใจว่าจะทำอะไรต่อ
+//     return { handled: false };
+//   }
 
-  await uart.writeString(cmd, 'ascii');
-  return { handled: true, cmd };
-}
+//   await uart.writeString(cmd, 'ascii');
+//   return { handled: true, cmd };
+// }
 
 /**
  * เช็คทุกโซนด้วย $G1111S$
  */
-async function checkAllZones() {
-  await uart.writeString('$G1111S$', 'ascii');
-}
+// async function checkAllZones() {
+//   await uart.writeString('$G1111S$', 'ascii');
+// }
 
 /**
  * parse ข้อความที่กลับมาจากเครื่อง (RX)
@@ -224,22 +224,22 @@ async function initRadioZone() {
 }
 
 // helper สำหรับใช้สั่งโซนจาก code อื่นได้สะดวก
-async function setZone(zone, isOn) {
-  const topic = zone === 'all'
-    ? 'mass-radio/all/command'
-    : `mass-radio/zone${zone}/command`;
+// async function setZone(zone, isOn) {
+//   const topic = zone === 'all'
+//     ? 'mass-radio/all/command'
+//     : `mass-radio/zone${zone}/command`;
 
-  const payload = { set_stream: !!isOn };
-  const cmd = buildUartCommandFromApp(topic, payload);
-  if (!cmd) throw new Error('Cannot build UART command for zone');
-  await uart.writeString(cmd, 'ascii');
-  return { zone, isOn: !!isOn, cmd };
-}
+//   const payload = { set_stream: !!isOn };
+//   const cmd = buildUartCommandFromApp(topic, payload);
+//   if (!cmd) throw new Error('Cannot build UART command for zone');
+//   await uart.writeString(cmd, 'ascii');
+//   return { zone, isOn: !!isOn, cmd };
+// }
 
 module.exports = {
   initRadioZone,
-  handleAppCommand,
-  checkAllZones,
-  setZone,
+  // handleAppCommand,
+  // checkAllZones,
+  // setZone,
   buildUartCommandFromApp,
 };
