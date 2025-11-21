@@ -9,10 +9,9 @@ pipeline {
     
     environment {
         // ตั้งค่าสำหรับ Raspberry Pi deployment
-        DEPLOY_PATH = '/opt/Backend_Node_radio'
+        TARGET_DIR = '/opt/Backend_Node_radio'
         PM2_APP_NAME = 'node-audio'
         GITHUB_REPO = credentials('github-repo-url') // เก็บ URL ของ repo ใน Jenkins credentials
-        NODE_ENV = 'production'
     }
     
     stages {
@@ -23,186 +22,215 @@ pipeline {
             }
         }
         
-        stage('Install Dependencies') {
+        stage('Install dependencies') {
             steps {
-                dir('backend') {
-                    echo '📦 Installing Node.js dependencies...'
-                    sh 'npm ci --production'
+                dir("${env.WORKSPACE}") {
+                    echo "==> Install npm dependencies"
+                    sh 'npm install'
                 }
             }
         }
-        
-        stage('Prepare Environment') {
+
+        stage('Deploy to target folder') {
             steps {
-                dir('backend') {
-                    script {
-                        echo '⚙️ Setting up environment variables...'
-                        // สร้างไฟล์ .env จาก Jenkins credentials
-                        withCredentials([
-                            string(credentialsId: 'mongodb-uri', variable: 'MONGODB_URI'),
-                            string(credentialsId: 'mongodb-name', variable: 'MONGODB_DBNAME'),
-                            string(credentialsId: 'access-token-secret', variable: 'ACCESS_TOKEN_SECRET'),
-                            string(credentialsId: 'refresh-token-secret', variable: 'REFRESH_TOKEN_SECRET'),
-                            string(credentialsId: 'mqtt-username', variable: 'MQTT_USERNAME'),
-                            string(credentialsId: 'mqtt-password', variable: 'MQTT_PASSWORD')
-                        ]) {
-                            sh '''
-                                echo "NODE_ENV=production" > .env
-                                echo "PORT=8080" >> .env
-                                echo "MONGODB_URI=${MONGODB_URI}" >> .env
-                                echo "MONGODB_DBNAME=${MONGODB_DBNAME}" >> .env
-                                echo "ACCESS_TOKEN_SECRET=${ACCESS_TOKEN_SECRET}" >> .env
-                                echo "REFRESH_TOKEN_SECRET=${REFRESH_TOKEN_SECRET}" >> .env
-                                echo "MQTT_URL=ws://localhost:9001" >> .env
-                                echo "MQTT_USERNAME=${MQTT_USERNAME}" >> .env
-                                echo "MQTT_PASSWORD=${MQTT_PASSWORD}" >> .env
-                                echo "MQTT_TOPIC_COMMAND=mass-radio/zone1/command" >> .env
-                                echo "MQTT_TOPIC_STATUS=mass-radio/zone1/status" >> .env
-                                echo "MQTT_IGNORE_RETAINED=true" >> .env
-                                echo "AUTO_REPLAY_ON_END=false" >> .env
-                            '''
-                        }
-                    }
-                }
+                echo "==> Sync project to ${TARGET_DIR}"
+                // ใช้ rsync จะเร็วและเคลียร์กว่า cp
+                sh """
+                    mkdir -p ${TARGET_DIR}
+                    rsync -av --delete \
+                        --exclude='.git' \
+                        --exclude='node_modules' \
+                        ${WORKSPACE}/ ${TARGET_DIR}/
+                """
             }
         }
-        
-        stage('Run Tests') {
-            steps {
-                dir('backend') {
-                    echo '🧪 Running tests...'
-                    sh 'npm test || echo "No tests configured"'
-                }
-            }
-        }
-        
-        stage('Deploy to Raspberry Pi') {
-            steps {
-                dir('backend') {
-                    script {
-                        echo '🚀 Deploying to Raspberry Pi at ${DEPLOY_PATH}...'
-                        
-                        // ตรวจสอบและสร้างไดเรกทอรีพร้อมจัดการ permission
-                        sh """
-                            # ตรวจสอบว่า directory มีอยู่หรือไม่
-                            if [ ! -d "${DEPLOY_PATH}" ]; then
-                                echo "Creating deployment directory..."
-                                sudo mkdir -p ${DEPLOY_PATH}
-                                sudo chown -R jenkins:jenkins ${DEPLOY_PATH}
-                                sudo chmod -R 755 ${DEPLOY_PATH}
-                            else
-                                echo "Deployment directory exists, checking permissions..."
-                                # ตรวจสอบว่า jenkins เป็นเจ้าของหรือไม่
-                                if [ ! -w "${DEPLOY_PATH}" ]; then
-                                    echo "Fixing permissions..."
-                                    sudo chown -R jenkins:jenkins ${DEPLOY_PATH}
-                                    sudo chmod -R 755 ${DEPLOY_PATH}
-                                fi
-                            fi
-                            
-                            # สร้าง subdirectories
-                            mkdir -p ${DEPLOY_PATH}/logs
-                            mkdir -p ${DEPLOY_PATH}/data
-                            mkdir -p ${DEPLOY_PATH}/storage
-                            mkdir -p ${DEPLOY_PATH}/uploads
-                            
-                            echo "Directory ready: ${DEPLOY_PATH}"
-                            ls -la ${DEPLOY_PATH}/
-                        """
-                        
-                        // คัดลอกไฟล์ไปยัง deployment directory (ยกเว้น node_modules)
-                        sh """
-                            echo "Syncing files to ${DEPLOY_PATH}..."
-                            rsync -av --delete \
-                                --exclude 'node_modules' \
-                                --exclude '.git' \
-                                --exclude 'logs/*' \
-                                --exclude 'data/*' \
-                                --exclude 'storage/*' \
-                                --exclude 'uploads/*' \
-                                ./ ${DEPLOY_PATH}/
-                            echo "Files synced successfully"
-                        """
-                        
-                        // Install dependencies ที่ deployment path
-                        sh """
-                            echo "Installing dependencies..."
-                            cd ${DEPLOY_PATH}
-                            npm ci --production
-                            echo "Dependencies installed"
-                        """
-                    }
-                }
-            }
-        }
-        
+
         stage('Restart PM2') {
             steps {
-                script {
-                    echo '🔄 Restarting PM2 process: ${PM2_APP_NAME}...'
-                    
-                    sh """
-                        cd ${DEPLOY_PATH}
-                        
-                        # ตรวจสอบว่า PM2 ติดตั้งแล้วหรือยัง
-                        if ! command -v pm2 &> /dev/null; then
-                            echo "PM2 not found, installing..."
-                            npm install -g pm2
-                        fi
-                        
-                        # ตรวจสอบว่าแอปกำลังรันอยู่หรือไม่
-                        if pm2 describe ${PM2_APP_NAME} > /dev/null 2>&1; then
-                            echo "Restarting existing PM2 process..."
-                            pm2 restart ${PM2_APP_NAME} --update-env
-                        else
-                            echo "Starting new PM2 process..."
-                            pm2 start ecosystem.config.js
-                        fi
-                        
-                        # บันทึก PM2 configuration
-                        pm2 save
-                        
-                        # แสดงสถานะ
-                        pm2 list
-                        pm2 info ${PM2_APP_NAME}
-                    """
-                }
+                echo "==> Restart PM2 app: ${PM2_APP_NAME}"
+                sh """
+                    cd ${TARGET_DIR}
+                    # ถ้าคุณใช้ ecosystem.config.js ให้ใช้บรรทัดนี้แทน
+                    # pm2 startOrRestart ecosystem.config.js
+
+                    # ถ้าใช้ชื่อโปรเซสตรง ๆ:
+                    pm2 restart ${PM2_APP_NAME} || pm2 start app.js --name ${PM2_APP_NAME}
+                    pm2 save
+                """
             }
         }
         
-        stage('Health Check') {
-            steps {
-                script {
-                    echo '🏥 Checking application health...'
-                    
-                    // รอให้ application startup
-                    sleep(time: 10, unit: 'SECONDS')
-                    
-                    // ตรวจสอบว่า backend ทำงานปกติ
-                    retry(3) {
-                        sh """
-                            curl -f http://localhost:8080/devices/status || exit 1
-                            echo "✅ Health check passed!"
-                        """
-                    }
-                }
-            }
-        }
+        // stage('Prepare Environment') {
+        //     steps {
+        //         dir('backend') {
+        //             script {
+        //                 echo '⚙️ Setting up environment variables...'
+        //                 // สร้างไฟล์ .env จาก Jenkins credentials
+        //                 withCredentials([
+        //                     string(credentialsId: 'mongodb-uri', variable: 'MONGODB_URI'),
+        //                     string(credentialsId: 'mongodb-name', variable: 'MONGODB_DBNAME'),
+        //                     string(credentialsId: 'access-token-secret', variable: 'ACCESS_TOKEN_SECRET'),
+        //                     string(credentialsId: 'refresh-token-secret', variable: 'REFRESH_TOKEN_SECRET'),
+        //                     string(credentialsId: 'mqtt-username', variable: 'MQTT_USERNAME'),
+        //                     string(credentialsId: 'mqtt-password', variable: 'MQTT_PASSWORD')
+        //                 ]) {
+        //                     sh '''
+        //                         echo "NODE_ENV=production" > .env
+        //                         echo "PORT=8080" >> .env
+        //                         echo "MONGODB_URI=${MONGODB_URI}" >> .env
+        //                         echo "MONGODB_DBNAME=${MONGODB_DBNAME}" >> .env
+        //                         echo "ACCESS_TOKEN_SECRET=${ACCESS_TOKEN_SECRET}" >> .env
+        //                         echo "REFRESH_TOKEN_SECRET=${REFRESH_TOKEN_SECRET}" >> .env
+        //                         echo "MQTT_URL=ws://localhost:9001" >> .env
+        //                         echo "MQTT_USERNAME=${MQTT_USERNAME}" >> .env
+        //                         echo "MQTT_PASSWORD=${MQTT_PASSWORD}" >> .env
+        //                         echo "MQTT_TOPIC_COMMAND=mass-radio/zone1/command" >> .env
+        //                         echo "MQTT_TOPIC_STATUS=mass-radio/zone1/status" >> .env
+        //                         echo "MQTT_IGNORE_RETAINED=true" >> .env
+        //                         echo "AUTO_REPLAY_ON_END=false" >> .env
+        //                     '''
+        //                 }
+        //             }
+        //         }
+        //     }
+        // }
         
-        stage('Cleanup') {
-            steps {
-                script {
-                    echo '🧹 Cleaning up old PM2 logs...'
-                    sh """
-                        cd ${DEPLOY_PATH}
-                        pm2 flush ${PM2_APP_NAME}
+        // stage('Run Tests') {
+        //     steps {
+        //         dir('backend') {
+        //             echo '🧪 Running tests...'
+        //             sh 'npm test || echo "No tests configured"'
+        //         }
+        //     }
+        // }
+        
+        // stage('Deploy to Raspberry Pi') {
+        //     steps {
+        //         dir('backend') {
+        //             script {
+        //                 echo '🚀 Deploying to Raspberry Pi at ${DEPLOY_PATH}...'
                         
-                        # ลบ log files เก่าที่มีอายุมากกว่า 7 วัน
-                        find ${DEPLOY_PATH}/logs -name "*.log" -mtime +7 -delete || true
-                    """
-                }
-            }
-        }
+        //                 // ตรวจสอบและสร้างไดเรกทอรีพร้อมจัดการ permission
+        //                 sh """
+        //                     # ตรวจสอบว่า directory มีอยู่หรือไม่
+        //                     if [ ! -d "${DEPLOY_PATH}" ]; then
+        //                         echo "Creating deployment directory..."
+        //                         sudo mkdir -p ${DEPLOY_PATH}
+        //                         sudo chown -R jenkins:jenkins ${DEPLOY_PATH}
+        //                         sudo chmod -R 755 ${DEPLOY_PATH}
+        //                     else
+        //                         echo "Deployment directory exists, checking permissions..."
+        //                         # ตรวจสอบว่า jenkins เป็นเจ้าของหรือไม่
+        //                         if [ ! -w "${DEPLOY_PATH}" ]; then
+        //                             echo "Fixing permissions..."
+        //                             sudo chown -R jenkins:jenkins ${DEPLOY_PATH}
+        //                             sudo chmod -R 755 ${DEPLOY_PATH}
+        //                         fi
+        //                     fi
+                            
+        //                     # สร้าง subdirectories
+        //                     mkdir -p ${DEPLOY_PATH}/logs
+        //                     mkdir -p ${DEPLOY_PATH}/data
+        //                     mkdir -p ${DEPLOY_PATH}/storage
+        //                     mkdir -p ${DEPLOY_PATH}/uploads
+                            
+        //                     echo "Directory ready: ${DEPLOY_PATH}"
+        //                     ls -la ${DEPLOY_PATH}/
+        //                 """
+                        
+        //                 // คัดลอกไฟล์ไปยัง deployment directory (ยกเว้น node_modules)
+        //                 sh """
+        //                     echo "Syncing files to ${DEPLOY_PATH}..."
+        //                     rsync -av --delete \
+        //                         --exclude 'node_modules' \
+        //                         --exclude '.git' \
+        //                         --exclude 'logs/*' \
+        //                         --exclude 'data/*' \
+        //                         --exclude 'storage/*' \
+        //                         --exclude 'uploads/*' \
+        //                         ./ ${DEPLOY_PATH}/
+        //                     echo "Files synced successfully"
+        //                 """
+                        
+        //                 // Install dependencies ที่ deployment path
+        //                 sh """
+        //                     echo "Installing dependencies..."
+        //                     cd ${DEPLOY_PATH}
+        //                     npm ci --production
+        //                     echo "Dependencies installed"
+        //                 """
+        //             }
+        //         }
+        //     }
+        // }
+        
+        // stage('Restart PM2') {
+        //     steps {
+        //         script {
+        //             echo '🔄 Restarting PM2 process: ${PM2_APP_NAME}...'
+                    
+        //             sh """
+        //                 cd ${DEPLOY_PATH}
+                        
+        //                 # ตรวจสอบว่า PM2 ติดตั้งแล้วหรือยัง
+        //                 if ! command -v pm2 &> /dev/null; then
+        //                     echo "PM2 not found, installing..."
+        //                     npm install -g pm2
+        //                 fi
+                        
+        //                 # ตรวจสอบว่าแอปกำลังรันอยู่หรือไม่
+        //                 if pm2 describe ${PM2_APP_NAME} > /dev/null 2>&1; then
+        //                     echo "Restarting existing PM2 process..."
+        //                     pm2 restart ${PM2_APP_NAME} --update-env
+        //                 else
+        //                     echo "Starting new PM2 process..."
+        //                     pm2 start ecosystem.config.js
+        //                 fi
+                        
+        //                 # บันทึก PM2 configuration
+        //                 pm2 save
+                        
+        //                 # แสดงสถานะ
+        //                 pm2 list
+        //                 pm2 info ${PM2_APP_NAME}
+        //             """
+        //         }
+        //     }
+        // }
+        
+        // stage('Health Check') {
+        //     steps {
+        //         script {
+        //             echo '🏥 Checking application health...'
+                    
+        //             // รอให้ application startup
+        //             sleep(time: 10, unit: 'SECONDS')
+                    
+        //             // ตรวจสอบว่า backend ทำงานปกติ
+        //             retry(3) {
+        //                 sh """
+        //                     curl -f http://localhost:8080/devices/status || exit 1
+        //                     echo "✅ Health check passed!"
+        //                 """
+        //             }
+        //         }
+        //     }
+        // }
+        
+        // stage('Cleanup') {
+        //     steps {
+        //         script {
+        //             echo '🧹 Cleaning up old PM2 logs...'
+        //             sh """
+        //                 cd ${DEPLOY_PATH}
+        //                 pm2 flush ${PM2_APP_NAME}
+                        
+        //                 # ลบ log files เก่าที่มีอายุมากกว่า 7 วัน
+        //                 find ${DEPLOY_PATH}/logs -name "*.log" -mtime +7 -delete || true
+        //             """
+        //         }
+        //     }
+        // }
     }
     
     post {
@@ -210,30 +238,30 @@ pipeline {
             echo '✅ Deployment to Raspberry Pi successful!'
             echo "Application is running at: http://localhost:8080"
             
-            sh """
-                cd ${DEPLOY_PATH}
-                echo "Current PM2 Status:"
-                pm2 list
-            """
+            // sh """
+            //     cd ${DEPLOY_PATH}
+            //     echo "Current PM2 Status:"
+            //     pm2 list
+            // """
         }
         failure {
             echo '❌ Deployment failed!'
             
-            sh """
-                if [ -d ${DEPLOY_PATH} ]; then
-                    cd ${DEPLOY_PATH}
-                    echo "PM2 Status:"
-                    pm2 list || true
-                    echo "\nPM2 Logs (last 50 lines):"
-                    pm2 logs ${PM2_APP_NAME} --lines 50 --nostream || true
-                else
-                    echo "Deploy directory does not exist yet"
-                fi
-            """
+            // sh """
+            //     if [ -d ${DEPLOY_PATH} ]; then
+            //         cd ${DEPLOY_PATH}
+            //         echo "PM2 Status:"
+            //         pm2 list || true
+            //         echo "\nPM2 Logs (last 50 lines):"
+            //         pm2 logs ${PM2_APP_NAME} --lines 50 --nostream || true
+            //     else
+            //         echo "Deploy directory does not exist yet"
+            //     fi
+            // """
         }
-        always {
-            // ทำความสะอาดไฟล์ชั่วคราว
-            sh 'rm -f backend/.env'
-        }
+        // always {
+        //     // ทำความสะอาดไฟล์ชั่วคราว
+        //     sh 'rm -f backend/.env'
+        // }
     }
 }
