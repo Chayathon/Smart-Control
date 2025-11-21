@@ -26,18 +26,24 @@ pipeline {
                 sh """
                     mkdir -p ${TARGET_DIR}
 
-                    rsync -av --delete ${WORKSPACE}/backend/models/      ${TARGET_DIR}/models/
-                    rsync -av --delete ${WORKSPACE}/backend/routes/      ${TARGET_DIR}/routes/
-                    rsync -av --delete ${WORKSPACE}/backend/controllers/ ${TARGET_DIR}/controllers/
-                    rsync -av --delete ${WORKSPACE}/backend/services/    ${TARGET_DIR}/services/
-                    rsync -av --delete ${WORKSPACE}/backend/utils/       ${TARGET_DIR}/utils/
-                    rsync -av --delete ${WORKSPACE}/backend/ws/          ${TARGET_DIR}/ws/
+                    # ตั้ง option กลางของ rsync (ไม่ preserve time/perms)
+                    RSYNC_OPTS="-av --no-times --omit-dir-times --no-perms"
 
-                    rsync -av ${WORKSPACE}/backend/package.json       ${TARGET_DIR}/
-                    rsync -av ${WORKSPACE}/backend/package-lock.json  ${TARGET_DIR}/ || true
+                    # sync โฟลเดอร์หลัก ๆ
+                    rsync $RSYNC_OPTS --delete ${WORKSPACE}/backend/models/      ${TARGET_DIR}/models/
+                    rsync $RSYNC_OPTS --delete ${WORKSPACE}/backend/routes/      ${TARGET_DIR}/routes/
+                    rsync $RSYNC_OPTS --delete ${WORKSPACE}/backend/controllers/ ${TARGET_DIR}/controllers/
+                    rsync $RSYNC_OPTS --delete ${WORKSPACE}/backend/services/    ${TARGET_DIR}/services/
+                    rsync $RSYNC_OPTS --delete ${WORKSPACE}/backend/utils/       ${TARGET_DIR}/utils/
+                    rsync $RSYNC_OPTS --delete ${WORKSPACE}/backend/ws/          ${TARGET_DIR}/ws/
+
+                    # sync ไฟล์เดี่ยว (ไม่จำเป็นต้อง --delete)
+                    rsync $RSYNC_OPTS ${WORKSPACE}/backend/package.json       ${TARGET_DIR}/
+                    rsync $RSYNC_OPTS ${WORKSPACE}/backend/package-lock.json  ${TARGET_DIR}/ || true
                 """
             }
         }
+
 
 
         stage('Restart PM2') {
