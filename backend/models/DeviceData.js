@@ -34,4 +34,3 @@ const deviceDataSchema = new mongoose.Schema(
 deviceDataSchema.index({ timestamp: -1 });
 
 module.exports = mongoose.model('DeviceData', deviceDataSchema);
-

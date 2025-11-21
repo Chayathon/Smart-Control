@@ -25,7 +25,6 @@ class MapCard extends StatelessWidget {
     this.onMarkerTap,
   });
 
-<<<<<<< HEAD
   /// ต้องใช้ logic เดียวกับ MonitoringScreen._idOf
   /// ใช้ meta.no / row['no'] เป็นตัวระบุ nodeId เช่น "no1", "no2"
   String? _idOf(Json row) {
@@ -51,51 +50,6 @@ class MapCard extends StatelessWidget {
     return null;
   }
 
-=======
-  String? _idOf(Json row) {
-    final meta = row['meta'];
-    if (meta is Map &&
-        meta['devEui'] is String &&
-        (meta['devEui'] as String).isNotEmpty) {
-      return meta['devEui'] as String;
-    }
-    if (row['devEui'] is String && (row['devEui'] as String).isNotEmpty) {
-      return row['devEui'] as String;
-    }
-    return null;
-  }
-
-  /// เลือกสี marker ตาม flag ก่อน ถ้าไม่มี alarm ค่อย fallback ตาม online/offline
-  Color _markerColor(Json row) {
-    final rawFlag = (row['flags'] ?? row['flag'] ?? '').toString();
-
-    if (rawFlag.isNotEmpty) {
-      bool hasRed = false;    // digit == 1
-      bool hasYellow = false; // digit == 2
-
-      for (final ch in rawFlag.characters) {
-        if (ch == '1') hasRed = true;
-        if (ch == '2') hasYellow = true;
-      }
-
-      if (hasRed && hasYellow) {
-        // ทั้ง 1 และ 2 → ส้ม
-        return Colors.orange[700] ?? Colors.orange;
-      } else if (hasRed) {
-        // มี 1 อย่างเดียว → แดง
-        return Colors.red[600]!;
-      } else if (hasYellow) {
-        // มี 2 อย่างเดียว → เหลือง
-        return Colors.yellow[700] ?? Colors.yellow;
-      }
-      // ถ้าทุก digit เป็น 0 → ไม่มี alarm → ไปใช้สี online/offline ด้านล่าง
-    }
-
-    // ไม่มี flag หรือไม่มี alarm → ใช้สีตาม online/offline
-    return isOnline(row) ? Colors.green[600]! : Colors.red[600]!;
-  }
-
->>>>>>> 1108a46ed975f4d799932e5d036b7a46243f6d9c
   @override
   Widget build(BuildContext context) {
     return ClipRRect(
@@ -127,12 +81,8 @@ class MapCard extends StatelessWidget {
               markers: items
                   .where((e) => e['lat'] is num && e['lng'] is num)
                   .map((e) {
-<<<<<<< HEAD
                 final color =
                     isOnline(e) ? Colors.green[600]! : Colors.red[600]!;
-=======
-                final color = _markerColor(e);
->>>>>>> 1108a46ed975f4d799932e5d036b7a46243f6d9c
                 final id = _idOf(e);
                 final isSel = selectedId != null && id == selectedId;
 
@@ -154,14 +104,8 @@ class MapCard extends StatelessWidget {
                     dotSize: dotSize,
                     rippleMin: 20,
                     rippleMax: 48,
-<<<<<<< HEAD
                     onTap:
                         onMarkerTap == null ? null : () => onMarkerTap!(e, items),
-=======
-                    onTap: onMarkerTap == null
-                        ? null
-                        : () => onMarkerTap!(e, items),
->>>>>>> 1108a46ed975f4d799932e5d036b7a46243f6d9c
                   ),
                 );
               }).toList(),

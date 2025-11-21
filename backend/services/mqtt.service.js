@@ -1,5 +1,4 @@
 // D:\mass_smart_city\Smart-Control\backend\services\mqtt.service.js
-// D:\mass_smart_city\Smart-Control\backend\services\mqtt.service.js
 const mqtt = require('mqtt');
 const { broadcast } = require('../ws/wsServer');
 const Device = require('../models/Device');
