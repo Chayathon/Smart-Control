@@ -1,671 +1,816 @@
-// lib/screens/monitoring/parts/list_card.dart
+// lib/screens/monitoring/parts/mini_stats.dart
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import '../monitoring_mock.dart';
 
-/// ===== ตัวกรอง =====
-enum TypeFilter { all, lighting, wave, sim }
-enum StatusFilter { all, online, offline }
+/// ความสูงการ์ดทุกใบ ให้เท่ากันหมด
+const double _kTileHeight = 110;
 
-/// ===== แผงลิสต์ + ส่วนตัวกรอง =====
-class MonitoringListPanel extends StatelessWidget {
-  final List<MonitoringEntry> items;
-  final String? selectedId;
-  final Color cardBg, border, accent, textColor;
-  final ScrollController listController;
+/// metric key ที่ใช้กับค่าจริงจาก backend (เหลือแค่ 4 ตัว)
+/// oat = On Air Target (ไม่ใช่อุณหภูมิ)
+enum MetricKey {
+  dcV,
+  dcA,
+  dcW,
+  oat,
+}
 
-  /// เรียกเมื่อผู้ใช้กดเปิด/ปิดไฟบนไอเท็ม (จะถูกเรียกหลังจากอัปเดต mock แล้ว)
-  final void Function(MonitoringEntry) onToggleLighting;
-
-  final void Function(MonitoringEntry) onSelectEntry;
-
-  final TypeFilter typeFilter;
-  final ValueChanged<TypeFilter> onChangeTypeFilter;
-
-  final StatusFilter statusFilter;
-  final ValueChanged<StatusFilter> onChangeStatusFilter;
-
-  final int totalCount, onlineCount, offlineCount;
-
-  const MonitoringListPanel({
-    super.key,
-    required this.items,
-    required this.selectedId,
-    required this.cardBg,
-    required this.border,
-    required this.accent,
-    required this.textColor,
-    required this.listController,
-    required this.onToggleLighting,
-    required this.onSelectEntry,
-    required this.typeFilter,
-    required this.onChangeTypeFilter,
-    required this.statusFilter,
-    required this.onChangeStatusFilter,
-    required this.totalCount,
-    required this.onlineCount,
-    required this.offlineCount,
-  });
-
-  String _titleFor(MonitoringEntry e) {
-    switch (e.kind) {
-      case MonitoringKind.lighting:
-        return 'ระบบไฟส่องสว่าง';
-      case MonitoringKind.wirelessWave:
-        return 'ระบบไร้สาย (คลื่น)';
-      case MonitoringKind.wirelessSim:
-        return 'ระบบไร้สาย (ซิม)';
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        decoration: BoxDecoration(
-          color: cardBg,
-          border: Border.all(color: border),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.08),
-              blurRadius: 20,
-              offset: const Offset(0, 10),
-            ),
-          ],
-        ),
-        child: Column(
-          children: [
-            // ===== แถบตัวกรอง =====
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-              child: Row(
-                children: [
-                  TypeDropdown(
-                    value: typeFilter,
-                    onChanged: onChangeTypeFilter,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      primary: false,
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          Text('สถานะ:', style: TextStyle(color: Colors.grey[700])),
-                          const SizedBox(width: 8),
-                          Status3DButton(
-                            label: 'ทั้งหมด ($totalCount)',
-                            selected: statusFilter == StatusFilter.all,
-                            onTap: () => onChangeStatusFilter(StatusFilter.all),
-                          ),
-                          const SizedBox(width: 8),
-                          Status3DButton(
-                            label: 'Online ($onlineCount)',
-                            selected: statusFilter == StatusFilter.online,
-                            onTap: () => onChangeStatusFilter(StatusFilter.online),
-                          ),
-                          const SizedBox(width: 8),
-                          Status3DButton(
-                            label: 'Offline ($offlineCount)',
-                            selected: statusFilter == StatusFilter.offline,
-                            onTap: () => onChangeStatusFilter(StatusFilter.offline),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const Divider(height: 1),
-
-            // ===== ลิสต์อุปกรณ์ =====
-            Expanded(
-              child: Scrollbar(
-                controller: listController,
-                thumbVisibility: true,
-                child: ListView.separated(
-                  controller: listController,
-                  primary: false,
-                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
-                  itemCount: items.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 8),
-                  itemBuilder: (_, i) {
-                    final e = items[i];
-                    final isSelected = selectedId != null && e.id == selectedId;
-
-                    final wrap = (Widget child) => GestureDetector(
-                          onTap: () => onSelectEntry(e),
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 160),
-                            curve: Curves.easeOut,
-                            padding: const EdgeInsets.all(2),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(14),
-                              color: isSelected ? Colors.blue[50] : Colors.transparent,
-                              border: Border.all(
-                                color: isSelected ? Colors.blue : Colors.transparent,
-                                width: isSelected ? 1.2 : 0.0,
-                              ),
-                              boxShadow: isSelected
-                                  ? [
-                                      BoxShadow(
-                                        color: Colors.blue.withOpacity(0.15),
-                                        blurRadius: 12,
-                                        spreadRadius: 1,
-                                        offset: const Offset(0, 4),
-                                      )
-                                    ]
-                                  : [],
-                            ),
-                            child: child,
-                          ),
-                        );
-
-                    if (e.kind == MonitoringKind.lighting) {
-                      return wrap(
-                        LightingTile(
-                          entry: e,
-                          title: '${e.order} ${_titleFor(e)}',
-                          accent: accent,
-                          textColor: textColor,
-                          border: border,
-                          onToggleLighting: onToggleLighting,
-                        ),
-                      );
-                    } else {
-                      return wrap(
-                        WirelessTile(
-                          entry: e,
-                          title: '${e.order} ${_titleFor(e)}',
-                          accent: accent,
-                          textColor: textColor,
-                          border: border,
-                        ),
-                      );
-                    }
-                  },
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+String metricLabel(MetricKey k) {
+  switch (k) {
+    case MetricKey.dcV:
+      return 'DC Voltage';
+    case MetricKey.dcA:
+      return 'DC Current';
+    case MetricKey.dcW:
+      return 'DC Power';
+    case MetricKey.oat:
+      return 'On Air Target';
   }
 }
 
-/// ===== ดรอปดาวน์ "แบบเดิม" (ปุ่ม 3D + เมนูกว้างเท่าปุ่ม, ชิดซ้ายปุ่ม) =====
-class TypeDropdown extends StatelessWidget {
-  final TypeFilter value;
-  final ValueChanged<TypeFilter> onChanged;
-
-  const TypeDropdown({super.key, required this.value, required this.onChanged});
-
-  String _labelOf(TypeFilter v) {
-    switch (v) {
-      case TypeFilter.all:
-        return 'ทั้งหมด';
-      case TypeFilter.lighting:
-        return 'ระบบไฟส่องสว่าง';
-      case TypeFilter.wave:
-        return 'ระบบไร้สายแบบคลื่น';
-      case TypeFilter.sim:
-        return 'ระบบไร้สายแบบซิม';
-    }
+String unitOf(MetricKey k) {
+  switch (k) {
+    case MetricKey.dcV:
+      return 'V';
+    case MetricKey.dcA:
+      return 'A';
+    case MetricKey.dcW:
+      return 'W';
+    case MetricKey.oat:
+      // OAT = On Air Target → ไม่มีหน่วย
+      return '';
   }
+}
 
-  List<PopupMenuEntry<TypeFilter>> _buildItems(double w) {
-    const innerLeftText = 12.0;
-    const innerRightText = 10.0;
-    const v = 12.0;
-    const edge = 10.0;
+Color metricColor(MetricKey k) {
+  switch (k) {
+    case MetricKey.dcV:
+      return const Color(0xFF06B6D4); // ฟ้าอมเขียว
+    case MetricKey.dcA:
+      return const Color(0xFF14B8A6); // เขียวอมฟ้า
+    case MetricKey.dcW:
+      return const Color(0xFFEF4444); // แดง
+    case MetricKey.oat:
+      return const Color(0xFFFB923C); // OAT โทนส้มอุ่น ๆ
+  }
+}
 
-    PopupMenuEntry<TypeFilter> _item(
-      TypeFilter val,
-      String text, {
-      double topExtra = 0,
-      double bottomExtra = 0,
-    }) {
-      return PopupMenuItem(
-        value: val,
-        padding: EdgeInsets.zero,
-        child: SizedBox(
-          width: w,
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(
-              innerLeftText,
-              v + topExtra,
-              innerRightText,
-              v + bottomExtra,
-            ),
-            child: Text(text, overflow: TextOverflow.ellipsis),
-          ),
+/// Widget MiniStats ใช้ค่าจริงจาก current (row จาก backend)
+class MiniStats extends StatelessWidget {
+  /// row ปัจจุบันจาก backend (อาจเป็น null ถ้ายังไม่เลือก)
+  final Map<String, dynamic>? current;
+
+  /// metric ที่เลือกอยู่ (เอาไว้เน้น tile ว่า active)
+  final MetricKey activeMetric;
+
+  /// เปลี่ยน metric (ให้ parent setState)
+  final void Function(MetricKey) onSelectMetric;
+
+  const MiniStats({
+    super.key,
+    required this.current,
+    required this.activeMetric,
+    required this.onSelectMetric,
+  });
+
+  static const Color kBorderNormal = Color(0x1A000000);
+  static const Color kBorderActive = Color(0x9900BBF9);
+
+  @override
+  Widget build(BuildContext context) {
+    final row = current;
+    if (row == null) {
+      return Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.grey.shade200),
+        ),
+        padding: const EdgeInsets.all(16),
+        alignment: Alignment.center,
+        child: const Text(
+          'เลือกอุปกรณ์จากลิสต์ทางซ้ายเพื่อดูรายละเอียด',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: Colors.black54),
         ),
       );
     }
 
-    return [
-      _item(TypeFilter.all, 'ทั้งหมด', topExtra: edge),
-      _item(TypeFilter.lighting, 'ระบบไฟส่องสว่าง'),
-      _item(TypeFilter.wave, 'ระบบไร้สายแบบคลื่น'),
-      _item(TypeFilter.sim, 'ระบบไร้สายแบบซิม', bottomExtra: edge),
-    ];
-  }
+    final online = _onlineOf(row);
 
-  @override
-  Widget build(BuildContext context) {
-    return _TypeDropdownButton3D(
-      label: _labelOf(value),
-      onTap: (boxContext) async {
-        WidgetsBinding.instance.addPostFrameCallback((_) async {
-          final box = boxContext.findRenderObject() as RenderBox;
-          final overlay = Overlay.of(boxContext).context.findRenderObject() as RenderBox;
-          final offset = box.localToGlobal(Offset.zero, ancestor: overlay);
-
-          final buttonW = box.size.width;
-          final menuW = buttonW;
-          final left = offset.dx;
-          final top = offset.dy + box.size.height + 4.0;
-          final right = overlay.size.width - left - menuW;
-
-          final selected = await showMenu<TypeFilter>(
-            context: boxContext,
-            color: Colors.white,
-            elevation: 8,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            position: RelativeRect.fromLTRB(left, top, right, overlay.size.height - top),
-            items: _buildItems(menuW),
-          );
-
-          if (selected != null) onChanged(selected);
-        });
-      },
-    );
-  }
-}
-
-/// ปุ่ม 3D แบบเดิม
-class _TypeDropdownButton3D extends StatelessWidget {
-  final String label;
-  final void Function(BuildContext buttonContext) onTap;
-
-  const _TypeDropdownButton3D({required this.label, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return Builder(
-      builder: (buttonContext) {
-        return InkWell(
-          onTap: () => onTap(buttonContext),
-          borderRadius: BorderRadius.circular(12),
-          child: SizedBox(
-            width: 180,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.grey[300]!),
-                boxShadow: const [
-                  BoxShadow(color: Color(0x33000000), offset: Offset(3, 5), blurRadius: 10),
-                  BoxShadow(color: Color(0x66FFFFFF), offset: Offset(-3, -3), blurRadius: 10),
-                ],
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.max,
-                children: [
-                  Flexible(
-                    fit: FlexFit.loose,
-                    child: Text(
-                      label,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  const Icon(Icons.expand_more, size: 20),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-}
-
-/// ===== ปุ่มสถานะ 3D =====
-class Status3DButton extends StatelessWidget {
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const Status3DButton({
-    super.key,
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final bg = selected ? Colors.grey[700]! : Colors.white;
-    final txt = selected ? Colors.white : Colors.black87;
-    final border = selected ? Colors.grey[800]! : Colors.grey[300]!;
-
-    final shadows = selected
-        ? <BoxShadow>[
-            const BoxShadow(color: Color(0x59000000), offset: Offset(2, 3), blurRadius: 8),
-            BoxShadow(color: Colors.white.withOpacity(0.6), offset: const Offset(-2, -2), blurRadius: 6),
-          ]
-        : const <BoxShadow>[
-            BoxShadow(color: Color(0x33000000), offset: Offset(3, 5), blurRadius: 10),
-            BoxShadow(color: Color(0xF2FFFFFF), offset: Offset(-3, -3), blurRadius: 10),
-          ];
-
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          color: bg,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: border),
-          boxShadow: shadows,
-        ),
-        child: Text(label, style: TextStyle(fontWeight: FontWeight.w700, color: txt)),
-      ),
-    );
-  }
-}
-
-// ======================= LightingTile =======================
-class LightingTile extends StatelessWidget {
-  final MonitoringEntry entry;
-  final String title;
-  final Color accent, textColor, border;
-
-  /// จะถูกเรียก “หลัง” อัปเดต mock แล้ว เพื่อให้หน้าจอแม่ sync state ถ้าต้องการ
-  final void Function(MonitoringEntry) onToggleLighting;
-
-  const LightingTile({
-    super.key,
-    required this.entry,
-    required this.title,
-    required this.accent,
-    required this.textColor,
-    required this.border,
-    required this.onToggleLighting,
-  });
-
-  String _hhmmss(DateTime dt) {
-    final t = dt.toLocal();
-    String two(int n) => n.toString().padLeft(2, '0');
-    return '${two(t.hour)}:${two(t.minute)}:${two(t.second)}';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return ValueListenableBuilder<List<MonitoringEntry>>(
-      valueListenable: MonitoringMock.itemsNotifier,
-      builder: (context, _, __) {
-        final fresh = MonitoringMock.findById(entry.id) ?? entry;
-        final d = fresh.data as LightingData;
-
-        // ตรรกะของปุ่ม
-        final isLightingOn = d.statusLighting;
-        // ถ้าไฟเปิด (true) -> ปุ่มบอกให้ 'ปิดไฟ' (สีเขียว)
-        final buttonText = isLightingOn ? 'เปิดไฟ' : 'ปิดไฟ';
-        // ถ้าไฟเปิด (true) -> ไอคอนหลอดไฟที่เปิดอยู่ (Outline), ถ้าไฟปิด (false) -> ไอคอนหลอดไฟที่ปิดอยู่ (Solid)
-        final buttonIcon = isLightingOn ? Icons.lightbulb : Icons.lightbulb_outline;
-        // ถ้าไฟเปิด (true) -> สีเขียว, ถ้าไฟปิด (false) -> สีแดง
-        final buttonColor = isLightingOn ? Colors.green[600] : Colors.red[600];
-
-
-        return Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            border: Border.all(color: border),
-            borderRadius: BorderRadius.circular(14),
-            boxShadow: [
-              BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 16, offset: const Offset(0, 8)),
-            ],
-          ),
-          padding: const EdgeInsets.all(14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(children: [
-                Expanded(
-                  child: Text(
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w900,
-                      fontSize: 20,
-                      letterSpacing: .2,
-                      color: Colors.black87,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                OnlineGlowBadge(isOnline: d.online),
-              ]),
-              const SizedBox(height: 6),
-              Text(
-                'อัปเดตล่าสุด ${_hhmmss(fresh.updatedAt)}',
-                style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-              ),
-              const SizedBox(height: 10),
-              MetricList(items: [
-                MetricItem('AC Voltage', '${d.acV.toStringAsFixed(1)} V'),
-                MetricItem('AC Current', '${d.acA.toStringAsFixed(2)} A'),
-                MetricItem('AC Power', '${d.acW.toStringAsFixed(1)} W'),
-                MetricItem('AC Frequency', '${d.acHz.toStringAsFixed(0)} Hz'),
-                MetricItem('AC Energy', '${d.acKWh.toStringAsFixed(2)} kWh'),
-              ]),
-              const SizedBox(height: 10),
-
-              /// ปุ่ม เปิด/ปิด ไฟ
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  // 1. ข้อความ 'สถานะไฟ' (ปรับ style ให้ตรงกับ Metric Label)
-                  Text(
-                    'สถานะไฟ',
-                    style: TextStyle(
-                      color: Colors.grey[700], 
-                      fontWeight: FontWeight.w600, 
-                    ),
-                  ),
-
-                  // 2. ปุ่ม Elevated Button (กำหนดความกว้าง Text เพื่อป้องกันการขยับ)
-                  ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: buttonColor,
-                      foregroundColor: Colors.white,
-                      alignment: Alignment.center,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-                      minimumSize: const Size(120, 44),
-                      textStyle: const TextStyle(fontWeight: FontWeight.w800),
-                    ),
-                    onPressed: () {
-                      final next = !d.statusLighting;
-                      MonitoringMock.updateLightingStatus(entry.id, next);
-                      onToggleLighting(fresh);
-                    },
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // ไอคอนนำหน้า
-                        Icon(buttonIcon, size: 20),
-                        const SizedBox(width: 8),
-                        
-                        // ✅ ล็อกความกว้างของข้อความ (ใช้ SizedBox)
-                        SizedBox(
-                          width: 45,
-                          child: Text(
-                            buttonText,
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-}
-
-// ======================= WirelessTile =======================
-class WirelessTile extends StatelessWidget {
-  final MonitoringEntry entry;
-  final String title;
-  final Color accent, textColor, border;
-
-  const WirelessTile({
-    super.key,
-    required this.entry,
-    required this.title,
-    required this.accent,
-    required this.textColor,
-    required this.border,
-  });
-
-  String _hhmmss(DateTime dt) {
-    final t = dt.toLocal();
-    String two(int n) => n.toString().padLeft(2, '0');
-    return '${two(t.hour)}:${two(t.minute)}:${two(t.second)}';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final d = entry.data as WirelessData;
-    final isOnline = d.online;
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        border: Border.all(color: border),
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 12, offset: const Offset(0, 6))
-        ],
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey.shade200),
       ),
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(children: [
-            Expanded(
-              child: Text(
-                title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w900,
-                  fontSize: 20,
-                  letterSpacing: .2,
-                  color: Colors.black87,
-                  shadows: [Shadow(blurRadius: 6, color: Color(0x22000000), offset: Offset(0, 1))],
-                ),
-              ),
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                const spacing = 12.0;
+                final specs = _buildTiles(
+                  row,
+                  online: online,
+                );
+
+                if (specs.isEmpty) {
+                  return const Center(
+                    child: Text(
+                      'ไม่มีข้อมูลค่าทางไฟฟ้าสำหรับอุปกรณ์นี้',
+                      style: TextStyle(color: Colors.black45),
+                    ),
+                  );
+                }
+
+                // 2 คอลัมน์
+                final colW = (constraints.maxWidth - spacing) / 2;
+
+                final children = specs.map<Widget>((t) {
+                  switch (t.kind) {
+                    case _TileKind.spacer:
+                      return _SpacerTile(width: colW);
+
+                    case _TileKind.status:
+                      return _StatusTile(
+                        width: colW,
+                        online: t.boolValue ?? false,
+                        deviceName: t.title ?? '-',
+                      );
+
+                    case _TileKind.onAirTarget:
+                      return _OnAirTargetTile(
+                        width: colW,
+                        value: t.boolValue ?? false,
+                      );
+
+                    case _TileKind.metric:
+                      final m = t.metric!;
+                      final value = t.value!;
+                      final unit = t.unit ?? unitOf(m);
+                      final color = metricColor(m);
+                      final isActive = (m == activeMetric);
+
+                      final List<double> lineValues =
+                          value.isFinite ? [value, value, value] : const <double>[];
+
+                      return _MetricTile(
+                        width: colW,
+                        title: t.title ?? metricLabel(m),
+                        value: value,
+                        unit: unit,
+                        pathValues: lineValues,
+                        color: color,
+                        active: isActive,
+                        onTap: () => onSelectMetric(m),
+                      );
+                  }
+                }).toList();
+
+                return SingleChildScrollView(
+                  child: Wrap(
+                    spacing: spacing,
+                    runSpacing: spacing,
+                    children: children,
+                  ),
+                );
+              },
             ),
-            const SizedBox(width: 8),
-            OnlineGlowBadge(isOnline: isOnline),
-          ]),
-          const SizedBox(height: 6),
-          Text(
-            'Lat ${entry.lat.toStringAsFixed(6)}, Lng ${entry.lng.toStringAsFixed(6)} · อัปเดตล่าสุด ${_hhmmss(entry.updatedAt)}',
-            style: TextStyle(fontSize: 12, color: Colors.grey[600]),
           ),
-          const SizedBox(height: 10),
-          MetricList(items: [
-            MetricItem('DC Voltage', '${d.dcV.toStringAsFixed(1)} V'),
-            MetricItem('DC Current', '${d.dcA.toStringAsFixed(2)} A'),
-            MetricItem('DC Power', '${d.dcW.toStringAsFixed(1)} W'),
-            MetricItem('On Air Target', d.onAirTarget ? 'ใช่' : 'ไม่ใช่'),
-          ]),
         ],
       ),
     );
   }
+
+  // ===================== tile builder =====================
+
+  List<_TileSpec> _buildTiles(
+    Map<String, dynamic> row, {
+    required bool online,
+  }) {
+    final tiles = <_TileSpec>[];
+
+    final deviceName = _nameOf(row);
+
+    // การ์ดแรก: สถานะอุปกรณ์ + ชื่ออุปกรณ์ + online/offline
+    tiles.add(
+      _TileSpec.status(
+        online: online,
+        deviceName: deviceName,
+      ),
+    );
+
+    // Metric ที่เหลือจริงจาก backend: DC
+    _maybeAddMetricTile(row, tiles, 'DC Voltage', MetricKey.dcV);
+    _maybeAddMetricTile(row, tiles, 'DC Current', MetricKey.dcA);
+    _maybeAddMetricTile(row, tiles, 'DC Power', MetricKey.dcW);
+    // **ลบการ์ด On Air Target (ตัวเลข) ออก ตาม requirement**
+    // _maybeAddMetricTile(row, tiles, 'On Air Target', MetricKey.oat);
+
+    // สถานะ OnAir (ใช้ oat + เช็ค online)
+    final onAir = _onAirTarget(row);
+    tiles.add(_TileSpec.onAirTarget(onAir));
+
+    // ให้เป็นจำนวนคู่ (2 คอลัมน์)
+    if (tiles.length.isOdd) {
+      tiles.add(_TileSpec.spacer());
+    }
+
+    return tiles;
+  }
+
+  void _maybeAddMetricTile(
+    Map<String, dynamic> row,
+    List<_TileSpec> tiles,
+    String title,
+    MetricKey key,
+  ) {
+    final v = _metricValue(row, key);
+    if (v == null) return;
+    tiles.add(
+      _TileSpec.metric(
+        title: title,
+        unit: unitOf(key),
+        value: v,
+        metric: key,
+      ),
+    );
+  }
+
+  // ===================== helpers =====================
+
+  String _nameOf(Map<String, dynamic> row) {
+    // 1) ถ้ามี name ให้ใช้ก่อน
+    final name = (row['name'] ?? '').toString().trim();
+    if (name.isNotEmpty) return name;
+
+    // 2) ถ้าไม่มี name ให้ใช้เลข no แล้วขึ้นต้นด้วย "Node"
+    final meta = row['meta'];
+    if (meta is Map) {
+      final noMeta = meta['no'];
+      if (noMeta is int) return 'Node$noMeta';
+      if (noMeta is String && noMeta.isNotEmpty) return 'Node$noMeta';
+    }
+
+    final rootNo = row['no'];
+    if (rootNo is int) return 'Node$rootNo';
+    if (rootNo is String && rootNo.isNotEmpty) return 'Node$rootNo';
+
+    // 3) สุดท้าย fallback เป็น devEui
+    final devEui =
+        (row['devEui'] ?? row['meta']?['devEui'] ?? '').toString();
+    if (devEui.isNotEmpty) return devEui;
+
+    return '-';
+  }
+
+  bool _onlineOf(Map<String, dynamic> row) {
+    final tsRaw = row['timestamp'];
+
+    DateTime? ts;
+    if (tsRaw is DateTime) {
+      ts = tsRaw.toUtc();
+    } else if (tsRaw is String && tsRaw.isNotEmpty) {
+      ts = DateTime.tryParse(tsRaw)?.toUtc();
+    } else if (tsRaw is int) {
+      // เผื่อเก็บเป็น millisecondsSinceEpoch
+      ts = DateTime.fromMillisecondsSinceEpoch(tsRaw, isUtc: true);
+    }
+
+    if (ts == null) return false;
+
+    final diff = DateTime.now().toUtc().difference(ts);
+    return diff.inSeconds <= 5;
+  }
+
+  /// แปลงค่า oat เป็นสถานะ On Air Target (กำลังประกาศ / ไม่ได้ประกาศ)
+  bool _onAirTarget(Map<String, dynamic> row) {
+    // ถ้าอุปกรณ์ Offline ให้ถือว่า "ไม่ได้ประกาศ" เสมอ
+    if (!_onlineOf(row)) return false;
+
+    final raw = row['oat']; // ใช้เฉพาะ oat ตัวเดียว
+
+    if (raw is bool) return raw;
+    if (raw is num) return raw != 0;
+
+    if (raw is String && raw.trim().isNotEmpty) {
+      final s = raw.trim().toLowerCase();
+
+      if (s == 'true' || s == 'on' || s == 'yes') return true;
+      if (s == 'false' || s == 'off' || s == 'no') return false;
+
+      final n = double.tryParse(s);
+      if (n != null) return n != 0;
+    }
+
+    return false;
+  }
+
+  int _decimalPlaces(MetricKey k) {
+    switch (k) {
+      case MetricKey.oat:
+        // OAT เป็นค่า target ธรรมดา (ไม่ใช่ °C) แต่ให้แสดงทศนิยม 2 ตำแหน่งเหมือนเดิม
+        return 2;
+      case MetricKey.dcV:
+      case MetricKey.dcA:
+      case MetricKey.dcW:
+        return 2;
+    }
+  }
+
+  double? _metricValue(Map<String, dynamic> row, MetricKey k) {
+    dynamic raw;
+    switch (k) {
+      case MetricKey.dcV:
+        raw = row['dcV'];
+        break;
+      case MetricKey.dcA:
+        raw = row['dcA'];
+        break;
+      case MetricKey.dcW:
+        raw = row['dcW'];
+        break;
+      case MetricKey.oat:
+        raw = row['oat'];
+
+        // ถ้า Offline ให้บังคับแสดงเป็น 0 ทันที
+        if (!_onlineOf(row)) {
+          raw = 0;
+        }
+        break;
+    }
+
+    final v = _toDouble(raw);
+    if (v == null) return null;
+    final dp = _decimalPlaces(k);
+    final factor = math.pow(10, dp).toDouble();
+    return (v * factor).roundToDouble() / factor;
+  }
+
+  int? _toInt(dynamic v) {
+    if (v == null) return null;
+    if (v is int) return v;
+    if (v is bool) return v ? 1 : 0;
+    if (v is num) return v.toInt();
+    if (v is String && v.isNotEmpty) return int.tryParse(v);
+    return null;
+  }
+
+  double? _toDouble(dynamic v) {
+    if (v == null) return null;
+    if (v is double) return v;
+    if (v is int) return v.toDouble();
+    if (v is num) return v.toDouble();
+    if (v is String && v.isNotEmpty) return double.tryParse(v);
+    return null;
+  }
 }
 
-/// ===== แบดจ์ Online/Offline (ดีไซน์ด้านล่าง) =====
-class OnlineGlowBadge extends StatelessWidget {
-  final bool isOnline;
-  const OnlineGlowBadge({super.key, required this.isOnline});
+// ===================== Tile model =====================
+
+enum _TileKind {
+  metric,
+  status,
+  onAirTarget,
+  spacer,
+}
+
+class _TileSpec {
+  final _TileKind kind;
+  final String? title;
+  final String? unit;
+  final double? value;
+  final bool? boolValue;
+  final MetricKey? metric;
+
+  _TileSpec._(
+    this.kind, {
+    this.title,
+    this.unit,
+    this.value,
+    this.boolValue,
+    this.metric,
+  });
+
+  factory _TileSpec.metric({
+    required String title,
+    required String unit,
+    required double value,
+    required MetricKey metric,
+  }) =>
+      _TileSpec._(
+        _TileKind.metric,
+        title: title,
+        unit: unit,
+        value: value,
+        metric: metric,
+      );
+
+  factory _TileSpec.status({
+    required bool online,
+    required String deviceName,
+  }) =>
+      _TileSpec._(
+        _TileKind.status,
+        boolValue: online,
+        title: deviceName,
+      );
+
+  factory _TileSpec.onAirTarget(bool v) =>
+      _TileSpec._(_TileKind.onAirTarget, boolValue: v);
+
+  factory _TileSpec.spacer() => _TileSpec._(_TileKind.spacer);
+}
+
+// ===================== Metric Tile =====================
+
+class _MetricTile extends StatelessWidget {
+  final double width;
+  final String title;
+  final double value;
+  final String unit;
+  final List<double> pathValues;
+  final bool active;
+  final VoidCallback? onTap;
+  final Color color;
+
+  const _MetricTile({
+    super.key,
+    required this.width,
+    required this.title,
+    required this.value,
+    required this.unit,
+    required this.pathValues,
+    required this.active,
+    required this.onTap,
+    required this.color,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final base = isOnline ? Colors.green[600]! : Colors.red[600]!;
-    final glow = isOnline ? Colors.green[300]! : Colors.red[300]!;
-    final label = isOnline ? 'Online' : 'Offline';
+    final borderColor =
+        active ? MiniStats.kBorderActive : MiniStats.kBorderNormal;
+    const bgColor = Colors.white;
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
-      decoration: BoxDecoration(
-        color: base,
-        borderRadius: BorderRadius.circular(100),
-        border: Border.all(color: base.withOpacity(0.85)),
-        boxShadow: [
-          BoxShadow(
-            color: glow.withOpacity(0.7),
-            blurRadius: 14,
-            spreadRadius: 1.5,
-          ),
-        ],
-      ),
-      child: Text(
-        label,
-        style: const TextStyle(
-          color: Colors.white,
-          fontWeight: FontWeight.w800,
-          fontSize: 12,
-          letterSpacing: .2,
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        width: width,
+        height: _kTileHeight,
+        decoration: BoxDecoration(
+          color: bgColor,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: borderColor, width: 1.0),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 4,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+        child: Column(
+          mainAxisSize: MainAxisSize.max,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.black54,
+                  ),
+                ),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      _fmt(value),
+                      style: const TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.black,
+                      ),
+                    ),
+                    if (unit.isNotEmpty) ...[
+                      const SizedBox(width: 6),
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 3.0),
+                        child: Text(
+                          unit,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.black54,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              height: 34,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4.0),
+                child: CustomPaint(
+                  painter: _SparkPainter(
+                    pathValues,
+                    lineColor: color,
+                    isActive: active,
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
+
+  String _fmt(double n) {
+    if (!n.isFinite) return '-';
+    final abs = n.abs();
+    if (abs >= 100) return n.toStringAsFixed(1);
+    return n.toStringAsFixed(2);
+  }
 }
 
-class MetricList extends StatelessWidget {
-  final List<MetricItem> items;
-  const MetricList({super.key, required this.items});
+class _SparkPainter extends CustomPainter {
+  final List<double> values;
+  final Color lineColor;
+  final bool isActive;
+
+  _SparkPainter(
+    this.values, {
+    required this.lineColor,
+    this.isActive = false,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (values.isEmpty || values.length < 2) return;
+
+    final minY = values.reduce(math.min);
+    final maxY = values.reduce(math.max);
+    final range = (maxY - minY).abs() < 0.0001 ? 1 : (maxY - minY);
+
+    final path = Path();
+    for (int i = 0; i < values.length; i++) {
+      final x = (i / (values.length - 1)) * size.width;
+      final y =
+          size.height - ((values[i] - minY) / range) * size.height;
+      if (i == 0) {
+        path.moveTo(x, y);
+      } else {
+        path.lineTo(x, y);
+      }
+    }
+
+    final paint = Paint()
+      ..color = lineColor
+      ..strokeWidth = isActive ? 2.2 : 1.8
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.butt;
+
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _SparkPainter oldDelegate) {
+    return oldDelegate.values != values ||
+        oldDelegate.lineColor != lineColor ||
+        oldDelegate.isActive != isActive;
+  }
+}
+
+class _SpacerTile extends StatelessWidget {
+  final double width;
+  const _SpacerTile({required this.width});
+
+  @override
+  Widget build(BuildContext context) =>
+      SizedBox(width: width, height: 0);
+}
+
+// ------------------- Status Tile -------------------
+
+class _StatusTile extends StatelessWidget {
+  final double width;
+  final bool online;
+  final String deviceName;
+
+  const _StatusTile({
+    super.key,
+    required this.width,
+    required this.online,
+    required this.deviceName,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: items
-          .map((m) => Padding(
-                padding: const EdgeInsets.symmetric(vertical: 6),
-                child: Row(
+    const bgColor = Colors.white;
+    const borderColor = MiniStats.kBorderNormal;
+
+    final statusText = online ? 'ออนไลน์' : 'ออฟไลน์';
+    final statusColor = online ? Colors.green : Colors.red;
+    final circleColor = statusColor;
+
+    return Container(
+      width: width,
+      height: _kTileHeight,
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: borderColor, width: 1.0),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      child: Column(
+        mainAxisSize: MainAxisSize.max,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'สถานะอุปกรณ์',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: Colors.black54,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              // ชื่ออุปกรณ์ + สถานะข้อความ
+              Expanded(
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                        child: Text(m.label,
-                            style: TextStyle(color: Colors.grey[700], fontWeight: FontWeight.w600))),
-                    Text(m.value, style: const TextStyle(fontWeight: FontWeight.w700)),
+                    Text(
+                      deviceName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.black,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      statusText,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: statusColor,
+                      ),
+                    ),
                   ],
                 ),
-              ))
-          .toList(),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: circleColor,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: circleColor.withOpacity(0.45),
+                      blurRadius: 14,
+                      spreadRadius: 3,
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  Icons.power_settings_new,
+                  color: Colors.white,
+                  size: 25,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
 
-class MetricItem {
-  final String label;
-  final String value;
-  MetricItem(this.label, this.value);
+// ------------------- _OnAirTargetTile -------------------
+
+class _OnAirTargetTile extends StatelessWidget {
+  final double width;
+  final bool value;
+
+  const _OnAirTargetTile({
+    super.key,
+    required this.width,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final Color circleColor = value
+        ? const Color(0xFF48CAE4) // กำลังประกาศ = ฟ้า
+        : Colors.grey.shade400;   // ไม่ได้ประกาศ = เทา
+
+    final String statusText =
+        value ? 'กำลังประกาศ' : 'ไม่ได้ประกาศ';
+
+    const borderColor = MiniStats.kBorderNormal;
+    const bgColor = Colors.white;
+
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: () {}, // แสดงสถานะอย่างเดียว
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          width: width,
+          height: _kTileHeight,
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+          decoration: BoxDecoration(
+            color: bgColor,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: borderColor, width: 1.0),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.05),
+                blurRadius: 4,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.max,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'สถานะ On Air Target',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.black54,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    statusText,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black87,
+                    ),
+                  ),
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: circleColor,
+                      shape: BoxShape.circle,
+                      boxShadow: value
+                          ? [
+                              BoxShadow(
+                                color: circleColor.withOpacity(0.45),
+                                blurRadius: 14,
+                                spreadRadius: 3,
+                              ),
+                            ]
+                          : [],
+                    ),
+                    child: const Icon(
+                      Icons.volume_up,
+                      color: Colors.white,
+                      size: 25,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }

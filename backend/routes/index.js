@@ -12,4 +12,6 @@ router.use('/playlist', require('./playlist.routes'))
 router.use('/song', require('./song.routes'))
 router.use('/deviceData', require('./deviceData.routes'));
 
+router.use('/uplink', require('./uplink.routes'));
+
 module.exports = router;

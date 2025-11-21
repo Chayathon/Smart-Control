@@ -1,19 +1,45 @@
-// lib/screens/monitoring/parts/notification.dart
-
 import 'package:flutter/material.dart';
-import 'notification_mock.dart'; 
 
-// Enum สำหรับกำหนดสถานะของ Tab
-enum NotificationFilter { today, thisWeek, earlier }
+/// สรุป alarm ระดับโหนด (ใช้ 1 การ์ดต่อ 1 โหนดใน NotificationCenter)
+class NodeAlarmSummary {
+  final String nodeId; // id ของโหนด (เช่น devEui หรือ "no1")
+  final String name; // ชื่อโหนด เช่น NODE1
+  DateTime lastUpdated;
+
+  /// key = field เช่น 'voltage', 'current', 'watt', 'oat' (oat = On Air Target)
+  /// value = ระดับ 0/1/2 (0 = ปกติ, 1/2 = ผิดปกติ)
+  final Map<String, int> fields;
+
+  bool hasUnread;
+
+  NodeAlarmSummary({
+    required this.nodeId,
+    required this.name,
+    required this.lastUpdated,
+    Map<String, int>? fields,
+    this.hasUnread = false,
+  }) : fields = fields ?? {};
+}
 
 class NotificationCenter extends StatefulWidget {
-  final VoidCallback onClose; 
-  final VoidCallback onMarkAllAsRead; 
-  
+  /// รายการสรุป alarm ระดับโหนด
+  final List<NodeAlarmSummary> items;
+
+  /// ปิดแผงแจ้งเตือน
+  final VoidCallback onClose;
+
+  /// Mark all as read (parent จะจัดการ state แล้วส่ง items ใหม่กลับมาเอง)
+  final VoidCallback onMarkAllAsRead;
+
+  /// Mark หนึ่ง "โหนด" เป็นอ่านแล้ว — อ้างอิงด้วย nodeId
+  final void Function(String nodeId) onMarkOneAsRead;
+
   const NotificationCenter({
-    super.key, 
+    super.key,
+    required this.items,
     required this.onClose,
     required this.onMarkAllAsRead,
+    required this.onMarkOneAsRead,
   });
 
   @override
@@ -21,514 +47,384 @@ class NotificationCenter extends StatefulWidget {
 }
 
 class _NotificationCenterState extends State<NotificationCenter> {
-  
-  NotificationFilter _selectedFilter = NotificationFilter.today;
-  late ScrollController _scrollController; 
+  late final ScrollController _scroll;
 
-  // List ที่จะถูกแก้ไขสถานะ isRead (Mutable)
-  List<Map<String, dynamic>> _notifications = List.of(NotificationMock.rawMockData.map((map) => Map.of(map)));
-
-  bool _markAllAsRead = false; 
+  static const Color _accentColor = Color(0xFF48CAE4);
+  static const Color _panelBg = Colors.white;
 
   @override
   void initState() {
     super.initState();
-    _scrollController = ScrollController(); 
+    _scroll = ScrollController();
   }
 
   @override
   void dispose() {
-    _scrollController.dispose();
+    _scroll.dispose();
     super.dispose();
-  }
-
-  void _onMarkAllAsRead() {
-    setState(() {
-      _markAllAsRead = true;
-    });
-    widget.onMarkAllAsRead(); 
-  }
-
-  void _markAsRead(int originalIndex) {
-    if (_notifications[originalIndex]['isRead'] == false && !_markAllAsRead) {
-        setState(() {
-            _notifications[originalIndex]['isRead'] = true;
-        });
-    }
-  }
-
-  // *** 🎯 HELPER: คำนวณรูปแบบการแสดงเวลาตามเงื่อนไข (แก้ไขหน่วย ว. -> วิ.) ***
-  String _getDisplayTime(DateTime timestamp) {
-    final now = DateTime.now().toLocal();
-    final itemTime = timestamp.toLocal();
-    final difference = now.difference(itemTime);
-    
-    const Duration oneHour = Duration(hours: 1); 
-
-    if (difference < oneHour) {
-      // น้อยกว่า 1 ชั่วโมง: ใช้หน่วย นาที หรือ วินาที แบบย่อ
-      if (difference.inMinutes > 0) {
-        // 1 นาทีขึ้นไป แต่ไม่ถึง 1 ชั่วโมง
-        return '${difference.inMinutes} น.'; // นาที -> น.
-      } else {
-        // น้อยกว่า 1 นาที
-        // clamp(1, 59) เพื่อไม่ให้แสดง 0 วิ.
-        // *** แก้ไข: เปลี่ยน 'ว.' เป็น 'วิ.' ***
-        return '${difference.inSeconds.clamp(1, 59)} วิ.'; // วินาที -> วิ.
-      }
-    } else {
-      // 1 ชั่วโมงขึ้นไป: แสดงเป็นเวลาจริง (HH:mm น.) 
-      final hour = itemTime.hour.toString().padLeft(2, '0');
-      final minute = itemTime.minute.toString().padLeft(2, '0');
-      return '$hour:$minute น.';
-    }
-  }
-  // ***************************************************************
-
-  // *** HELPER: ตรวจสอบว่าวันที่เดียวกันหรือไม่ ***
-  bool isSameDay(DateTime a, DateTime b) {
-    return a.year == b.year && a.month == b.month && a.day == b.day;
-  }
-
-  // *** HELPER: สร้างข้อความวันที่ภาษาไทย ***
-  String _getFormattedDate(DateTime timestamp) {
-    final now = DateTime.now().toLocal();
-    final date = timestamp.toLocal();
-    
-    // Normalize to start of day
-    final today = DateTime(now.year, now.month, now.day);
-    final itemDate = DateTime(date.year, date.month, date.day);
-    final difference = today.difference(itemDate).inDays;
-    
-    const List<String> thaiMonths = [
-      '', 'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
-      'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'
-    ];
-    const List<String> thaiWeekdays = [
-      'อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'
-    ];
-    
-    final int thaiYear = date.year + 543; 
-
-    if (difference == 0) {
-      return 'วันนี้';
-    } else if (difference == 1) {
-      return 'เมื่อวาน';
-    } else {
-      final weekdayIndex = date.weekday % 7; 
-      final weekday = thaiWeekdays[weekdayIndex]; 
-      final month = thaiMonths[date.month];
-      
-      return 'วัน$weekdayที่ ${date.day} $month $thaiYear';
-    }
-  }
-
-  // *** WIDGET: ตัวคั่นวันที่ ***
-  Widget _buildDateSeparator(String dateText) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-      child: Row(
-        children: [
-          Expanded(
-            child: Container(
-              margin: const EdgeInsets.only(right: 8),
-              height: 1,
-              color: const Color(0xFFBBBBBB), 
-            ),
-          ),
-          Text(
-            dateText,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.bold,
-              color: Colors.grey[600],
-            ),
-          ),
-          Expanded(
-            child: Container(
-              margin: const EdgeInsets.only(left: 8),
-              height: 1,
-              color: const Color(0xFFBBBBBB), 
-            ),
-          ),
-        ],
-      ),
-    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final width = 380.0; 
+    final maxHeight = MediaQuery.of(context).size.height * 0.75;
 
-    return Material(
-      color: Colors.transparent, 
-      child: Container(
-        width: width,
-        constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.75), 
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.15),
-              blurRadius: 18,
-              offset: const Offset(0, 8),
-            ),
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min, 
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildHeader(),
-            const Divider(height: 1, thickness: 1, color: Color(0xFFEEEEEE)),
-            _buildTabs(),
-            Expanded(
-              child: _buildNotificationList(),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-  
-  Widget _buildHeader() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 8, 8), 
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          const Text( 
-            'แจ้งเตือน',
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 18,
-              color: Color(0xFF333333),
-            ),
+    // ใช้ Align + ConstrainedBox ภายในตัวเอง เพื่อไม่พึ่ง Positioned จากภายนอก
+    return Align(
+      alignment: Alignment.topRight,
+      child: Padding(
+        padding: const EdgeInsets.only(top: 8, right: 16),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(
+            maxWidth: 420,
           ),
-          Row(
-            children: [
-              // ปุ่ม 'อ่านทั้งหมด'
-              TextButton(
-                onPressed: _onMarkAllAsRead, 
-                child: const Text('อ่านทั้งหมด', style: TextStyle(color: Colors.blue, fontSize: 13)),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTabs() {
-    return Padding( 
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Row(
-        children: [
-          _buildTabButton('วันนี้', NotificationFilter.today),
-          const SizedBox(width: 8),
-          _buildTabButton('สัปดาห์นี้', NotificationFilter.thisWeek),
-          const SizedBox(width: 8),
-          _buildTabButton('ก่อนหน้า', NotificationFilter.earlier),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTabButton(String text, NotificationFilter filter) {
-    final isSelected = _selectedFilter == filter;
-    
-    const baseColor = Color(0xFFF0F0F0); 
-    const activeColor = Colors.blue; 
-    
-    const pressedShadows = [
-      BoxShadow(
-        color: Color(0xFF757575), 
-        offset: Offset(1.5, 1.5),
-        blurRadius: 3,
-        spreadRadius: 0,
-      ),
-      BoxShadow(
-        color: Color.fromRGBO(255, 255, 255, 0.4), 
-        offset: Offset(-1.5, -1.5),
-        blurRadius: 3,
-        spreadRadius: 0,
-      ),
-    ];
-
-    const elevatedShadows = [
-      BoxShadow(
-        color: Color.fromRGBO(200, 200, 200, 0.5), 
-        offset: Offset(4, 4),
-        blurRadius: 8,
-      ),
-      BoxShadow(
-        color: Color.fromRGBO(255, 255, 255, 0.8), 
-        offset: Offset(-4, -4),
-        blurRadius: 8,
-      ),
-    ];
-
-    return GestureDetector(
-      onTap: () {
-        setState(() {
-          _selectedFilter = filter;
-        });
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: isSelected ? activeColor : baseColor, 
-          borderRadius: BorderRadius.circular(8),
-          boxShadow: isSelected ? pressedShadows : elevatedShadows,
-        ),
-        child: Text(
-          text,
-          style: TextStyle(
-            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-            color: isSelected ? Colors.white : Colors.grey[500], 
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildNotificationList() {
-    
-    final List<Map<String, dynamic>> notificationsToDisplay = [];
-    final List<int> originalIndices = []; 
-    
-    final now = DateTime.now();
-    const Duration oneDay = Duration(days: 1);
-    const Duration oneWeek = Duration(days: 7);
-    
-    // กรองรายการตาม Tab ที่เลือก
-    for (int i = 0; i < _notifications.length; i++) {
-        final notif = _notifications[i];
-        
-        final timestamp = notif['timestamp']! as DateTime;
-        final difference = now.toLocal().difference(timestamp.toLocal());
-        
-        bool passesFilter = false;
-
-        switch (_selectedFilter) {
-            case NotificationFilter.today:
-                // วันนี้: แจ้งเตือนที่มีอายุไม่เกิน 1 วัน
-                passesFilter = difference < oneDay;
-                break;
-            case NotificationFilter.thisWeek:
-                // สัปดาห์นี้: แจ้งเตือนที่มีอายุไม่เกิน 7 วัน
-                passesFilter = difference < oneWeek;
-                break;
-            case NotificationFilter.earlier:
-                // ก่อนหน้า: แสดงทุกอย่าง
-                passesFilter = true; 
-                break;
-        }
-
-        if (passesFilter) {
-            notificationsToDisplay.add(notif);
-            originalIndices.add(i);
-        }
-    }
-    
-    if (notificationsToDisplay.isEmpty) {
-        return const Padding(
-            padding: EdgeInsets.all(16.0),
-            child: Center(
-                child: Text('ไม่มีการแจ้งเตือนสำหรับช่วงเวลานี้', 
-                  style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic)),
-            ),
-        );
-    }
-    
-    final List<Widget> widgetsToDisplay = [];
-    DateTime? lastDateDisplayed; 
-    
-    // *** LOGIC: ไม่แสดงตัวคั่นวันที่ใน Tab 'วันนี้' ***
-    final bool showDateSeparator = _selectedFilter != NotificationFilter.today; 
-
-    for (int index = 0; index < notificationsToDisplay.length; index++) {
-      final notif = notificationsToDisplay[index];
-      final originalIndex = originalIndices[index]; 
-      final timestamp = notif['timestamp']! as DateTime;
-      final itemDate = DateTime(timestamp.year, timestamp.month, timestamp.day);
-      
-      // 1. ตรวจสอบและเพิ่มตัวคั่นวันที่ (เฉพาะใน Tab 'สัปดาห์นี้' และ 'ก่อนหน้า')
-      if (showDateSeparator) { 
-        final bool isNewDay = lastDateDisplayed == null || !isSameDay(lastDateDisplayed, itemDate);
-
-        if (isNewDay) {
-          final dateText = _getFormattedDate(timestamp);
-          widgetsToDisplay.add(_buildDateSeparator(dateText));
-          lastDateDisplayed = itemDate; 
-        }
-      }
-
-      final bool currentIsRead = notif['isRead'] as bool || _markAllAsRead;
-
-      // 2. สร้าง Widget สำหรับรายการแจ้งเตือน
-      final itemWidget = _buildNotificationItem(
-        notif['title'] as String,
-        notif['subtitle'] as String,
-        notif['icon'] as IconData,
-        timestamp, 
-        notif['color'] as Color,
-        currentIsRead,
-        originalIndex, 
-      );
-      
-      // 3. เพิ่มรายการแจ้งเตือน
-      widgetsToDisplay.add(itemWidget);
-
-      // 4. เพิ่มเส้นแบ่งรายการ (หากไม่ใช่รายการสุดท้าย)
-      if (index < notificationsToDisplay.length - 1) {
-        final nextTimestamp = notificationsToDisplay[index + 1]['timestamp']! as DateTime;
-        final nextItemDate = DateTime(nextTimestamp.year, nextTimestamp.month, nextTimestamp.day);
-        
-        // เพิ่มเส้นแบ่งแนวนอน: 
-        // - เสมอใน Tab 'วันนี้' (เพราะไม่มีตัวคั่นวัน)
-        // - ใน Tab อื่นๆ ถ้าวันเดียวกัน (ไม่ให้มีเส้นแบ่งระหว่างวัน)
-        if (!showDateSeparator || isSameDay(itemDate, nextItemDate)) {
-          widgetsToDisplay.add(
-            const Divider(height: 1, thickness: 1, color: Color(0xFFBBBBBB), indent: 16, endIndent: 16)
-          );
-        }
-      }
-    }
-    
-    return Scrollbar(
-      controller: _scrollController, 
-      thumbVisibility: true,
-      child: ListView.builder(
-        controller: _scrollController, 
-        padding: EdgeInsets.zero, 
-        itemCount: widgetsToDisplay.length,
-        itemBuilder: (context, index) {
-          return widgetsToDisplay[index];
-        },
-      ),
-    );
-  }
-
-  Widget _buildNotificationItem(
-    String title,
-    String subtitle,
-    IconData icon,
-    DateTime timestamp, 
-    Color color, 
-    bool isRead,
-    int originalIndex, 
-  ) {
-    // --- 1. การคำนวณสไตล์ Title (ชื่อเหตุการณ์) ---
-    final Color titleColor = isRead 
-      ? Colors.grey[500]! 
-      : color;            
-      
-    final titleWeight = isRead ? FontWeight.normal : FontWeight.bold;
-    
-    // itemTextColor ใช้สำหรับ Subtitle และ Time 
-    final itemTextColor = isRead ? Colors.grey[500] : const Color(0xFF333333); 
-    final itemBackgroundColor = isRead ? Colors.white : const Color(0xFFE8F2FF); 
-
-    // กำหนด FontWeight สำหรับ Time Str: ตัวหนาเมื่อยังไม่ได้อ่าน
-    final timeWeight = isRead ? FontWeight.normal : FontWeight.bold;
-    
-    // *** คำนวณ String เวลาที่จะแสดงผล (ใช้ Logic เวลาใหม่) ***
-    final String displayTimeStr = _getDisplayTime(timestamp);
-
-    // --- 2. การสร้าง Subtitle Widget (ชื่อโหนดเป็นตัวหนา) ---
-    Widget subtitleWidget;
-    const String prefix = 'เหตุการณ์: โหนด ';
-
-    final bool hasPrefix = subtitle.startsWith(prefix);
-    
-    if (hasPrefix) {
-      String content = subtitle.substring(prefix.length); 
-      List<String> contentParts = content.split(' ');
-      String nodeNameInSubtitle = contentParts.first; 
-      String eventDescription = contentParts.sublist(1).join(' '); 
-      
-      String prefixText = prefix; 
-
-      subtitleWidget = RichText(
-          text: TextSpan(
-              style: TextStyle(
-                  fontSize: 12,
-                  color: itemTextColor, // ใช้สีตามสถานะอ่าน/ไม่อ่าน
-              ),
-              children: <TextSpan>[
-                  // 1. Prefix: 'เหตุการณ์: โหนด ' (Normal weight)
-                  TextSpan(text: prefixText),
-                  
-                  // 2. Node Name ใน Subtitle: LIGHTING-1 (Bold เสมอ)
-                  TextSpan(
-                      text: nodeNameInSubtitle,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                      ), 
+          child: Material(
+            color: Colors.transparent,
+            child: SizedBox(
+              width: 380,
+              height: maxHeight, // 🔹 ล็อกความสูง panel ให้คงที่ 75% ของจอ
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: _panelBg,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: const Color(0xFFCBD5E1),
+                      width: 0.5,
+                    ),
                   ),
-                  
-                  // 3. Rest of description: ' แรงดัน 250.0V...' (Normal weight)
-                  TextSpan(
-                      text: eventDescription.isNotEmpty ? ' $eventDescription' : '', 
+                  child: Column(
+                    mainAxisSize: MainAxisSize.max, // 🔹 ให้กินความสูงเต็ม
+                    children: [
+                      _buildHeader(),
+                      const Divider(height: 1, color: Color(0xFFE5E5E5)),
+                      Expanded(
+                        // 🔹 ส่วนนี้จะเลื่อนขึ้นลงได้เมื่อการ์ดเยอะ
+                        child: _buildList(),
+                      ),
+                    ],
                   ),
-              ],
-          ),
-      );
-
-    } else {
-        // Fallback: หากรูปแบบ Subtitle ไม่ตรง ก็แสดงเป็น Text ธรรมดา
-        subtitleWidget = Text(
-            subtitle,
-            style: TextStyle(
-                fontSize: 12,
-                color: itemTextColor,
-            ),
-        );
-    }
-
-    // --- 3. Return ListTile ---
-    return Container(
-      color: itemBackgroundColor,
-      child: ListTile(
-        leading: Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
-            shape: BoxShape.circle,
-          ),
-          child: Icon(icon, color: color, size: 20),
-        ),
-        title: Row(
-          children: [
-            Expanded(
-              // ใช้ Title Weight ที่คำนวณจาก isRead
-              child: Text(
-                title,
-                style: TextStyle(
-                  fontWeight: titleWeight, 
-                  fontSize: 14,
-                  color: titleColor,
                 ),
               ),
             ),
-            Text(
-              displayTimeStr, // *** ใช้ displayTimeStr ที่คำนวณจาก _getDisplayTime ***
-              style: TextStyle(
-                fontSize: 12,
-                color: itemTextColor,
-                fontWeight: timeWeight,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeader() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
+      child: Row(
+        children: [
+          Row(
+            children: const [
+              Icon(
+                Icons.notifications_active_outlined,
+                size: 22,
+                color: Color(0xFF111827),
+              ),
+              SizedBox(width: 8),
+              Text(
+                'การแจ้งเตือน',
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 18,
+                  color: Color(0xFF111827),
+                ),
+              ),
+            ],
+          ),
+          const Spacer(),
+          // 🔄 ปุ่ม "อ่านทั้งหมด" แบบไม่มี icon
+          TextButton(
+            onPressed: widget.onMarkAllAsRead,
+            style: TextButton.styleFrom(
+              foregroundColor: _accentColor,
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              minimumSize: Size.zero,
+            ),
+            child: const Text(
+              'อ่านทั้งหมด',
+              style: TextStyle(fontSize: 13),
+            ),
+          ),
+          IconButton(
+            tooltip: 'ปิด',
+            icon: const Icon(Icons.close, size: 20),
+            splashRadius: 20,
+            onPressed: widget.onClose,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildList() {
+    if (widget.items.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: const [
+              Icon(
+                Icons.notifications_off_outlined,
+                size: 40,
+                color: Color(0xFF9CA3AF),
+              ),
+              SizedBox(height: 8),
+              Text(
+                'ไม่มีการแจ้งเตือน',
+                style: TextStyle(
+                  color: Color(0xFF6B7280),
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // แสดงทุกการแจ้งเตือน เรียงตามเวลาล่าสุด
+    final display = List<NodeAlarmSummary>.from(widget.items)
+      ..sort((a, b) => b.lastUpdated.compareTo(a.lastUpdated));
+
+    return Scrollbar(
+      controller: _scroll,
+      thumbVisibility: true,
+      child: ListView.builder(
+        controller: _scroll,
+        padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+        itemCount: display.length,
+        itemBuilder: (_, i) {
+          final s = display[i];
+
+          final abnormalEntries =
+              s.fields.entries.where((e) => e.value != 0).toList();
+          if (abnormalEntries.isEmpty) {
+            // ป้องกันการ์ดว่าง (ส่วนใหญ่จะถูกลบตั้งแต่ใน parent แล้ว)
+            return const SizedBox.shrink();
+          }
+
+          // ✅ ตัดสินสีตามระดับรุนแรงรวมของโหนด
+          final bool hasRed = abnormalEntries.any((e) => e.value == 1);
+          final bool hasYellow = abnormalEntries.any((e) => e.value == 2);
+
+          final Color baseColor;
+          if (hasRed && hasYellow) {
+            baseColor = Colors.orange; // ทั้ง 1 และ 2 → ส้ม
+          } else if (hasRed) {
+            baseColor = Colors.red;
+          } else if (hasYellow) {
+            baseColor = Colors.yellow[700] ?? Colors.yellow;
+          } else {
+            baseColor = _accentColor;
+          }
+
+          final bool isRead = !s.hasUnread;
+
+          final Color cardBg = Colors.white;
+          final Color borderColor = const Color(0xFFCBD5E1);
+          final Color titleColor =
+              isRead ? const Color(0xFF4B5563) : const Color(0xFF111827);
+          final Color subtitleColor = const Color(0xFF6B7280);
+
+          final int abnormalCount = abnormalEntries.length;
+          final String title = '${s.name} มี $abnormalCount ค่าผิดปกติ';
+
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(14),
+              onTap: () => widget.onMarkOneAsRead(s.nodeId),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: cardBg,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: borderColor, width: 1),
+                  boxShadow: [
+                    if (!isRead)
+                      BoxShadow(
+                        color: baseColor.withOpacity(0.22),
+                        blurRadius: 12,
+                        spreadRadius: 1,
+                        offset: const Offset(0, 5),
+                      )
+                    else
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.03),
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
+                      ),
+                  ],
+                ),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // วงกลมไอคอนหลัก
+                    Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: baseColor.withOpacity(0.08),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        Icons.warning_amber_rounded,
+                        size: 18,
+                        color: baseColor,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    // ข้อความ
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  title,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: isRead
+                                        ? FontWeight.w500
+                                        : FontWeight.w700,
+                                    color: titleColor,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(
+                                    Icons.access_time,
+                                    size: 13,
+                                    color: Color(0xFF9CA3AF),
+                                  ),
+                                  const SizedBox(width: 2),
+                                  Text(
+                                    _timeAgo(s.lastUpdated),
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      color: Color(0xFF9CA3AF),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          // รายละเอียดแต่ละ field แบบ chip
+                          Wrap(
+                            spacing: 6,
+                            runSpacing: 4,
+                            children: [
+                              for (final e in abnormalEntries)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: baseColor.withOpacity(0.06),
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
+                                  child: Text(
+                                    '${_fieldLabel(e.key)}${_severityLabel(e.value)}',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      height: 1.2,
+                                      color: subtitleColor,
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Row(
+                            children: [
+                              if (!isRead)
+                                Container(
+                                  width: 8,
+                                  height: 8,
+                                  decoration: BoxDecoration(
+                                    color: baseColor,
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                              if (!isRead) const SizedBox(width: 4),
+                              if (!isRead)
+                                const Text(
+                                  'ยังไม่ได้อ่าน',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: Color(0xFF6B7280),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ],
-        ),
-        subtitle: subtitleWidget, // <<< ใช้ Subtitle Widget ที่สร้างใหม่
-        // เมื่อคลิก ให้เรียก _markAsRead
-        onTap: () {
-          _markAsRead(originalIndex);
+          );
         },
       ),
     );
+  }
+
+  String _timeAgo(DateTime ts) {
+    final diff = DateTime.now().difference(ts);
+    if (diff.inSeconds < 60) return '${diff.inSeconds}s ago';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    return '${diff.inDays}d ago';
+  }
+
+  /// แปลงชื่อ key ใน alarms (ตอนนี้ใช้ 4 field หลัก)
+  /// voltage, current, watt, oat
+  String _fieldLabel(String key) {
+    switch (key) {
+      case 'voltage':
+      case 'dcV':
+        return 'แรงดันไฟ ';
+      case 'current':
+      case 'dcA':
+        return 'กระแสไฟ ';
+      case 'watt':
+      case 'power':
+      case 'dcW':
+        return 'กำลังไฟ ';
+      case 'oat':
+        // เดิม: 'อุณหภูมิภายนอก '
+        return 'On Air Target ';
+      default:
+        return '$key ';
+    }
+  }
+
+  String _severityLabel(int v) {
+    switch (v) {
+      case 1:
+        return 'สูงผิดปกติ';
+      case 2:
+        return 'ต่ำผิดปกติ';
+      default:
+        return 'ผิดปกติ';
+    }
   }
 }

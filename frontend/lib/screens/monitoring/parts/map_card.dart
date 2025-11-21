@@ -1,17 +1,18 @@
+// lib/screens/monitoring/parts/map_card.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart' as latlng;
 
-import '../monitoring_mock.dart';
+typedef Json = Map<String, dynamic>;
 
 class MapCard extends StatelessWidget {
   final MapController mapController;
-  final List<MonitoringEntry> items;
+  final List<Json> items;
   final latlng.LatLng center;
   final Color border;
-  final void Function(MonitoringEntry, List<MonitoringEntry>)? onMarkerTap;
-  final bool Function(MonitoringEntry) isOnline;
+  final bool Function(Json) isOnline;
   final String? selectedId;
+  final void Function(Json, List<Json>)? onMarkerTap;
 
   const MapCard({
     super.key,
@@ -20,9 +21,34 @@ class MapCard extends StatelessWidget {
     required this.center,
     required this.border,
     required this.isOnline,
-    this.onMarkerTap,
     this.selectedId,
+    this.onMarkerTap,
   });
+
+  /// ต้องใช้ logic เดียวกับ MonitoringScreen._idOf
+  /// ใช้ meta.no / row['no'] เป็นตัวระบุ nodeId เช่น "no1", "no2"
+  String? _idOf(Json row) {
+    final meta = row['meta'];
+    if (meta is Map) {
+      final noMeta = meta['no'];
+      if (noMeta is int) {
+        return 'no$noMeta';
+      }
+      if (noMeta is String && noMeta.isNotEmpty) {
+        return noMeta;
+      }
+    }
+
+    final noRoot = row['no'];
+    if (noRoot is int) {
+      return 'no$noRoot';
+    }
+    if (noRoot is String && noRoot.isNotEmpty) {
+      return noRoot;
+    }
+
+    return null;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -48,23 +74,26 @@ class MapCard extends StatelessWidget {
           ),
           children: [
             TileLayer(
-              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', // ไม่ใช้ a/b/c subdomains
-              userAgentPackageName: 'com.mass.smart_city.smart_control',      // <-- ใส่ package จริงของแอป
-              // หากไม่ได้ตั้ง package name ใน pubspec ให้ใช้ headers แทน:
-              // additionalOptions: const {'User-Agent': 'SmartControl/1.0 (contact: you@example.com)'},
+              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+              userAgentPackageName: 'com.mass.smart_city.smart_control',
             ),
             MarkerLayer(
-              markers: items.map((e) {
-                final color = isOnline(e) ? Colors.green[600]! : Colors.red[600]!;
-                final isSel = selectedId != null && e.id == selectedId;
+              markers: items
+                  .where((e) => e['lat'] is num && e['lng'] is num)
+                  .map((e) {
+                final color =
+                    isOnline(e) ? Colors.green[600]! : Colors.red[600]!;
+                final id = _idOf(e);
+                final isSel = selectedId != null && id == selectedId;
 
-                // ขยายจุดให้ใหญ่ขึ้น (ปกติ 20, เลือก 24)
                 final double dotSize = isSel ? 24 : 20;
-                // พื้นที่ ripple (ปกติ 36, เลือก 56)
                 final double boxSize = isSel ? 56 : 36;
 
                 return Marker(
-                  point: latlng.LatLng(e.lat, e.lng),
+                  point: latlng.LatLng(
+                    (e['lat'] as num).toDouble(),
+                    (e['lng'] as num).toDouble(),
+                  ),
                   width: boxSize,
                   height: boxSize,
                   alignment: Alignment.center,
@@ -75,7 +104,8 @@ class MapCard extends StatelessWidget {
                     dotSize: dotSize,
                     rippleMin: 20,
                     rippleMax: 48,
-                    onTap: onMarkerTap == null ? null : () => onMarkerTap!(e, items),
+                    onTap:
+                        onMarkerTap == null ? null : () => onMarkerTap!(e, items),
                   ),
                 );
               }).toList(),
@@ -87,7 +117,6 @@ class MapCard extends StatelessWidget {
   }
 }
 
-/// วงคลื่นกระจายรอบๆ จุด (รองรับปรับขนาด)
 class _RippleMarker extends StatefulWidget {
   final Color color;
   final bool enabled;
@@ -118,7 +147,10 @@ class _RippleMarkerState extends State<_RippleMarker>
   @override
   void initState() {
     super.initState();
-    _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 1600));
+    _c = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1600),
+    );
     if (widget.enabled) _c.repeat();
   }
 
@@ -151,24 +183,25 @@ class _RippleMarkerState extends State<_RippleMarker>
             return Stack(
               alignment: Alignment.center,
               children: [
-                if (widget.enabled) ...List.generate(3, (i) {
-                  final t = ((_c.value + i / 3) % 1.0);
-                  final size = widget.rippleMin + t * (widget.rippleMax - widget.rippleMin);
-                  final opacity = (1.0 - t).clamp(0.0, 1.0);
-                  return Container(
-                    width: size,
-                    height: size,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: widget.color.withOpacity(0.12 * opacity),
-                      border: Border.all(
-                        color: widget.color.withOpacity(0.30 * opacity),
-                        width: 1.2,
+                if (widget.enabled)
+                  ...List.generate(3, (i) {
+                    final t = ((_c.value + i / 3) % 1.0);
+                    final size = widget.rippleMin +
+                        t * (widget.rippleMax - widget.rippleMin);
+                    final opacity = (1.0 - t).clamp(0.0, 1.0);
+                    return Container(
+                      width: size,
+                      height: size,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: widget.color.withOpacity(0.12 * opacity),
+                        border: Border.all(
+                          color: widget.color.withOpacity(0.30 * opacity),
+                          width: 1.2,
+                        ),
                       ),
-                    ),
-                  );
-                }),
-                // จุดกลาง
+                    );
+                  }),
                 Container(
                   width: widget.dotSize,
                   height: widget.dotSize,
