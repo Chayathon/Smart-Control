@@ -18,16 +18,23 @@ pipeline {
 
         stage('Deploy to target folder') {
             steps {
-                echo "==> Sync project to ${TARGET_DIR}"
+                echo "==> Sync selected folders & files to ${TARGET_DIR}"
                 sh """
                     mkdir -p ${TARGET_DIR}
-                    rsync -av --delete \
-                        --exclude='.git' \
-                        --exclude='node_modules' \
-                        ${WORKSPACE}/backend/ ${TARGET_DIR}/
+
+                    rsync -av --delete ${WORKSPACE}/backend/models/      ${TARGET_DIR}/models/
+                    rsync -av --delete ${WORKSPACE}/backend/routes/      ${TARGET_DIR}/routes/
+                    rsync -av --delete ${WORKSPACE}/backend/controllers/ ${TARGET_DIR}/controllers/
+                    rsync -av --delete ${WORKSPACE}/backend/services/    ${TARGET_DIR}/services/
+                    rsync -av --delete ${WORKSPACE}/backend/utils/       ${TARGET_DIR}/utils/
+                    rsync -av --delete ${WORKSPACE}/backend/ws/          ${TARGET_DIR}/ws/
+
+                    rsync -av ${WORKSPACE}/backend/package.json       ${TARGET_DIR}/
+                    rsync -av ${WORKSPACE}/backend/package-lock.json  ${TARGET_DIR}/ || true
                 """
             }
         }
+
 
         stage('Restart PM2') {
             steps {
