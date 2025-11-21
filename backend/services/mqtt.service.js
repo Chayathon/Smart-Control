@@ -198,26 +198,29 @@ function connectAndSend({
             // ตอนนี้เรารองรับแค่ set_stream ก่อน
             if (typeof json.set_stream === 'boolean') {
                 // แปลง zone -> 4 หลัก เช่น 1 -> "0001", 12 -> "0012"
-                const zoneStr = String(zone).padStart(4, '0');
-                const cmd = json.set_stream
-                    ? `$S${zoneStr}Y$`  // เปิดโซน
-                    : `$S${zoneStr}N$`; // ปิดโซน
+                // const zoneStr = String(zone).padStart(4, '0');
+                // const cmd = json.set_stream
+                //     ? `$S${zoneStr}Y$`  // เปิดโซน
+                //     : `$S${zoneStr}N$`; // ปิดโซน
 
-                // console.log('[RadioZone] MQTT zone command -> UART:', {
-                //     zone,
-                //     set_stream: json.set_stream,
-                //     uartCmd: cmd,
-                // });
+                // // console.log('[RadioZone] MQTT zone command -> UART:', {
+                // //     zone,
+                // //     set_stream: json.set_stream,
+                // //     uartCmd: cmd,
+                // // });
 
-                await sendZoneUartCommand(zone, cmd);
-                console.log('[RadioZone] sent UART command for zone', zone);
-                console.log('UART Command:', cmd);
+                // await sendZoneUartCommand(zone, cmd);
+                // console.log('[RadioZone] sent UART command for zone', zone);
+                // console.log('UART Command:', cmd);
 
-                // try {
-                //     await uart.writeString(cmd, 'ascii');
-                // } catch (err) {
-                //     console.error('[RadioZone] UART write error for zone command:', err.message);
-                // }
+                // // try {
+                // //     await uart.writeString(cmd, 'ascii');
+                // // } catch (err) {
+                // //     console.error('[RadioZone] UART write error for zone command:', err.message);
+                // // }
+                await sendZoneUartCommand(zone, json.set_stream);
+            } else {
+                console.warn('[RadioZone] ignore zone command: set_stream is not boolean:', json.set_stream);
             }
 
             // ถ้าจะรองรับ volume ในอนาคต เช่น json.volume
