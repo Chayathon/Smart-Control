@@ -3,7 +3,7 @@ pipeline {
 
     environment {
         // โฟลเดอร์ปลายทางบนเครื่อง Jenkins/Raspberry Pi
-        TARGET_DIR   = '/var/lib/jenkins/Backend_Node_radio'
+        TARGET_DIR   = '/opt/Backend_Node_Radio'
         PM2_APP_NAME = 'node-audio'   // ชื่อโปรเซส pm2
         PM2_BIN      = '/home/mass/.nvm/versions/node/v22.17.1/bin/pm2'
     }
