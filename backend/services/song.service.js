@@ -159,7 +159,7 @@ async function updateSongName(id, newName) {
     const isPlaylisted = await Playlist.exists({ id_song: id });
 
     if (isPlaylisted) {
-      const err = new Error('ไม่สามารถแก้ไขชื่อเพลงนี้ได้ เนื่องจากมีการใช้งานในเพลย์ลิสต์');
+      const err = new Error('ไม่สามารถแก้ไขชื่อเพลงนี้ได้ เนื่องจากมีการใช้งานในเพลย์ลิสต์แล้ว');
       err.status = 400;
       throw err;
     }
