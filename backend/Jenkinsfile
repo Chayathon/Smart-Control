@@ -21,15 +21,6 @@ pipeline {
                 checkout scm
             }
         }
-        
-        stage('Install dependencies') {
-            steps {
-                dir("${env.WORKSPACE}") {
-                    echo "==> Install npm dependencies"
-                    sh 'npm install'
-                }
-            }
-        }
 
         stage('Deploy to target folder') {
             steps {
