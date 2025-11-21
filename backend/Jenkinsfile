@@ -1,6 +1,10 @@
 pipeline {
     agent any
 
+    triggers {
+        pollSCM('H/5 * * * *')  // ตรวจสอบการเปลี่ยนแปลงทุก 5 นาที
+    }
+
     environment {
         // โฟลเดอร์ปลายทางบนเครื่อง Jenkins/Raspberry Pi
         TARGET_DIR   = '/opt/Backend_Node_Radio'
