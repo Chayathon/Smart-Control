@@ -82,18 +82,37 @@ pipeline {
                     script {
                         echo '🚀 Deploying to Raspberry Pi at ${DEPLOY_PATH}...'
                         
-                        // สร้างไดเรกทอรีถ้ายังไม่มี (ใช้ sudo)
+                        // ตรวจสอบและสร้างไดเรกทอรีพร้อมจัดการ permission
                         sh """
-                            sudo mkdir -p ${DEPLOY_PATH}
-                            sudo mkdir -p ${DEPLOY_PATH}/logs
-                            sudo mkdir -p ${DEPLOY_PATH}/data
-                            sudo mkdir -p ${DEPLOY_PATH}/storage
-                            sudo mkdir -p ${DEPLOY_PATH}/uploads
-                            sudo chown -R jenkins:jenkins ${DEPLOY_PATH}
+                            # ตรวจสอบว่า directory มีอยู่หรือไม่
+                            if [ ! -d "${DEPLOY_PATH}" ]; then
+                                echo "Creating deployment directory..."
+                                sudo mkdir -p ${DEPLOY_PATH}
+                                sudo chown -R jenkins:jenkins ${DEPLOY_PATH}
+                                sudo chmod -R 755 ${DEPLOY_PATH}
+                            else
+                                echo "Deployment directory exists, checking permissions..."
+                                # ตรวจสอบว่า jenkins เป็นเจ้าของหรือไม่
+                                if [ ! -w "${DEPLOY_PATH}" ]; then
+                                    echo "Fixing permissions..."
+                                    sudo chown -R jenkins:jenkins ${DEPLOY_PATH}
+                                    sudo chmod -R 755 ${DEPLOY_PATH}
+                                fi
+                            fi
+                            
+                            # สร้าง subdirectories
+                            mkdir -p ${DEPLOY_PATH}/logs
+                            mkdir -p ${DEPLOY_PATH}/data
+                            mkdir -p ${DEPLOY_PATH}/storage
+                            mkdir -p ${DEPLOY_PATH}/uploads
+                            
+                            echo "Directory ready: ${DEPLOY_PATH}"
+                            ls -la ${DEPLOY_PATH}/
                         """
                         
                         // คัดลอกไฟล์ไปยัง deployment directory (ยกเว้น node_modules)
                         sh """
+                            echo "Syncing files to ${DEPLOY_PATH}..."
                             rsync -av --delete \
                                 --exclude 'node_modules' \
                                 --exclude '.git' \
@@ -102,12 +121,15 @@ pipeline {
                                 --exclude 'storage/*' \
                                 --exclude 'uploads/*' \
                                 ./ ${DEPLOY_PATH}/
+                            echo "Files synced successfully"
                         """
                         
                         // Install dependencies ที่ deployment path
                         sh """
+                            echo "Installing dependencies..."
                             cd ${DEPLOY_PATH}
                             npm ci --production
+                            echo "Dependencies installed"
                         """
                     }
                 }
