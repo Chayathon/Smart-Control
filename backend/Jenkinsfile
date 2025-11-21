@@ -82,13 +82,14 @@ pipeline {
                     script {
                         echo '🚀 Deploying to Raspberry Pi at ${DEPLOY_PATH}...'
                         
-                        // สร้างไดเรกทอรีถ้ายังไม่มี
+                        // สร้างไดเรกทอรีถ้ายังไม่มี (ใช้ sudo)
                         sh """
-                            mkdir -p ${DEPLOY_PATH}
-                            mkdir -p ${DEPLOY_PATH}/logs
-                            mkdir -p ${DEPLOY_PATH}/data
-                            mkdir -p ${DEPLOY_PATH}/storage
-                            mkdir -p ${DEPLOY_PATH}/uploads
+                            sudo mkdir -p ${DEPLOY_PATH}
+                            sudo mkdir -p ${DEPLOY_PATH}/logs
+                            sudo mkdir -p ${DEPLOY_PATH}/data
+                            sudo mkdir -p ${DEPLOY_PATH}/storage
+                            sudo mkdir -p ${DEPLOY_PATH}/uploads
+                            sudo chown -R jenkins:jenkins ${DEPLOY_PATH}
                         """
                         
                         // คัดลอกไฟล์ไปยัง deployment directory (ยกเว้น node_modules)
@@ -197,11 +198,15 @@ pipeline {
             echo '❌ Deployment failed!'
             
             sh """
-                cd ${DEPLOY_PATH}
-                echo "PM2 Status:"
-                pm2 list
-                echo "\nPM2 Logs (last 50 lines):"
-                pm2 logs ${PM2_APP_NAME} --lines 50 --nostream || true
+                if [ -d ${DEPLOY_PATH} ]; then
+                    cd ${DEPLOY_PATH}
+                    echo "PM2 Status:"
+                    pm2 list || true
+                    echo "\nPM2 Logs (last 50 lines):"
+                    pm2 logs ${PM2_APP_NAME} --lines 50 --nostream || true
+                else
+                    echo "Deploy directory does not exist yet"
+                fi
             """
         }
         always {
