@@ -49,10 +49,10 @@ function connectAndSend({
             else console.log('📥 Subscribed to mass-radio/+/command');
         });
 
-        client.subscribe(commandTopic, { qos: 1 }, (err) => {
-            if (err) console.error('❌ Subscribe error for mass-radio/all/command:', err.message);
-            else console.log('📥 Subscribed to mass-radio/all/command');
-        });
+        // client.subscribe(commandTopic, { qos: 1 }, (err) => {
+        //     if (err) console.error('❌ Subscribe error for mass-radio/all/command:', err.message);
+        //     else console.log('📥 Subscribed to mass-radio/all/command');
+        // });
 
         client.subscribe(statusTopic, { qos: 1 }, (err) => {
             if (err) console.error('❌ Subscribe error:', err.message);
@@ -110,34 +110,45 @@ function connectAndSend({
         }
     }
 
-    async function sendVolUartCommand(zone, set_Volume) {
+    async function sendVolUartCommand(zone, set_volume) {
         const zoneStr = String(zone).padStart(4, '0');
-        const Vol = set_Volume
-             `$V${zoneStr}${Vol}$`;  // เพิ่มเลดเสียง
-        consoel.log("dddddddddddddddddddddddddddddddddddddddd", Vol);   
-        const now = Date.now();
-        const key = `${baseCmd}`;
 
-        // กันยิงซ้ำในเวลาใกล้ ๆ กัน (เช่น จาก 2 path พร้อมกัน)
+        // clamp 0–21
+        let vol = Number(set_volume);
+        if (!Number.isFinite(vol)) {
+            console.warn('[RadioZone] invalid volume value:', set_volume);
+            return;
+        }
+        if (vol < 0) vol = 0;
+        if (vol > 21) vol = 21;
+
+        const vol2 = String(vol).padStart(2, '0');  // 4 -> "04"
+        const baseCmd = `$V${zoneStr}${vol2}$`;     // ex. $V011204$
+
+        const now = Date.now();
+        const key = baseCmd;
+
+        // กันยิงซ้ำในเวลาใกล้ ๆ กัน (เหมือน set_stream)
         if (lastUartCmd === key && (now - lastUartTs) < 300) {
-            console.log('[RadioZone] skip duplicate UART cmd:', key);
+            console.log('[RadioZone] skip duplicate UART cmd (VOL):', key);
             return;
         }
         lastUartCmd = key;
         lastUartTs = now;
 
-        console.log('[RadioZone] MQTT Vol command -> UART:', {
+        console.log('[RadioZone] MQTT volume command -> UART:', {
             zone,
-            set_stream,
-            uartCmd: Vol,
+            volume: vol,
+            uartCmd: baseCmd,
         });
 
         try {
-            await uart.writeString(Vol, 'ascii');
+            await uart.writeString(baseCmd, 'ascii');
         } catch (err) {
-            console.error('[RadioZone] UART write error for zone command:', err.message);
+            console.error('[RadioZone] UART write error for volume command:', err.message);
         }
     }
+
 
     client.on('message', async (topic, message, packet) => {
 
@@ -237,20 +248,23 @@ function connectAndSend({
                 } catch (err) {
                     console.error('[RadioZone] UART write error for ALL command:', err.message);
                 }
-                // set_Voluem (ทุกโซน)
-            } else if ( typeof json.set_Volume === 'number') { 
+                // set_voluem (ทุกโซน)
+            } else if (typeof json.set_volume === 'number') { 
                 console.log(
-                    '[RadioZone] ALL command -> UART (zone=1111):',
-                    { set_Volume: json.set_stream }
+                    '[RadioZone] ALL command -> UART (zone=1111, volume):',
+                    { set_volume: json.set_volume }
                 );
 
                 try {
-                    await sendVolUartCommand(allZoneCode, json.set_Volume);
+                    await sendVolUartCommand(allZoneCode, json.set_volume);
                 } catch (err) {
-                    console.error('[RadioZone] UART write error for ALL command:', err.message);
+                    console.error('[RadioZone] UART write error for ALL volume command:', err.message);
                 }
 
+            } else if (jason.get_status) {
+                return;
             } else {
+
                 console.warn('[RadioZone] ignore ALL command: set_stream/set_Volume missing or invalid:', json);
             }
             return;            
@@ -295,10 +309,10 @@ function connectAndSend({
                 // //     console.error('[RadioZone] UART write error for zone command:', err.message);
                 // // }
                 await sendZoneUartCommand(zone, json.set_stream);
-            } else if ( typeof json.set_Volume === 'number') {
-                await sendVolUartCommand(zone, json.set_Volume);
+            } else if ( typeof json.set_volume === 'number') {
+                await sendVolUartCommand(zone, json.set_volume);
             } else {
-                console.warn('[RadioZone] ignore zone command: set_stream/set_Volume missing or invalid:', json);
+                console.warn('[RadioZone] ignore zone command: set_stream/set_volume missing or invalid:', json);
             }
             return;
         }
