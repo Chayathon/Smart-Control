@@ -261,7 +261,7 @@ function connectAndSend({
                     console.error('[RadioZone] UART write error for ALL volume command:', err.message);
                 }
 
-            } else if (jason.get_status) {
+            } else if (json.get_status) {
                 return;
             } else {
 
