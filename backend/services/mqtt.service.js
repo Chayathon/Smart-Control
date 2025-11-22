@@ -3,7 +3,7 @@ const { broadcast } = require('../ws/wsServer');
 const Device = require('../models/Device');
 const DeviceData = require('../models/DeviceData');
 const uart = require('./uart.handle');
-const deviceDataService = require('../services/deviceData.service');
+// const deviceDataService = require('../services/deviceData.service');
 
 
 let deviceStatus = [];
@@ -49,10 +49,10 @@ function connectAndSend({
             else console.log('📥 Subscribed to mass-radio/+/command');
         });
 
-        // client.subscribe('mass-radio/+/cmd', { qos: 1 }, (err) => {
-        //     if (err) console.error('❌ Subscribe error for zone/cmd:', err.message);
-        //     else console.log('📥 Subscribed to mass-radio/+/cmd');
-        // });
+        client.subscribe(commandTopic, { qos: 1 }, (err) => {
+            if (err) console.error('❌ Subscribe error for mass-radio/all/command:', err.message);
+            else console.log('📥 Subscribed to mass-radio/all/command');
+        });
 
         client.subscribe(statusTopic, { qos: 1 }, (err) => {
             if (err) console.error('❌ Subscribe error:', err.message);
@@ -64,9 +64,9 @@ function connectAndSend({
             else console.log(`📥 Subscribed to mass-radio/select/command`);
         });
 
-        setTimeout(() => {
-            publish(commandTopic, payload);
-        }, 1000);
+        // setTimeout(() => {
+        //     publish(commandTopic, payload);
+        // }, 1000);
 
         setInterval(() => {
             publish(commandTopic, { get_status: true });
@@ -182,8 +182,45 @@ function connectAndSend({
             return;
         }
 
+        
+
         // ---------- 2) mass-radio/zoneX/command -> สั่ง UART ----------
+        if (topic === 'mass-radio/all/command') {
+            let json;
+            try {
+                json = JSON.parse(payloadStr);
+            } catch (e) {
+                console.error('[MQTT] invalid JSON on all/command:', e.message, 'payload =', payloadStr);
+                return;
+            }
+
+            // รองรับเฉพาะ set_stream (เปิด/ปิดทุกโซน)
+            if (typeof json.set_stream === 'boolean') {
+                const allZoneCode = 1111; // ใช้ 1111 ให้กลายเป็น $S1111Y$ / $S1111N$
+                console.log(
+                    '[RadioZone] ALL command -> UART (zone=1111):',
+                    { set_stream: json.set_stream }
+                );
+
+                try {
+                    await sendZoneUartCommand(allZoneCode, json.set_stream);
+                } catch (err) {
+                    console.error('[RadioZone] UART write error for ALL command:', err.message);
+                }
+            } else {
+                // ถ้าเป็น get_status หรือฟิลด์อื่น ๆ ตอนนี้ยังไม่ map → ข้ามไป
+                console.log(
+                    '[RadioZone] ALL command received but set_stream not boolean, ignore. set_stream =',
+                    json.set_stream
+                );
+            }
+
+            return;
+        }
+
+        // ---------- 3) mass-radio/zoneX/command -> สั่ง UART ----------
         const cmdMatch = topic.match(/^mass-radio\/zone(\d+)\/command$/);
+
         if (cmdMatch) {
             const zone = parseInt(cmdMatch[1], 10);
 
@@ -253,7 +290,6 @@ function connectAndSend({
             }
             return;
         }
-
         
 
         const match = topic.match(/mass-radio\/([^/]+)\/status/);
@@ -349,13 +385,14 @@ function publish(topic, payload, opts = { qos: 1, retain: false }) {
 function upsertDeviceStatus(no, data) {
     const now = Date.now();
     const index = deviceStatus.findIndex(d => d.zone === no);
-
+    
     if (index >= 0) {
         deviceStatus[index] = { zone: no, data, lastSeen: now };
     } else {
         deviceStatus.push({ zone: no, data, lastSeen: now });
     }
 }
+
 
 async function updateDeviceInDB(no, data) {
     try {
