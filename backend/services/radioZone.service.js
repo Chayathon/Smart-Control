@@ -45,8 +45,8 @@ function buildUartCommandFromApp(topic, payload) {
     // proto บอก max = 21, ปลอดภัยเราก็ clamp 0–21
     if (vol < 0) vol = 0;
     if (vol > 21) vol = 21;
-    const vol2 = String(vol).padStart(2, '0'); // 15 -> "15"
-    return `$V${zone4}${vol2}$`;
+    // const vol = String(vol).padStart(2, '0'); // 15 -> "15"
+    return `$V${zone4}${vol}$`;
   }
 
   // 3) ขอ status ทุกโซนหรือโซนเดียว
@@ -116,9 +116,9 @@ function parseStatusFrame(rawStr) {
   m = s.match(/^\$V(\d{4})(\d{2})\$/);
   if (m) {
     const zone4 = m[1];
-    const vol2 = m[2];
+    const vol = m[2];
     const zoneNum = parseInt(zone4, 10);
-    const volume = parseInt(vol2, 10);
+    const volume = parseInt(vol, 10);
 
     return {
       type: 'volume',
