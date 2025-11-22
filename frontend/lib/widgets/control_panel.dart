@@ -6,7 +6,6 @@ import 'package:smart_control/services/mic_stream_service.dart';
 import 'package:smart_control/services/stream_service.dart';
 import 'package:smart_control/core/alert/app_snackbar.dart';
 import 'package:smart_control/widgets/buttons/action_button.dart';
-import 'package:smart_control/widgets/dialogs/alert_dialog.dart';
 import 'package:smart_control/widgets/inputs/text_field_box.dart';
 import 'package:smart_control/widgets/loading_overlay.dart';
 import 'package:smart_control/core/services/StreamStatusService.dart';
@@ -346,17 +345,21 @@ class _ControlPanelState extends State<ControlPanel> {
       final api = await ApiService.private();
       final devices = await api.get('/device') as List<dynamic>;
       PlaybackMode mode = playbackMode;
-      bool streamEnabledFromDb = streamEnabled;
+      bool streamEnabledFromDb = false;
+
+      // ตรวจสอบทุกโซน ถ้ามีโซนใดโซนหนึ่งเปิดใช้งานถือว่าระบบถ่ายทอดเปิดอยู่
+      for (final device in devices) {
+        final streamEnabledValue = device['status']?['stream_enabled'];
+        if (streamEnabledValue == true) {
+          streamEnabledFromDb = true;
+          break;
+        }
+      }
+
       if (devices.isNotEmpty) {
         final first = devices.first;
         final m = (first['status']?['playback_mode'] ?? 'none').toString();
         if (m.isNotEmpty) mode = _parseMode(m);
-
-        // Get stream_enabled status
-        final streamEnabledValue = first['status']?['stream_enabled'];
-        if (streamEnabledValue is bool) {
-          streamEnabledFromDb = streamEnabledValue;
-        }
       }
 
       final engine = await api.get('/stream/status');
