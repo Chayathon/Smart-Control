@@ -122,8 +122,7 @@ function connectAndSend({
         if (vol < 0) vol = 0;
         if (vol > 21) vol = 21;
 
-        const vol2 = String(vol).padStart(2, '0');  // 4 -> "04"
-        const baseCmd = `$V${zoneStr}${vol2}$`;     // ex. $V011204$
+        const baseCmd = `$V${zoneStr}${vol}$`;     // ex. $V011204$
 
         const now = Date.now();
         const key = baseCmd;
@@ -234,41 +233,47 @@ function connectAndSend({
                 return;
             }
 
-            // set_stream (เปิด/ปิดทุกโซน)
-            const allZoneCode = 1111; 
-            if (typeof json.set_stream === 'boolean') {
-                // ใช้ 1111 ให้กลายเป็น $S1111Y$ / $S1111N$
-                console.log(
-                    '[RadioZone] ALL command -> UART (zone=1111):',
-                    { set_stream: json.set_stream }
-                );
+            const allZoneCode = 1111;
 
-                try {
-                    await sendZoneUartCommand(allZoneCode, json.set_stream);
-                } catch (err) {
-                    console.error('[RadioZone] UART write error for ALL command:', err.message);
-                }
-                // set_voluem (ทุกโซน)
-            } else if (typeof json.set_volume === 'number') { 
-                console.log(
-                    '[RadioZone] ALL command -> UART (zone=1111, volume):',
-                    { set_volume: json.set_volume }
-                );
-
-                try {
-                    await sendVolUartCommand(allZoneCode, json.set_volume);
-                } catch (err) {
-                    console.error('[RadioZone] UART write error for ALL volume command:', err.message);
-                }
-
-            } else if (json.get_status) {
+            // 1) เคส get_status จาก backend เอง → แค่ poll ไม่ต้องไปยุ่ง UART
+            if (json.get_status) {
+                console.log('[RadioZone] ALL get_status polling, skip UART');
                 return;
-            } else {
-
-                console.warn('[RadioZone] ignore ALL command: set_stream/set_Volume missing or invalid:', json);
             }
-            return;            
+
+            // 2) เปิด/ปิดทุกโซน
+            if (typeof json.set_stream === 'boolean') {
+                console.log(
+                '[RadioZone] ALL command -> UART (zone=1111, set_stream):',
+                { set_stream: json.set_stream }
+                );
+
+                try {
+                await sendZoneUartCommand(allZoneCode, json.set_stream);
+                } catch (err) {
+                console.error('[RadioZone] UART write error for ALL command:', err.message);
+                }
+
+            // 3) ปรับ volume ทุกโซน
+            } else if (typeof json.set_volume === 'number') {
+                console.log(
+                '[RadioZone] ALL command -> UART (zone=1111, volume):',
+                { set_volume: json.set_volume }
+                );
+
+                try {
+                await sendVolUartCommand(allZoneCode, json.set_volume);
+                } catch (err) {
+                console.error('[RadioZone] UART write error for ALL volume command:', err.message);
+                }
+
+            } else {
+                console.warn('[RadioZone] ignore ALL command: set_stream/set_volume/get_status missing or invalid:', json);
+            }
+
+            return;
         }
+
         
 
         // ---------- 3) mass-radio/zoneX/command -> สั่ง UART ----------
