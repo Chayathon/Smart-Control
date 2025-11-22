@@ -226,8 +226,8 @@ function onRxFrame(frameBuf) {
 
   if (type === 'stream') {
     const topicStatus = isAll
-      ? 'mass-radio/all/status'
-      : `mass-radio/zone${zone}/status`;
+      ? 'mass-radio/all/command'
+      : `mass-radio/zone${zone}/command`;
 
     const payloadStatus = {
       zone,
