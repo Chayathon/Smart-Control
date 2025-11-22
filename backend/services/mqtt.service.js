@@ -286,7 +286,7 @@ function connectAndSend({
             }
 
             if (json.get_status) {
-                publishAndWaitByZone(topic, { get_status: true });
+                // publishAndWaitByZone(topic, { get_status: true });
                 console.log("Return get_status for zone", zone);
                 return;
             }
