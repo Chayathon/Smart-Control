@@ -110,6 +110,34 @@ function connectAndSend({
         }
     }
 
+    async function sendVolUartCommand(zone, set_Volume) {
+        const zoneStr = String(zone).padStart(4, '0');
+        const Vol = set_Volume
+             `$V${zoneStr}${Vol}$`;  // เพิ่มเลดเสียง
+        consoel.log("dddddddddddddddddddddddddddddddddddddddd", Vol);   
+        const now = Date.now();
+        const key = `${baseCmd}`;
+
+        // กันยิงซ้ำในเวลาใกล้ ๆ กัน (เช่น จาก 2 path พร้อมกัน)
+        if (lastUartCmd === key && (now - lastUartTs) < 300) {
+            console.log('[RadioZone] skip duplicate UART cmd:', key);
+            return;
+        }
+        lastUartCmd = key;
+        lastUartTs = now;
+
+        console.log('[RadioZone] MQTT Vol command -> UART:', {
+            zone,
+            set_stream,
+            uartCmd: Vol,
+        });
+
+        try {
+            await uart.writeString(Vol, 'ascii');
+        } catch (err) {
+            console.error('[RadioZone] UART write error for zone command:', err.message);
+        }
+    }
 
     client.on('message', async (topic, message, packet) => {
 
@@ -185,7 +213,8 @@ function connectAndSend({
         
 
         // ---------- 2) mass-radio/zoneX/command -> สั่ง UART ----------
-        if (topic === 'mass-radio/all/command') {
+        const allMatch = topic.match(/^mass-radio\/all\/command$/);
+        if (allMatch) {
             let json;
             try {
                 json = JSON.parse(payloadStr);
@@ -194,9 +223,10 @@ function connectAndSend({
                 return;
             }
 
-            // รองรับเฉพาะ set_stream (เปิด/ปิดทุกโซน)
+            // set_stream (เปิด/ปิดทุกโซน)
+            const allZoneCode = 1111; 
             if (typeof json.set_stream === 'boolean') {
-                const allZoneCode = 1111; // ใช้ 1111 ให้กลายเป็น $S1111Y$ / $S1111N$
+                // ใช้ 1111 ให้กลายเป็น $S1111Y$ / $S1111N$
                 console.log(
                     '[RadioZone] ALL command -> UART (zone=1111):',
                     { set_stream: json.set_stream }
@@ -207,16 +237,25 @@ function connectAndSend({
                 } catch (err) {
                     console.error('[RadioZone] UART write error for ALL command:', err.message);
                 }
-            } else {
-                // ถ้าเป็น get_status หรือฟิลด์อื่น ๆ ตอนนี้ยังไม่ map → ข้ามไป
+                // set_Voluem (ทุกโซน)
+            } else if ( typeof json.set_Volume === 'number') { 
                 console.log(
-                    '[RadioZone] ALL command received but set_stream not boolean, ignore. set_stream =',
-                    json.set_stream
+                    '[RadioZone] ALL command -> UART (zone=1111):',
+                    { set_Volume: json.set_stream }
                 );
-            }
 
-            return;
+                try {
+                    await sendVolUartCommand(allZoneCode, json.set_Volume);
+                } catch (err) {
+                    console.error('[RadioZone] UART write error for ALL command:', err.message);
+                }
+
+            } else {
+                console.warn('[RadioZone] ignore ALL command: set_stream/set_Volume missing or invalid:', json);
+            }
+            return;            
         }
+        
 
         // ---------- 3) mass-radio/zoneX/command -> สั่ง UART ----------
         const cmdMatch = topic.match(/^mass-radio\/zone(\d+)\/command$/);
@@ -232,7 +271,7 @@ function connectAndSend({
                 return;
             }
 
-            // ตอนนี้เรารองรับแค่ set_stream ก่อน
+            // set_stream (เปิด/ปิดโซน)
             if (typeof json.set_stream === 'boolean') {
                 // แปลง zone -> 4 หลัก เช่น 1 -> "0001", 12 -> "0012"
                 // const zoneStr = String(zone).padStart(4, '0');
@@ -256,14 +295,11 @@ function connectAndSend({
                 // //     console.error('[RadioZone] UART write error for zone command:', err.message);
                 // // }
                 await sendZoneUartCommand(zone, json.set_stream);
+            } else if ( typeof json.set_Volume === 'number') {
+                await sendVolUartCommand(zone, json.set_Volume);
             } else {
-                console.warn('[RadioZone] ignore zone command: set_stream is not boolean:', json.set_stream);
+                console.warn('[RadioZone] ignore zone command: set_stream/set_Volume missing or invalid:', json);
             }
-
-            // ถ้าจะรองรับ volume ในอนาคต เช่น json.volume
-            // ก็สามารถทำ mapping เพิ่มตรงนี้ได้ ($V000115$ ฯลฯ)
-
-
             return;
         }
 
