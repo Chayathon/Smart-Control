@@ -63,7 +63,7 @@ class _SplashScreenState extends State<SplashScreen>
               const Text(
                 "Smart Control",
                 style: TextStyle(
-                  fontSize: 28,
+                  fontSize: 36,
                   fontWeight: FontWeight.bold,
                   color: Colors.blue,
                 ),
@@ -74,16 +74,8 @@ class _SplashScreenState extends State<SplashScreen>
                   TypewriterAnimatedText(
                     "เปลี่ยนบ้านธรรมดาให้กลายเป็น Smart Living",
                     textStyle: const TextStyle(
-                      fontSize: 16,
+                      fontSize: 18,
                       color: Colors.black87,
-                    ),
-                    speed: const Duration(milliseconds: 50),
-                  ),
-                  TypewriterAnimatedText(
-                    "ควบคุมทุกสิ่งได้ง่ายดาย แค่ปลายนิ้วสัมผัส",
-                    textStyle: const TextStyle(
-                      fontSize: 16,
-                      color: Colors.black54,
                     ),
                     speed: const Duration(milliseconds: 50),
                   ),
