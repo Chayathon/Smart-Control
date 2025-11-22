@@ -1,6 +1,6 @@
 // controllers/mqtt.controller.js
 const mqttSvc = require('../services/mqtt.service');
-const radioZone = require('../services/radioZone.service');
+// const radioZone = require('../services/radioZone.service');
 
 /**
  * รับจากแอปเป็น JSON:
