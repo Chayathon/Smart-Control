@@ -23,6 +23,7 @@ function connectAndSend({
     statusTopic = 'mass-radio/+/status',
     dataTopic = 'mass-radio/+/data',
     payload = { set_stream: true }
+    
 } = {}) {
     deviceStatus = [];
     seenZones.clear();
@@ -281,6 +282,12 @@ function connectAndSend({
                 json = JSON.parse(payloadStr);
             } catch (e) {
                 console.error('[MQTT] invalid JSON on zone command:', e.message, 'payload =', payloadStr);
+                return;
+            }
+
+            if (json.get_status) {
+                publishAndWaitByZone(topic, { get_status: true });
+                console.log("Return get_status for zone", zone);
                 return;
             }
 
