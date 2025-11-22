@@ -122,8 +122,7 @@ function connectAndSend({
         if (vol < 0) vol = 0;
         if (vol > 21) vol = 21;
 
-        const vol2 = String(vol).padStart(2, '0');  // 4 -> "04"
-        const baseCmd = `$V${zoneStr}${vol2}$`;     // ex. $V011204$
+        const baseCmd = `$V${zoneStr}${vol}$`;     // ex. $V011204$
 
         const now = Date.now();
         const key = baseCmd;
@@ -234,6 +233,8 @@ function connectAndSend({
                 return;
             }
 
+            if (json.get_status) return; // ข้ามคำสั่ง get_status
+
             // set_stream (เปิด/ปิดทุกโซน)
             const allZoneCode = 1111; 
             if (typeof json.set_stream === 'boolean') {
@@ -261,8 +262,6 @@ function connectAndSend({
                     console.error('[RadioZone] UART write error for ALL volume command:', err.message);
                 }
 
-            } else if (json.get_status) {
-                return;
             } else {
 
                 console.warn('[RadioZone] ignore ALL command: set_stream/set_Volume missing or invalid:', json);
