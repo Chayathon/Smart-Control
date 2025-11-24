@@ -28,7 +28,6 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   @override
   void initState() {
     super.initState();
-    // Load schedules after the first frame is rendered
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadSchedules();
     });
