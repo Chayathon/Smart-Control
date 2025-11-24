@@ -12,4 +12,8 @@ router.post('/bulk', authenticateToken, ctrl.updateMultipleSettings);
 
 router.post('/reset', authenticateToken, ctrl.resetSettings);
 
+// Stream configuration endpoints
+router.get('/stream-config', authenticateToken, ctrl.getStreamConfig);
+router.put('/stream-config', authenticateToken, ctrl.updateStreamConfig);
+
 module.exports = router;

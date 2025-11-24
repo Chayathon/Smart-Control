@@ -108,10 +108,76 @@ async function resetSettings(req, res) {
     }
 }
 
+// Stream configuration endpoint (for mic streaming)
+async function getStreamConfig(req, res) {
+    try {
+        const [sampleRate, micVolume] = await Promise.all([
+            settingsService.getSetting('sampleRate'),
+            settingsService.getSetting('micVolume'),
+        ]);
+
+        res.json({
+            status: 'success',
+            data: {
+                sampleRate: parseInt(sampleRate) || 44100,
+                micVolume: parseFloat(micVolume) || 1.5,
+            }
+        });
+    } catch (error) {
+        console.error('Error getting stream config:', error);
+        res.status(500).json({
+            status: 'error',
+            message: error.message || 'Failed to get stream config'
+        });
+    }
+}
+
+async function updateStreamConfig(req, res) {
+    try {
+        const { sampleRate, micVolume } = req.body;
+        const updates = {};
+
+        if (sampleRate !== undefined) {
+            updates.sampleRate = parseInt(sampleRate) || 44100;
+        }
+        if (micVolume !== undefined) {
+            const num = Number(micVolume);
+            updates.micVolume = !Number.isNaN(num) ? Math.round(num * 10) / 10 : 1.5;
+        }
+
+        if (Object.keys(updates).length === 0) {
+            return res.status(400).json({
+                status: 'error',
+                message: 'No valid settings provided'
+            });
+        }
+
+        await settingsService.updateMultipleSettings(updates);
+        
+        // Clear mic stream cache
+        const micStream = require('../services/micStream.service');
+        micStream.clearCache();
+
+        res.json({
+            status: 'success',
+            data: updates,
+            message: 'Stream config updated successfully'
+        });
+    } catch (error) {
+        console.error('Error updating stream config:', error);
+        res.status(500).json({
+            status: 'error',
+            message: error.message || 'Failed to update stream config'
+        });
+    }
+}
+
 module.exports = {
     getAllSettings,
     getSetting,
     updateSetting,
     updateMultipleSettings,
     resetSettings,
+    getStreamConfig,
+    updateStreamConfig,
 };

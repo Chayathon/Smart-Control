@@ -2,6 +2,7 @@ const Schedule = require('../models/Schedule');
 const Song = require('../models/Song');
 const Device = require('../models/Device');
 const stream = require('./stream.service');
+const micStream = require('./micStream.service');
 const bus = require('./bus');
 const path = require('path');
 
@@ -90,10 +91,10 @@ async function checkAndPlaySchedules() {
 
 async function checkPriority() {
     try {
-        // เช็คว่าไมค์เปิดอยู่หรือไม่
-        const isMicActive = stream.isMicActive();
+        // Check if microphone is active (use micStream service)
+        const isMicActive = micStream.isActive();
         
-        // Priority 1: ถ้าไมค์เปิดอยู่ ให้ข้าม schedule
+        // Priority 1: If mic is active, skip schedule
         if (isMicActive) {
             return { allowed: false, reason: 'Microphone is active (Priority 1)' };
         }

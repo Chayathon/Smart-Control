@@ -10,6 +10,7 @@ const Song = require('../models/Song');
 const Playlist = require('../models/Playlist');
 const settingsService = require('./settings.service');
 const Device = require('../models/Device');
+const micStream = require('./micStream.service');
 
 // ไฟล์เก็บสถานะโซนที่เปิดอยู่ก่อนหน้า
 const ENABLED_ZONES_FILE = path.join(__dirname, '../storage/enabled-zones.json');
@@ -53,7 +54,6 @@ let currentDisplayName = null;
 
 let stopping = false;
 let starting = false;
-let activeWs = null;
 
 let playlistQueue = [];
 let currentIndex = -1;
@@ -75,8 +75,8 @@ const ytdlpCache = new Map();
 const isAlive = (p) => !!p && p.exitCode === null;
 
 function isMicActive() {
-    // เช็คว่าไมค์เปิดอยู่โดยดูจาก activeMode หรือ activeWs
-    return activeMode === 'mic' || (activeWs && activeWs.readyState === 1);
+    // Delegate to micStream service
+    return micStream.isActive();
 }
 
 async function checkStreamEnabled() {
@@ -1093,6 +1093,15 @@ async function disableStream() {
     
     mqttService.publish('mass-radio/all/command', { set_stream: false });
     return { success: true, message: 'Disabled stream for all zones' };
+}
+
+// Wrapper functions for backward compatibility
+async function startMicStream(ws) {
+    return await micStream.start(ws);
+}
+
+async function stopMicStream() {
+    return await micStream.stop();
 }
 
 module.exports = {

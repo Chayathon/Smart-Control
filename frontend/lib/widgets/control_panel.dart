@@ -17,11 +17,8 @@ enum PlaybackMode { none, playlist, file, youtube, schedule }
 // Constants
 class _ControlPanelConstants {
   static const Duration controlsCooldown = Duration(seconds: 8);
-  static const Duration micCooldown = Duration(seconds: 2);
   static const Duration refreshDebounce = Duration(milliseconds: 300);
   static const Duration minRefreshInterval = Duration(milliseconds: 150);
-  static const int micStopDelayMs = 10000;
-  static const int micStartDelayMs = 5000;
   static const double defaultMicVolume = 1.5;
 }
 
@@ -42,8 +39,6 @@ class _ControlPanelState extends State<ControlPanel> {
   bool streamEnabled = true;
   double micVolume = _ControlPanelConstants.defaultMicVolume;
 
-  bool _micUiDisabled = false;
-  Timer? _micUiCooldownTimer;
   // Debounced/throttled status refresh helpers
   Timer? _refreshDebounce;
   bool _refreshInFlight = false;
@@ -93,12 +88,6 @@ class _ControlPanelState extends State<ControlPanel> {
       if (!mounted) return;
       setState(() {
         micOn = isRecording;
-        if (isRecording) {
-          _micUiCooldownTimer?.cancel();
-          _micUiDisabled = true;
-        } else {
-          _startMicControlsCooldown();
-        }
       });
     };
 
@@ -497,7 +486,6 @@ class _ControlPanelState extends State<ControlPanel> {
   @override
   void dispose() {
     _localControlsCooldownTimer?.cancel();
-    _micUiCooldownTimer?.cancel();
     _refreshDebounce?.cancel();
     _playlist.state.removeListener(_syncFromPlaylistState);
     if (micOn && !_micService.isStopping) {
@@ -509,26 +497,15 @@ class _ControlPanelState extends State<ControlPanel> {
   Future<void> _toggleMic() async {
     if (_micService.isStopping) return;
 
-    final start = DateTime.now();
     LoadingOverlay.show(context);
     try {
       if (micOn) {
+        // Stop mic
         await _micService.stopStreaming();
-        await _delayForRemainingTime(
-          start,
-          _ControlPanelConstants.micStopDelayMs,
-        );
-        if (mounted) {
-          setState(() {
-            micOn = false;
-            _startMicControlsCooldown();
-          });
-        }
         AppSnackbar.success('ไมโครโฟน', 'ปิดไมโครโฟนแล้ว');
       } else {
-        if (playbackMode == PlaybackMode.none) {
-          // No pre-action required; open mic immediately
-        } else {
+        // Pause or stop active playback before starting mic
+        if (playbackMode != PlaybackMode.none) {
           try {
             if (playbackMode == PlaybackMode.playlist ||
                 playbackMode == PlaybackMode.file) {
@@ -537,54 +514,26 @@ class _ControlPanelState extends State<ControlPanel> {
                 playbackMode == PlaybackMode.schedule) {
               await _streamService.stop();
             }
-          } catch (_) {
-            // Continue attempting to open mic even if pre-action fails
+            // Wait for backend to process stop/pause
+            await Future.delayed(const Duration(seconds: 3));
+          } catch (e) {
+            print('⚠️ Failed to stop/pause before mic: $e');
           }
-
-          await Future.delayed(_ControlPanelConstants.controlsCooldown);
         }
 
+        // Start mic stream
         final success = await _micService.startStreaming(_micServerUrl);
 
-        final int targetMs = playbackMode == PlaybackMode.none
-            ? _ControlPanelConstants.micStartDelayMs
-            : _ControlPanelConstants.micStopDelayMs;
-        await _delayForRemainingTime(start, targetMs);
-
         if (success) {
-          if (mounted) {
-            setState(() {
-              micOn = true;
-              _micUiCooldownTimer?.cancel();
-              _micUiDisabled = true;
-            });
-          }
           AppSnackbar.success('ไมโครโฟน', 'เปิดไมโครโฟนแล้ว');
         } else {
           AppSnackbar.error('ข้อผิดพลาด', 'ไม่สามารถเปิดไมโครโฟนได้');
         }
       }
+    } catch (e) {
+      AppSnackbar.error('ข้อผิดพลาด', 'เกิดข้อผิดพลาด: $e');
     } finally {
       LoadingOverlay.hide();
-    }
-  }
-
-  void _startMicControlsCooldown() {
-    _micUiCooldownTimer?.cancel();
-    _micUiDisabled = true;
-    _micUiCooldownTimer = Timer(_ControlPanelConstants.micCooldown, () {
-      if (!mounted) return;
-      setState(() {
-        _micUiDisabled = false;
-      });
-    });
-  }
-
-  Future<void> _delayForRemainingTime(DateTime start, int targetMs) async {
-    final elapsed = DateTime.now().difference(start).inMilliseconds;
-    final remain = targetMs - elapsed;
-    if (remain > 0) {
-      await Future.delayed(Duration(milliseconds: remain));
     }
   }
 
@@ -1008,11 +957,8 @@ class _ControlPanelState extends State<ControlPanel> {
 
   @override
   Widget build(BuildContext context) {
-    final accent = Colors.blue[700]!;
-
     final bool hasActiveMode =
         playbackMode != PlaybackMode.none || isPlaying || isPaused;
-    final bool controlsDisabled = _micUiDisabled && !micOn;
 
     return Column(
       children: [
@@ -1039,7 +985,7 @@ class _ControlPanelState extends State<ControlPanel> {
                   ),
                   const SizedBox(width: 24),
                   _CircularToggleButton(
-                    isActive: controlsDisabled ? false : hasActiveMode,
+                    isActive: hasActiveMode,
                     activeIcon: isLoading ? Icons.hourglass_empty : Icons.stop,
                     inactiveIcon: isLoading
                         ? Icons.hourglass_empty
@@ -1049,20 +995,14 @@ class _ControlPanelState extends State<ControlPanel> {
                     activeColor: Colors.red[600]!,
                     inactiveColor: Colors.green[600]!,
                     onTap: () {
-                      if (isLoading) return;
-                      if (controlsDisabled) return;
-                      if (micOn) return;
+                      if (isLoading || micOn) return;
                       if (hasActiveMode) {
                         _stopActive();
                       } else {
                         _onPlayPressed();
                       }
                     },
-                    enabled:
-                        !isLoading &&
-                        !controlsDisabled &&
-                        streamEnabled &&
-                        !micOn,
+                    enabled: !isLoading && streamEnabled && !micOn,
                   ),
                   const SizedBox(width: 24),
                   _CircularToggleButton(
@@ -1104,13 +1044,13 @@ class _ControlPanelState extends State<ControlPanel> {
                                 setState(() => micVolume = v);
                                 _saveMicVolume(v);
                               },
-                              activeColor: accent,
+                              activeColor: Colors.blue,
                               inactiveColor: Colors.grey,
                               label: 'ระดับเสียงไมโครโฟน',
                               divisions: 9,
                             ),
                           ),
-                          Icon(Icons.volume_up, size: 28, color: accent),
+                          Icon(Icons.volume_up, size: 28, color: Colors.blue),
                         ],
                       ),
                     ),
@@ -1142,7 +1082,6 @@ class _ControlPanelState extends State<ControlPanel> {
                               playbackMode != PlaybackMode.playlist ||
                               (currentSongIndex <= 1 && !isLoopEnabled) ||
                               isControlsCoolingDown ||
-                              controlsDisabled ||
                               micOn;
                           return _buildCircularToggleButton(
                             isActive: false,
@@ -1176,10 +1115,7 @@ class _ControlPanelState extends State<ControlPanel> {
                                 ? Colors.grey
                                 : Colors.orange[700]!,
                             onTap: _togglePause,
-                            enabled:
-                                !isControlsCoolingDown &&
-                                !controlsDisabled &&
-                                !micOn,
+                            enabled: !isControlsCoolingDown && !micOn,
                           );
                         }(),
                       ),
@@ -1193,7 +1129,6 @@ class _ControlPanelState extends State<ControlPanel> {
                               (currentSongIndex >= totalSongs &&
                                   !isLoopEnabled) ||
                               isControlsCoolingDown ||
-                              controlsDisabled ||
                               micOn;
                           return _buildCircularToggleButton(
                             isActive: false,

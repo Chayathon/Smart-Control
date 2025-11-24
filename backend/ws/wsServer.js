@@ -2,6 +2,7 @@
 const WebSocket = require('ws');
 const { URL } = require('url');
 const stream = require('../services/stream.service');
+const micStream = require('../services/micStream.service');
 const bus = require('../services/bus');
 const Device = require('../models/Device');
 
@@ -19,8 +20,12 @@ function createWSServer(server) {
   // --- mic ---
   wssMic.on('connection', (ws) => {
     console.log('🔌 [mic] client connected');
-    stream.startMicStream(ws).catch(err => {
-      console.error('[mic] startMicStream error:', err);
+    
+    // TODO: Add authentication here (JWT token validation or IP whitelist)
+    // Example: if (!validateAuth(req)) { ws.close(1008, 'Unauthorized'); return; }
+    
+    micStream.start(ws).catch(err => {
+      console.error('❌ [mic] startMicStream error:', err);
       try { ws.close(1011, 'internal error'); } catch {}
     });
     ws.on('close', () => console.log('❌ [mic] client disconnected'));
