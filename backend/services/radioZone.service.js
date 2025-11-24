@@ -205,10 +205,77 @@ function parseStatusFrame(rawStr) {
 //   }
 // }
 
+// function onRxFrame(frameBuf) {
+//   const raw = frameBuf.toString('ascii');  // เช่น "$S0001Y$\r\n"
+//   console.log('[RadioZone] UART RX frame (raw):', JSON.stringify(raw));
+
+//   try {
+//     mqttSvc.publish('radio/cmd', raw, { qos: 1, retain: false });
+//     console.log('[RadioZone] MQTT TX -> [radio/cmd]', JSON.stringify(raw));
+//   } catch (e) {
+//     console.error('[RadioZone] MQTT publish error (radio/cmd):', e.message);
+//   }
+
+//   const parsed = parseStatusFrame(raw);
+//   if (!parsed) {
+//     return;
+//   }
+
+//   const { type, zone } = parsed;
+//   const isAll = zone === 1111;
+
+//   if (type === 'stream') {
+//     const topicStatus = isAll
+//       ? 'mass-radio/all/status'
+//       : `mass-radio/zone${zone}/status`;
+
+//     const payloadStatus = {
+//       zone,
+//       stream_enabled: parsed.set_stream,
+//       // is_playing: parsed.set_stream,
+//       source: 'manual', // กดจากเครื่อง
+//       raw: parsed.raw,
+//     };
+
+//     try {
+//       mqttSvc.publish(topicStatus, payloadStatus, { qos: 1, retain: false });
+//       console.log(
+//         '[RadioZone] MQTT TX ->',
+//         topicStatus,
+//         JSON.stringify(payloadStatus)
+//       );
+//     } catch (e) {
+//       console.error('[RadioZone] MQTT publish error (status):', e.message);
+//     }
+//   } else if (type === 'volume') {
+//     const topicCmd = isAll
+//       ? 'mass-radio/all/status'
+//       : `mass-radio/zone${zone}/status`;
+
+//     const payloadCmd = {
+//       zone,
+//       set_volume: parsed.volume,
+//       source: 'manual',
+//       raw: parsed.raw,
+//     };
+
+//     try {
+//       mqttSvc.publish(topicCmd, payloadCmd, { qos: 1, retain: false });
+//       console.log(
+//         '[RadioZone] MQTT TX -> (from panel VOL)',
+//         topicCmd,
+//         JSON.stringify(payloadCmd)
+//       );
+//     } catch (e) {
+//       console.error('[RadioZone] MQTT publish error (panel->command VOL):', e.message);
+//     }
+//   }
+// }
 function onRxFrame(frameBuf) {
-  const raw = frameBuf.toString('ascii');  // เช่น "$S0001Y$\r\n"
+  const raw = frameBuf.toString('ascii');  // "$S0001Y$\r\n"
   console.log('[RadioZone] UART RX frame (raw):', JSON.stringify(raw));
 
+  // log เดิม
   try {
     mqttSvc.publish('radio/cmd', raw, { qos: 1, retain: false });
     console.log('[RadioZone] MQTT TX -> [radio/cmd]', JSON.stringify(raw));
@@ -217,14 +284,38 @@ function onRxFrame(frameBuf) {
   }
 
   const parsed = parseStatusFrame(raw);
-  if (!parsed) {
-    return;
-  }
+  if (!parsed) return;
 
   const { type, zone } = parsed;
   const isAll = zone === 1111;
 
   if (type === 'stream') {
+    // 👉 1) แปลงการกด panel → command ให้ node
+    if (isAll) {
+      const cmdPayload = {
+        set_stream: parsed.set_stream,
+        source: 'manual-panel',   // สำคัญมาก
+      };
+      mqttSvc.publish('mass-radio/all/command', cmdPayload, { qos: 1, retain: false });
+      console.log(
+        '[RadioZone] MQTT TX (CMD ALL) -> mass-radio/all/command',
+        JSON.stringify(cmdPayload)
+      );
+    } else {
+      const topicCmd = `mass-radio/zone${zone}/command`;
+      const cmdPayload = {
+        set_stream: parsed.set_stream,
+        source: 'manual-panel',   // สำคัญมาก
+      };
+      mqttSvc.publish(topicCmd, cmdPayload, { qos: 1, retain: false });
+      console.log(
+        '[RadioZone] MQTT TX (CMD) ->',
+        topicCmd,
+        JSON.stringify(cmdPayload)
+      );
+    }
+
+    // 👉 2) ถ้าอยากยิง status ให้ UI/DB ด้วยก็ทำเพิ่ม (ไม่จำเป็นต่อ node)
     const topicStatus = isAll
       ? 'mass-radio/all/status'
       : `mass-radio/zone${zone}/status`;
@@ -232,42 +323,20 @@ function onRxFrame(frameBuf) {
     const payloadStatus = {
       zone,
       stream_enabled: parsed.set_stream,
-      // is_playing: parsed.set_stream,
-      source: 'manual', // กดจากเครื่อง
+      is_playing: parsed.set_stream,
+      source: 'manual-panel',
       raw: parsed.raw,
     };
 
     try {
       mqttSvc.publish(topicStatus, payloadStatus, { qos: 1, retain: false });
       console.log(
-        '[RadioZone] MQTT TX ->',
+        '[RadioZone] MQTT TX (STATUS) ->',
         topicStatus,
         JSON.stringify(payloadStatus)
       );
     } catch (e) {
       console.error('[RadioZone] MQTT publish error (status):', e.message);
-    }
-  } else if (type === 'volume') {
-    const topicCmd = isAll
-      ? 'mass-radio/all/status'
-      : `mass-radio/zone${zone}/status`;
-
-    const payloadCmd = {
-      zone,
-      set_volume: parsed.volume,
-      source: 'manual',
-      raw: parsed.raw,
-    };
-
-    try {
-      mqttSvc.publish(topicCmd, payloadCmd, { qos: 1, retain: false });
-      console.log(
-        '[RadioZone] MQTT TX -> (from panel VOL)',
-        topicCmd,
-        JSON.stringify(payloadCmd)
-      );
-    } catch (e) {
-      console.error('[RadioZone] MQTT publish error (panel->command VOL):', e.message);
     }
   }
 }
