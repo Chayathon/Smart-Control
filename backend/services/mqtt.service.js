@@ -170,29 +170,29 @@ function connectAndSend({
             }
 
             try {
-                const no = typeof json.no === 'number' ? json.no : noFromTopic;
+                const no =
+                typeof json.no === 'number' && Number.isFinite(json.no)
+                    ? json.no
+                    : noFromTopic;
 
                 const device = await Device.findOne({ no });
                 if (!device) {
-                    console.warn('[MQTT] device not found for no =', no, 'still saving deviceData without deviceId');
+                    console.warn('[MQTT] device not found for no =', no, '(ยังคงบันทึก DeviceData โดยไม่ใส่ deviceId)');
                 }
 
                 const timestamp = json.timestamp ? new Date(json.timestamp) : new Date();
 
-                const doc = {
+                // ✅ payload สำหรับ ingestOne (ใช้ logic เดียวกับของคุณ)
+                const payloadForIngest = {
                     timestamp,
                     meta: {
                         no,
-                        deviceId: device ? device._id : null,
+                        ...(device ? { deviceId: device._id } : {}),
                     },
 
                     dcV: json.dcV,
                     dcW: json.dcW,
                     dcA: json.dcA,
-
-                    acV: json.acV,
-                    acW: json.acW,
-                    acA: json.acA,
 
                     oat: json.oat,
                     lat: json.lat,
@@ -201,14 +201,11 @@ function connectAndSend({
                     flag: json.flag,
 
                     type: json.type,
-
-                    status: json.status || undefined,
-
-                    no,
                 };
 
-                const saved = await DeviceData.create(doc);
-                console.log('[MQTT] saved DeviceData for', nodeKey, '-> _id =', saved._id.toString());
+                // ✅ บันทึก + broadcast realtime ผ่าน deviceDataService
+                await deviceDataService.ingestOne(payloadForIngest);
+                console.log('[MQTT] saved DeviceData via ingestOne for', nodeKey);
 
                 if (device) {
                     device.lastSeen = timestamp;

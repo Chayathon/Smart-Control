@@ -341,7 +341,7 @@ class _NotificationCenterState extends State<NotificationCenter> {
                                     borderRadius: BorderRadius.circular(999),
                                   ),
                                   child: Text(
-                                    '${_fieldLabel(e.key)}${_severityLabel(e.value)}',
+                                    '${_fieldLabel(e.key)}${_severityLabel(e.key, e.value)}',
                                     style: TextStyle(
                                       fontSize: 11,
                                       height: 1.2,
@@ -410,14 +410,33 @@ class _NotificationCenterState extends State<NotificationCenter> {
       case 'dcW':
         return 'กำลังไฟ ';
       case 'oat':
-        // เดิม: 'อุณหภูมิภายนอก '
+        // ใช้แทนสถานะการประกาศ (On Air Target)
         return 'On Air Target ';
       default:
         return '$key ';
     }
   }
 
-  String _severityLabel(int v) {
+  /// แปลค่าระดับความผิดปกติ ตามชนิด field
+  ///
+  /// - field ปกติ (voltage / current / watt): 1 = สูงผิดปกติ, 2 = ต่ำผิดปกติ
+  /// - field oat:
+  ///   - 1 = ไม่ได้ประกาศแต่ลำโพงมีไฟ (oat = 0, ลำโพง = 1)
+  ///   - 2 = กำลังประกาศแต่ลำโพงไม่มีไฟ (oat = 1, ลำโพง = 0)
+  String _severityLabel(String key, int v) {
+    // เคสพิเศษสำหรับ oat (On Air Target / สถานะประกาศ vs ลำโพง)
+    if (key == 'oat') {
+      switch (v) {
+        case 1:
+          return 'ปิดแต่ลำโพงเปิด';
+        case 2:
+          return 'เปิดแต่ลำโพงปิด';
+        default:
+          return 'ผิดปกติ';
+      }
+    }
+
+    // field ปกติอื่น ๆ: voltage / current / watt
     switch (v) {
       case 1:
         return 'สูงผิดปกติ';

@@ -78,7 +78,7 @@ class _MetricLineChartState extends State<MetricLineChart> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // ===== Header: Title + ปุ่มช่วงเวลา + badge ด้านขวา =====
+            // ===== Header: Title + ปุ่มช่วงเวลา =====
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
               child: Row(
@@ -116,6 +116,7 @@ class _MetricLineChartState extends State<MetricLineChart> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        // Title หลัก
                         Text(
                           title,
                           maxLines: 1,
@@ -128,8 +129,11 @@ class _MetricLineChartState extends State<MetricLineChart> {
                           ),
                         ),
                         const SizedBox(height: 2),
+                        // 🔹 ลบคำว่า "Historical trend" ออกแล้ว
                         Text(
-                          'Historical trend • $metricTitle${unit.isNotEmpty ? ' ($unit)' : ''}',
+                          unit.isNotEmpty
+                              ? '$metricTitle ($unit)'
+                              : metricTitle,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
@@ -195,16 +199,29 @@ class _MetricLineChartState extends State<MetricLineChart> {
     );
   }
 
-  /// ปุ่มเลือกช่วงเวลาแบบ segmented control (ดีไซน์ใหม่)
+  /// ปุ่มเลือกช่วงเวลาแบบ segmented control (เวอร์ชันลื่น ๆ แบบ “แถบเลื่อน”)
   Widget _buildTimeRangeSelector(Color mainColor) {
-    final options = <HistorySpan, String>{
-      HistorySpan.day1: '1D',
-      HistorySpan.day7: '7D',
-      HistorySpan.day15: '15D',
-      HistorySpan.day30: '30D',
-    };
+    // ใช้ list ให้ index คงที่
+    final entries = <MapEntry<HistorySpan, String>>[
+      const MapEntry(HistorySpan.day1, '1D'),
+      const MapEntry(HistorySpan.day7, '7D'),
+      const MapEntry(HistorySpan.day15, '15D'),
+      const MapEntry(HistorySpan.day30, '30D'),
+    ];
+
+    final selectedIndex =
+        entries.indexWhere((e) => e.key == _selectedSpan).clamp(0, entries.length - 1);
+    final count = entries.length;
+
+    double _alignX(int index) {
+      if (count <= 1) return 0;
+      // -1.0 (ซ้ายสุด) → +1.0 (ขวาสุด)
+      return -1.0 + (2.0 * index / (count - 1));
+    }
 
     return Container(
+      width: 200, // กำหนดความกว้างให้คงที่หน่อย จะได้เลื่อนนิ่ม
+      height: 32,
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -218,54 +235,72 @@ class _MetricLineChartState extends State<MetricLineChart> {
           ),
         ],
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: options.entries.map((e) {
-          final span = e.key;
-          final label = e.value;
-          final isSelected = span == _selectedSpan;
-
-          return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 2),
-            child: InkWell(
-              borderRadius: BorderRadius.circular(999),
-              onTap: () {
-                setState(() {
-                  _selectedSpan = span;
-                  _hitIndex = null;
-                });
-              },
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 160),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      child: Stack(
+        children: [
+          // 🔹 แถบไฮไลต์ที่เลื่อนซ้ายขวา
+          AnimatedAlign(
+            alignment: Alignment(_alignX(selectedIndex), 0),
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            child: FractionallySizedBox(
+              widthFactor: 1.0 / count,
+              heightFactor: 1.0,
+              child: Container(
+                margin: const EdgeInsets.symmetric(horizontal: 2),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(999),
-                  gradient: isSelected
-                      ? LinearGradient(
-                          colors: [
-                            mainColor,
-                            mainColor.withOpacity(0.7),
-                          ],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        )
-                      : null,
-                  color: isSelected ? null : Colors.white,
-                ),
-                child: Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: .3,
-                    color: isSelected ? Colors.white : Colors.black54,
+                  gradient: LinearGradient(
+                    colors: [
+                      mainColor,
+                      mainColor.withOpacity(0.7),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
                   ),
                 ),
               ),
             ),
-          );
-        }).toList(),
+          ),
+          // 🔹 แถว label + tap area
+          Row(
+            children: entries.asMap().entries.map((entry) {
+              final index = entry.key;
+              final span = entry.value.key;
+              final label = entry.value.value;
+              final isSelected = span == _selectedSpan;
+
+              return Expanded(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {
+                    if (_selectedSpan == span) return;
+                    setState(() {
+                      _selectedSpan = span;
+                      _hitIndex = null;
+                    });
+                  },
+                  child: Center(
+                    child: AnimatedDefaultTextStyle(
+                      duration: const Duration(milliseconds: 180),
+                      curve: Curves.easeOutCubic,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: isSelected
+                            ? FontWeight.w800
+                            : FontWeight.w600,
+                        letterSpacing: .3,
+                        color: isSelected
+                            ? Colors.white
+                            : Colors.black54,
+                      ),
+                      child: Text(label),
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ],
       ),
     );
   }
