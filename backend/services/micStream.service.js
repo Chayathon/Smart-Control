@@ -67,13 +67,13 @@ class MicStreamHandler {
      */
     _buildFilterChain(settings) {
         const filters = [
-            'highpass=f=100',
-            'lowpass=f=12000',
-            'afftdn=nr=10:nf=-25',
-            'agate=threshold=0.02:ratio=2:attack=10:release=100',
-            'acompressor=threshold=-18dB:ratio=4:attack=20:release=100',
-            `volume=${settings.micVolume}`,
-            'alimiter=limit=0.97:attack=5:release=50',
+            'highpass=f=80',        // ลดเสียงต่ำที่ไม่ต้องการ (เดิม 100Hz)
+            'lowpass=f=15000',      // เพิ่มความถี่สูงเพื่อความชัดเจน (เดิม 12000Hz)
+            'afftdn=nr=15:nf=-30',  // เพิ่ม noise reduction สูงขึ้นเพื่อลดเสียงสะท้อน (เดิม nr=10:nf=-25)
+            'agate=threshold=0.1:ratio=3:attack=5:release=80', // ลด threshold เพื่อรับเสียงที่เบาขึ้น (เดิม 0.02)
+            'acompressor=threshold=-16dB:ratio=6:attack=10:release=80:makeup=6dB', // เพิ่ม compression และ makeup gain
+            `volume=${settings.micVolume * 1.5}`, // เพิ่ม volume multiplier (x1.5)
+            'alimiter=limit=0.99:attack=3:release=40', // ปรับ limiter ให้รับเสียงดังขึ้น
         ];
         
         return filters.join(',');
