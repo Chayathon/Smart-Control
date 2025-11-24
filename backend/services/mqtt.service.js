@@ -15,6 +15,9 @@ let lastUartTs = 0;
 
 const pendingRequestsByZone = {};
 
+const lastManualByZone = new Map();  
+
+
 function connectAndSend({
     brokerUrl = 'mqtt://192.168.1.83:1883',
     username = 'admin',
@@ -371,6 +374,7 @@ function connectAndSend({
 
         if (!message || !message.toString().trim()) return;
 
+        // manual first logic
         try {
             const data = JSON.parse(message.toString());
 
@@ -379,14 +383,37 @@ function connectAndSend({
                 delete pendingRequestsByZone[no];
             }
 
-            upsertDeviceStatus(no, data);
-            console.log(`✅ Response from zone ${no}:`, data);
+            const now = Date.now();
+            const isManual = data && data.source === 'manual';
 
-            broadcast({ zone: no, ...data });
-            updateDeviceInDB(no, data);
+            if (isManual) {
+                lastManualByZone.set(no, now);
+            }
+
+            const prev = getCurrentStatusOfZone(no);
+
+            let merged = { ...data };
+
+            const lastManualTs = lastManualByZone.get(no);
+            if (!isManual && lastManualTs && (now - lastManualTs) < 5000) {
+                if (prev) {
+                    merged.stream_enabled = prev.stream_enabled;
+                    merged.is_playing = prev.is_playing;
+                }
+                console.log(
+                    `[Status] protect manual state for zone ${no} (within 5s)`,
+                );
+            }
+
+            upsertDeviceStatus(no, merged);
+            console.log(`✅ Response from zone ${no}:`, merged);
+
+            broadcast({ zone: no, ...merged });
+            updateDeviceInDB(no, merged);
         } catch (err) {
             console.error(`❌ Failed to parse message from zone ${no}`, err.message);
         }
+
     });
 
     client.on('error', (err) => console.error('❌ MQTT error:', err.message));
@@ -448,6 +475,12 @@ function upsertDeviceStatus(no, data) {
         deviceStatus.push({ zone: no, data, lastSeen: now });
     }
 }
+
+function getCurrentStatusOfZone(no) {
+    const item = deviceStatus.find(d => d.zone === no);
+    return item ? item.data : null;
+}
+
 
 
 async function updateDeviceInDB(no, data) {
