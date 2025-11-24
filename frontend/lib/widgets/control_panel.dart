@@ -502,11 +502,22 @@ class _ControlPanelState extends State<ControlPanel> {
       if (micOn) {
         // Stop mic
         await _micService.stopStreaming();
+
+        // Disable all controls for 2 seconds after closing mic
+        if (mounted) {
+          setState(() => isControlsCoolingDown = true);
+        }
+        await Future.delayed(const Duration(seconds: 2));
+        if (mounted) {
+          setState(() => isControlsCoolingDown = false);
+        }
+
         AppSnackbar.success('ไมโครโฟน', 'ปิดไมโครโฟนแล้ว');
       } else {
-        // Pause or stop active playback before starting mic
+        // Check if any playback mode is active
         if (playbackMode != PlaybackMode.none) {
           try {
+            // Pause for Playlist/File, Stop for Youtube/Schedule
             if (playbackMode == PlaybackMode.playlist ||
                 playbackMode == PlaybackMode.file) {
               await _streamService.pause();
@@ -514,12 +525,15 @@ class _ControlPanelState extends State<ControlPanel> {
                 playbackMode == PlaybackMode.schedule) {
               await _streamService.stop();
             }
-            // Wait for backend to process stop/pause
-            await Future.delayed(const Duration(seconds: 3));
+
+            // Wait 8 seconds before opening mic
+            await Future.delayed(const Duration(seconds: 8));
           } catch (e) {
             print('⚠️ Failed to stop/pause before mic: $e');
+            // Continue to open mic even if pause/stop fails
           }
         }
+        // If no playback mode active, open mic immediately (no delay)
 
         // Start mic stream
         final success = await _micService.startStreaming(_micServerUrl);
