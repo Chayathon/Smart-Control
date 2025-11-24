@@ -11,24 +11,19 @@ let currentScheduleId = null;
 let currentScheduleTrack = null;
 let isSchedulePlaying = false;
 let lastPlayedScheduleId = null;
-let lastPlayedTime = null; // เก็บเวลาที่เล่นล่าสุด (HH:mm)
+let lastPlayedTime = null;
 
 // Priority: 1=Mic, 2=Schedule, 3=Playlist/File/YouTube
-const PRIORITY = {
-    MIC: 1,
-    SCHEDULE: 2,
-    NORMAL: 3
-};
-
-function daysMapping(dayNum) {
-    // 0=Sunday, 1=Monday, ... 6=Saturday
-    return dayNum;
-}
+// const PRIORITY = {
+//     MIC: 1,
+//     SCHEDULE: 2,
+//     NORMAL: 3
+// };
 
 async function checkAndPlaySchedules() {
     try {
         const now = new Date();
-        const currentDay = now.getDay(); // 0=Sunday, 1=Monday, etc.
+        const currentDay = now.getDay();
         
         // เพิ่มเวลา 10 วินาที เพื่อเช็คล่วงหน้า
         const checkTime = new Date(now.getTime() + 10 * 1000);
@@ -45,7 +40,6 @@ async function checkAndPlaySchedules() {
         }).populate('id_song').lean();
 
         if (schedules.length === 0) {
-            // ถ้าเวลาเปลี่ยนไปแล้ว ให้ reset lastPlayedTime
             if (lastPlayedTime && lastPlayedTime !== targetTime) {
                 lastPlayedTime = null;
                 lastPlayedScheduleId = null;
@@ -56,7 +50,6 @@ async function checkAndPlaySchedules() {
 
         console.log(`📅 Found ${schedules.length} schedule(s) to play`);
 
-        // เล่น schedule แรกที่เจอ
         const schedule = schedules[0];
         
         // ป้องกันเล่นซ้ำ: ถ้าเคยเล่น schedule นี้ในเวลานี้แล้ว ให้ข้าม
@@ -91,10 +84,8 @@ async function checkAndPlaySchedules() {
 
 async function checkPriority() {
     try {
-        // Check if microphone is active (use micStream service)
         const isMicActive = micStream.isActive();
         
-        // Priority 1: If mic is active, skip schedule
         if (isMicActive) {
             return { allowed: false, reason: 'Microphone is active (Priority 1)' };
         }
@@ -116,16 +107,14 @@ async function playSchedule(schedule) {
         const song = schedule.id_song;
         console.log(`🎵 Playing schedule: ${song.name || song.title}`);
 
-        // หยุดการเล่นปัจจุบัน (ถ้ามี) และรอ 8 วินาที
         const currentStatus = stream.getStatus();
         if (currentStatus.isPlaying && currentStatus.activeMode !== 'mic') {
             console.log('⏹️ Stopping current playback for schedule');
             await stream.stop();
             console.log('⏳ Waiting 8 seconds before starting schedule...');
-            await sleep(8000); // รอ 8 วินาที
+            await sleep(8000);
         }
 
-        // กำหนดค่า schedule state
         isSchedulePlaying = true;
         currentScheduleId = schedule._id;
         currentScheduleTrack = {
@@ -136,24 +125,18 @@ async function playSchedule(schedule) {
             description: schedule.description
         };
 
-        // อัปเดตสถานะ Device
         await updateDeviceStatus(true, 'schedule');
 
-        // เล่นเพลงจาก song
         const songUrl = song.url || song.file || '';
         const filePath = path.join(__dirname, '../uploads', songUrl);
         const displayName = song.name || song.title || songUrl;
 
-        // Emit event ให้ frontend รู้ว่า schedule กำลังเล่น
         emitScheduleStatus('schedule-started', currentScheduleTrack);
 
-        // เล่นเพลง
         await stream.startLocalFile(filePath, 0, { 
             displayName,
             isSchedule: true 
         });
-
-        // เพลงจะจบเมื่อ FFmpeg จบการทำงาน (จะถูกจัดการโดย stream.service)
 
     } catch (err) {
         console.error('❌ Error playing schedule:', err);
@@ -167,7 +150,6 @@ async function playSchedule(schedule) {
 
 async function endSchedulePlayback() {
     try {
-        // เช็คว่า stream service กำลัง pause อยู่หรือไม่
         const streamStatus = stream.getStatus();
         if (streamStatus.isPaused && streamStatus.activeMode === 'schedule') {
             console.log('⏸️ Schedule is paused, not ending');
@@ -179,16 +161,11 @@ async function endSchedulePlayback() {
         currentScheduleId = null;
         currentScheduleTrack = null;
 
-        // อัปเดตสถานะ Device
         await updateDeviceStatus(false, 'none');
 
-        // Emit event
         emitScheduleStatus('schedule-ended', finishedSchedule);
 
         console.log('🏁 Schedule playback ended, is_playing set to false');
-        
-        // Note: ไม่ reset lastPlayedScheduleId และ lastPlayedTime ที่นี่
-        // เพื่อป้องกันเล่นซ้ำในนาทีเดียวกัน
     } catch (err) {
         console.error('Error ending schedule playback:', err);
     }
@@ -205,7 +182,6 @@ async function stopSchedulePlayback() {
         await stream.stop();
         await endSchedulePlayback();
 
-        // Reset tracking เมื่อหยุดด้วยตัวเอง
         lastPlayedScheduleId = null;
         lastPlayedTime = null;
 
@@ -218,7 +194,6 @@ async function stopSchedulePlayback() {
 
 async function updateDeviceStatus(isPlaying, mode) {
     try {
-        // อัปเดตทุก device
         await Device.updateMany(
             {},
             {
@@ -258,7 +233,6 @@ function startScheduler() {
 
     console.log('🚀 Starting schedule checker (checking at :50 seconds for 10-second advance)');
     
-    // Reset tracking variables
     lastPlayedScheduleId = null;
     lastPlayedTime = null;
     
@@ -282,7 +256,6 @@ function startScheduler() {
         
         setTimeout(() => {
             checkAndPlaySchedules();
-            // ตั้งเวลาเช็ครอบถัดไป (ทุก 1 นาทีพอดี)
             schedulerInterval = setInterval(checkAndPlaySchedules, 60 * 1000);
         }, msUntilCheck);
     }
@@ -302,7 +275,6 @@ function stopScheduler() {
     }
 }
 
-// ฟังก์ชันสำหรับเช็คว่าต้องหยุด schedule เพื่อให้ mic เล่นหรือไม่
 function checkMicPriority() {
     if (isSchedulePlaying) {
         console.log('🎤 Mic priority detected, stopping schedule');

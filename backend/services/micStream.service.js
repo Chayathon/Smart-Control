@@ -4,10 +4,6 @@ const bus = require('./bus');
 const Device = require('../models/Device');
 const settingsService = require('./settings.service');
 
-/**
- * MicStreamHandler - Handles microphone streaming with optimized FFmpeg pipeline
- * Designed for Raspberry Pi 4 with configurable DSP quality levels
- */
 class MicStreamHandler {
     constructor() {
         this.activeWs = null;
@@ -21,16 +17,10 @@ class MicStreamHandler {
         this.CACHE_TTL_MS = 60000;
     }
 
-    /**
-     * Check if mic is currently active
-     */
     isActive() {
         return this.activeWs && this.activeWs.readyState === 1;
     }
 
-    /**
-     * Load settings from DB with caching
-     */
     async _loadSettings() {
         const now = Date.now();
         
@@ -62,35 +52,26 @@ class MicStreamHandler {
         }
     }
 
-    /**
-     * Build FFmpeg filter chain
-     */
     _buildFilterChain(settings) {
         const filters = [
-            'highpass=f=80',        // ลดเสียงต่ำที่ไม่ต้องการ (เดิม 100Hz)
-            'lowpass=f=15000',      // เพิ่มความถี่สูงเพื่อความชัดเจน (เดิม 12000Hz)
-            'afftdn=nr=15:nf=-30',  // เพิ่ม noise reduction สูงขึ้นเพื่อลดเสียงสะท้อน (เดิม nr=10:nf=-25)
-            'agate=threshold=0.1:ratio=3:attack=5:release=80', // ลด threshold เพื่อรับเสียงที่เบาขึ้น (เดิม 0.02)
-            'acompressor=threshold=-16dB:ratio=6:attack=10:release=80:makeup=6dB', // เพิ่ม compression และ makeup gain
-            `volume=${settings.micVolume * 1.5}`, // เพิ่ม volume multiplier (x1.5)
-            'alimiter=limit=0.99:attack=3:release=40', // ปรับ limiter ให้รับเสียงดังขึ้น
+            'highpass=f=80',
+            'lowpass=f=15000',
+            'afftdn=nr=15:nf=-30',
+            'agate=threshold=0.1:ratio=3:attack=5:release=80',
+            'acompressor=threshold=-16dB:ratio=6:attack=10:release=80:makeup=6dB',
+            `volume=${settings.micVolume * 1.5}`,
+            'alimiter=limit=0.99:attack=3:release=40',
         ];
         
         return filters.join(',');
     }
 
-    /**
-     * Get Icecast URL from config
-     */
     _getIcecastUrl() {
         const { icecast } = cfg;
         return `icecast://${icecast.username}:${icecast.password}` +
             `@${icecast.host}:${icecast.port}${icecast.mount}`;
     }
 
-    /**
-     * Check if streaming is enabled in any device
-     */
     async _checkStreamEnabled() {
         try {
             const devices = await Device.find({ 'status.stream_enabled': true }).limit(1).lean();
@@ -101,9 +82,6 @@ class MicStreamHandler {
         }
     }
 
-    /**
-     * Spawn FFmpeg process with optimized settings
-     */
     _spawnFfmpeg(settings) {
         const filterChain = this._buildFilterChain(settings);
         const icecastUrl = this._getIcecastUrl();
@@ -146,9 +124,6 @@ class MicStreamHandler {
         return proc;
     }
 
-    /**
-     * Wire child process logging
-     */
     _wireChildLogging(child, tag) {
         if (child.stderr) {
             child.stderr.on('data', (data) => {
@@ -164,9 +139,6 @@ class MicStreamHandler {
         });
     }
 
-    /**
-     * Handle WebSocket data with backpressure management
-     */
     _setupWebSocketHandler(ws) {
         let paused = false;
 
@@ -364,9 +336,6 @@ class MicStreamHandler {
         }
     }
 
-    /**
-     * Gracefully stop a process
-     */
     async _stopProcess(proc, timeoutMs = 1500) {
         if (!proc || proc.exitCode !== null) return;
 
@@ -397,9 +366,6 @@ class MicStreamHandler {
         });
     }
 
-    /**
-     * Get current mic status
-     */
     getStatus() {
         return {
             active: this.isActive(),
@@ -409,9 +375,6 @@ class MicStreamHandler {
         };
     }
 
-    /**
-     * Clear settings cache (useful when settings are updated)
-     */
     clearCache() {
         this.settingsCache = null;
         this.settingsCacheTime = 0;

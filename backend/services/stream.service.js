@@ -1,21 +1,15 @@
-
 const { spawn } = require('child_process');
 const cfg = require('../config/config');
 const bus = require('./bus');
 const path = require('path');
 const fs = require('fs');
-// Removed heavy, unused imports to reduce startup overhead
-// (we spawn yt-dlp/ffmpeg directly via child_process)
-const Song = require('../models/Song');
 const Playlist = require('../models/Playlist');
 const settingsService = require('./settings.service');
 const Device = require('../models/Device');
 const micStream = require('./micStream.service');
 
-// ไฟล์เก็บสถานะโซนที่เปิดอยู่ก่อนหน้า
 const ENABLED_ZONES_FILE = path.join(__dirname, '../storage/enabled-zones.json');
 
-// ฟังก์ชันโหลดโซนที่เปิดอยู่จากไฟล์
 function loadEnabledZonesFromFile() {
     try {
         if (fs.existsSync(ENABLED_ZONES_FILE)) {
@@ -32,7 +26,6 @@ function loadEnabledZonesFromFile() {
     return [];
 }
 
-// ฟังก์ชันบันทึกโซนที่เปิดอยู่ลงไฟล์
 function saveEnabledZonesToFile(zones) {
     try {
         const dir = path.dirname(ENABLED_ZONES_FILE);
@@ -60,15 +53,13 @@ let currentIndex = -1;
 let playlistMode = false;
 let playlistLoop = false;
 let playlistStopping = false;
-let nextTrackQueued = false;
 
 // Timing and pause-resume control
 let trackStartMonotonic = 0;   // timestamp when current track started
 let trackBaseOffsetMs = 0;     // accumulated offset before current start
 let lastKnownElapsedMs = 0;    // snapshot of elapsed when pausing/closing
 let pausePendingResume = false; // true when paused by user and waiting to resume
-// Generic paused state to support pause/resume for all modes
-let pausedState = null; // { kind: 'playlist'|'youtube'|'file', index?, url?, path?, resumeMs }
+let pausedState = null;
 
 const ytdlpCache = new Map();
 
@@ -218,7 +209,6 @@ async function _playIndex(i, seekMs = 0) {
         console.log(`▶️ [${i + 1}/${playlistQueue.length}] ${name}`);
         console.log(`📂 Source: ${source}`);
 
-        // ดึงค่า sampleRate จาก DB
         const sampleRate = await getSampleRateFromDb();
         console.log(`🎵 Sample Rate: ${sampleRate} Hz`);
 
@@ -229,7 +219,6 @@ async function _playIndex(i, seekMs = 0) {
             ...(seekMs > 0 ? ['-ss', String(seekMs / 1000)] : []),
             '-i', source,
             '-vn',
-            // Audio fade in ช้าขึ้นเพื่อให้เนียนขึ้น
             '-af', 'afade=t=in:st=0:d=0.8',
             ...icecastOutputArgs({
                 bitrate: '128k', sampleRate, channels: '2', addLowLatency: true,
@@ -256,9 +245,9 @@ async function _playIndex(i, seekMs = 0) {
             }
 
             // รอให้ Icecast buffer ล้างสะอาดเพื่อป้องกันเสียงกระตุก
-            // เพิ่มเวลาเป็น 1.2 วินาที เพื่อให้ buffer ล้างสะอาดจริงๆ
+            // เพิ่มเวลาเป็น 2 วินาที เพื่อให้ buffer ล้างสะอาดจริงๆ
             console.log('⏳ รอ buffer ล้างสะอาด...');
-            await sleep(1200);
+            await sleep(2000);
             // เพิ่มเวลาหน่วงก่อนเริ่มเพลงถัดไปตาม config เพื่อลดการกระตุก
             const delay = getPreStartDelayMs();
             if (delay > 0) {
@@ -272,7 +261,6 @@ async function _playIndex(i, seekMs = 0) {
                 return;
             }
             
-            // ดึงค่า loop ล่าสุดจาก DB ก่อนตัดสินใจเล่นต่อ
             try {
                 const loopFromDb = await settingsService.getSetting('loopPlaylist');
                 playlistLoop = loopFromDb !== null ? !!loopFromDb : false;
@@ -338,7 +326,6 @@ async function playPlaylist({ loop = false } = {}) {
         throw err;
     }
     
-    // ดึงค่า loop จากฐานข้อมูล Settings แทนการใช้ parameter
     try {
         const loopFromDb = await settingsService.getSetting('loopPlaylist');
         playlistLoop = loopFromDb !== null ? !!loopFromDb : false;
@@ -373,7 +360,6 @@ async function playPlaylist({ loop = false } = {}) {
 async function nextTrack() {
     if (!playlistMode) return { success: false, message: 'ไม่ได้อยู่ในโหมดเพลย์ลิสต์' };
     
-    // ดึงค่า loop ล่าสุดจาก DB
     try {
         const loopFromDb = await settingsService.getSetting('loopPlaylist');
         playlistLoop = loopFromDb !== null ? !!loopFromDb : false;
@@ -409,7 +395,6 @@ async function nextTrack() {
 async function prevTrack() {
     if (!playlistMode) return { success: false, message: 'ไม่ได้อยู่ในโหมดเพลย์ลิสต์' };
     
-    // ดึงค่า loop ล่าสุดจาก DB
     try {
         const loopFromDb = await settingsService.getSetting('loopPlaylist');
         playlistLoop = loopFromDb !== null ? !!loopFromDb : false;
@@ -569,25 +554,20 @@ async function startYoutubeUrl(url, seekMs = 0, opts = {}) {
     while (starting) await sleep(50);
     starting = true;
     try {
-        // Stop only the active FFmpeg process fast to reduce extra events
         await _quickStop();
         console.log(`▶️ เริ่มสตรีม YouTube: ${url}`);
 
         const { mediaUrl, headerLines } = await resolveDirectUrl(url);
         
-        // ดึงค่า sampleRate จาก DB
         const sampleRate = await getSampleRateFromDb();
         console.log(`🎵 Sample Rate: ${sampleRate} Hz`);
 
         const ffArgs = [
             ...baseFfmpegArgs({ loglevel: 'error' }), '-nostats',
-            // Faster start-up probing
             '-analyzeduration', '0', '-probesize', '32k',
-            // Improve stability on flaky networks
             '-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_at_eof', '1',
             '-reconnect_on_network_error', '1', '-reconnect_delay_max', '5',
             '-reconnect_on_http_error', '4xx,5xx',
-            // Input queue to absorb jitter
             '-thread_queue_size', '512'
         ];
 
@@ -630,7 +610,7 @@ async function startYoutubeUrl(url, seekMs = 0, opts = {}) {
                 ytdlpCache.delete(endedUrl);
             }
 
-            if (!pausePendingResume && cfg.stream.autoReplayOnEnd && endedUrl) {
+            if (!pausePendingResume && endedUrl) {
                 setTimeout(() => {
                     console.log('🔁 Auto replay same URL');
                     startYoutubeUrl(endedUrl).catch(e => console.error('Auto replay failed:', e));
@@ -675,7 +655,6 @@ async function startLocalFile(filePath, seekMs = 0, opts = {}) {
     while (starting) await sleep(50);
     starting = true;
     try {
-        // Stop only current FFmpeg to avoid extra stop events
         await _quickStop();
         console.log(`▶️ เริ่มสตรีมไฟล์ในเครื่อง: ${filePath}`);
 
@@ -683,7 +662,6 @@ async function startLocalFile(filePath, seekMs = 0, opts = {}) {
         const providedName = (opts && (opts.displayName || opts.name)) || null;
         currentDisplayName = providedName || path.basename(absPath);
 
-        // ดึงค่า sampleRate จาก DB
         const sampleRate = await getSampleRateFromDb();
         console.log(`🎵 Sample Rate: ${sampleRate} Hz`);
 
@@ -713,7 +691,6 @@ async function startLocalFile(filePath, seekMs = 0, opts = {}) {
                 bus.emit('status', { event: 'ended', reason: 'ffmpeg-closed', code });
             }
 
-            // ถ้าเป็น schedule และไม่ได้อยู่ในสถานะ pause
             if (wasSchedule && !pausePendingResume) {
                 const schedulerService = require('./scheduler.service');
                 if (schedulerService.isSchedulePlaying) {
@@ -823,7 +800,6 @@ function resume() {
                 activeMode = 'playlist';
                 _playIndex(currentIndex, seekMs).catch(e => console.error('resume playlist failed:', e));
             } else if (kind === 'schedule' && toResume.path) {
-                // resume schedule
                 startLocalFile(toResume.path, seekMs, { fromResume: true, isSchedule: true }).catch(e => console.error('resume schedule failed:', e));
             } else if (kind === 'youtube' && toResume.url) {
                 console.warn('Resume requested for YouTube but disabled');
@@ -851,7 +827,7 @@ function getStatus() {
         resumeMs: lastKnownElapsedMs,
         activeMode,
         name: currentDisplayName,
-        schedule: scheduleStatus, // เพิ่มข้อมูล schedule
+        schedule: scheduleStatus,
     };
     
     if (playlistMode && currentIndex >= 0 && currentIndex < playlistQueue.length) {
@@ -1020,11 +996,9 @@ async function startMicStream(ws) {
         ffmpegProcess.on('close', (code) => {
             console.log(`🎵 ffmpeg closed (${code})`);
             if (activeWs === ws) activeWs = null;
-            // Do not change activeMode/playback_mode here.
         });
 
         currentStreamUrl = "flutter-mic";
-        // Do not set activeMode to 'mic'; keep playback_mode unchanged.
         bus.emit('status', { event: 'mic-started', url: currentStreamUrl });
     } finally {
         starting = false;
@@ -1057,7 +1031,6 @@ async function enableStream() {
     console.log('📡 Enabling stream for previous enable zones');
     const mqttService = require('./mqtt.service');
     
-    // ดึงโซนที่เปิดอยู่ครั้งที่แล้วจากไฟล์
     let lastEnabledZones = loadEnabledZonesFromFile();
     
     if (lastEnabledZones.length > 0) {
@@ -1074,11 +1047,9 @@ async function disableStream() {
     console.log('📡 Disabling stream for all zones');
     const mqttService = require('./mqtt.service');
     
-    // ดึงโซนที่เปิดอยู่ปัจจุบันจาก DB ก่อนที่จะปิด
     const currentlyEnabled = await Device.find({ 'status.stream_enabled': true }).lean();
     const zonesToSave = currentlyEnabled.map(d => d.no);
     
-    // บันทึกลงไฟล์เพื่อใช้ในครั้งถัดไป
     if (zonesToSave.length > 0) {
         saveEnabledZonesToFile(zonesToSave);
         console.log(`💾 Saved enabled zones before disabling: [${zonesToSave.join(', ')}]`);
@@ -1095,7 +1066,6 @@ async function disableStream() {
     return { success: true, message: 'Disabled stream for all zones' };
 }
 
-// Wrapper functions for backward compatibility
 async function startMicStream(ws) {
     return await micStream.start(ws);
 }

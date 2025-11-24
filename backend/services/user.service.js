@@ -45,23 +45,19 @@ async function loginUser(username, password) {
         { expiresIn: "7d" }
     );
 
-    // Allow multiple sessions per user. Keep backward compat with existing field.
     try {
         if (!Array.isArray(findUser.refreshTokens)) {
             findUser.refreshTokens = [];
         }
         findUser.refreshTokens.push(refreshToken);
-        // Optionally limit number of concurrent sessions (keep latest 5)
         if (findUser.refreshTokens.length > 5) {
             findUser.refreshTokens = findUser.refreshTokens.slice(-5);
         }
-        // Clear legacy single refreshToken if present but not in list
         if (findUser.refreshToken && !findUser.refreshTokens.includes(findUser.refreshToken)) {
             findUser.refreshTokens.push(findUser.refreshToken);
         }
         findUser.refreshToken = undefined;
     } catch (_) {
-        // Fallback: legacy behavior
         findUser.refreshToken = refreshToken;
     }
 
