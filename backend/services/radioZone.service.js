@@ -113,7 +113,7 @@ function parseStatusFrame(rawStr) {
   }
 
   // Volume
-  m = s.match(/^\$V(\d{4})(\d{2})\$/);
+  m = s.match(/^\$V(\d{4})(\d{1,2})\$/);
   if (m) {
     const zone4 = m[1];
     const vol = m[2];
