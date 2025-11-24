@@ -67,24 +67,6 @@ function createWSServer(server) {
     bus.on('status', onStatus);
     bus.on('schedule-status', onScheduleStatus);
 
-    server.on('upgrade', (req, socket, head) => {
-        let pathname = '/';
-        try {
-            pathname = new URL(req.url, `http://${req.headers.host}`).pathname;
-        } catch (_) {
-            socket.destroy();
-            return;
-        }
-        if (pathname === '/ws/mic') {
-            wssMic.handleUpgrade(req, socket, head, (ws) => wssMic.emit('connection', ws, req));
-        } else if (pathname === '/ws/status') {
-            wssStatus.handleUpgrade(req, socket, head, (ws) => wssStatus.emit('connection', ws, req));
-        } else {
-            socket.write('HTTP/1.1 404 Not Found\r\n\r\n');
-            socket.destroy();
-        }
-    });
-
   // --- device-data (NEW) ---
   wssDeviceData.on('connection', (ws) => {
     console.log('📡 [deviceData] client connected');

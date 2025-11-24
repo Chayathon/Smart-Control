@@ -1,18 +1,19 @@
 // D:\mass_smart_city\Smart-Control\backend\services\deviceData.service.js
 
-const DeviceData = require('../models/DeviceData'); // ดึง Model มาใช้งาน
+const DeviceData = require('../models/DeviceData');
+const { broadcastDeviceData } = require('../ws/wsServer');
 
-// ฟังก์ชันสำหรับดึงรายการข้อมูล DeviceData ทั้งหมด (หรือจะจำกัดจำนวนก็ได้)
-async function getDeviceDataList() {
-    // ใช้ .find({}) เพื่อดึงเอกสารทั้งหมด
-    // .sort({ timestamp: -1 }) เพื่อเรียงลำดับจากล่าสุดไปเก่าสุด
-    // .limit(50) เพื่อจำกัดให้ดึงมาแค่ 50 รายการล่าสุด
-    const list = await DeviceData.find({})
-        .sort({ timestamp: -1 }) 
-        .limit(50)
-        .lean(); // .lean() ช่วยให้ข้อมูลที่ได้เป็น JavaScript Object ธรรมดา ทำให้เร็วกว่า
-
-    return list;
+/** แปลง timestamp ทุกแบบให้กลายเป็น Date() */
+function toDate(v) {
+  try {
+    if (!v) return new Date();
+    if (v instanceof Date) return v;
+    if (typeof v === 'object' && v.$date) return new Date(v.$date);
+    if (typeof v === 'number') return new Date(v); // epoch ms
+    return new Date(v); // string ISO
+  } catch {
+    return new Date();
+  }
 }
 
 /**
@@ -152,14 +153,27 @@ async function ingestMany(rows = []) {
 }
 
 /** โหลดเริ่มต้น (เช่น 50 แถวล่าสุด) */
-async function getDeviceDataList(limit = 50) {
-  const rows = await DeviceData.find({})
-    .sort({ timestamp: -1 })
-    .limit(limit)
-    .lean();
+// async function getDeviceDataList(limit = 50) {
+//   const rows = await DeviceData.find({})
+//     .sort({ timestamp: -1 })
+//     .limit(limit)
+//     .lean();
+//   return rows.map(toFrontendRow);
+// }
 
+/** โหลดเริ่มต้น (ถ้าไม่ส่ง limit = ดึงทั้งหมด) */
+async function getDeviceDataList(limit) {
+  let query = DeviceData.find({}).sort({ timestamp: -1 });
+
+  if (typeof limit === 'number' && Number.isFinite(limit)) {
+    query = query.limit(limit);
+  }
+
+  const rows = await query.lean();
   return rows.map(toFrontendRow);
 }
+
+
 
 /** ตอนนี้ realtime มาจาก ingest → broadcast แล้ว (ฟังก์ชันนี้คงไว้เป็น log) */
 function initRealtimeBridge() {
