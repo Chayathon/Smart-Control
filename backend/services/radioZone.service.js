@@ -339,23 +339,53 @@ function onRxFrame(frameBuf) {
       console.error('[RadioZone] MQTT publish error (status):', e.message);
     }
   } else if (type === 'volume') {
-    const topicCmd = isAll
-      ? 'mass-radio/all/command'
-      : `mass-radio/zone${zone}/command`;
-    const cmdPayload = {
-      set_volume: parsed.volume,
-      source: 'manual-panel',
-    };
-    try {
+    // 3.1 ส่งเป็น "คำสั่ง volume" ให้โหนด – ผ่าน /command
+    if (isAll) {
+      const cmdPayload = {
+        set_volume: parsed.volume,
+        source: 'manual-panel',
+      };
+      mqttSvc.publish('mass-radio/all/command', cmdPayload, { qos: 1, retain: false });
+      console.log(
+        '[RadioZone] MQTT TX (CMD ALL volume) -> mass-radio/all/command',
+        JSON.stringify(cmdPayload)
+      );
+    } else {
+      const topicCmd = `mass-radio/zone${zone}/command`;
+      const cmdPayload = {
+        set_volume: parsed.volume,
+        source: 'manual-panel',
+      };
       mqttSvc.publish(topicCmd, cmdPayload, { qos: 1, retain: false });
       console.log(
-        '[RadioZone] MQTT TX (CMD VOL) ->',
+        '[RadioZone] MQTT TX (CMD volume) ->',
         topicCmd,
         JSON.stringify(cmdPayload)
       );
+    }
+
+    // 3.2 ส่งเป็น "status" ให้ UI/DB เห็น volume ใหม่ผ่าน /status
+    const topicStatus = isAll
+      ? 'mass-radio/all/status'
+      : `mass-radio/zone${zone}/status`;
+
+    const payloadStatus = {
+      zone,
+      volume: parsed.volume,
+      source: 'manual-panel',
+      raw: parsed.raw,
+    };
+
+    try {
+      mqttSvc.publish(topicStatus, payloadStatus, { qos: 1, retain: false });
+      console.log(
+        '[RadioZone] MQTT TX (STATUS volume) ->',
+        topicStatus,
+        JSON.stringify(payloadStatus)
+      );
     } catch (e) {
-      console.error('[RadioZone] MQTT publish error (panel->command VOL):', e.message);
-    } 
+      console.error('[RadioZone] MQTT publish error (status volume):', e.message);
+    }
   }
 }
 
