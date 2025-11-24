@@ -49,15 +49,7 @@ class ZoneService {
     );
   }
 
-  Future<List<dynamic>> getDevicesStatus() async {
-    final api = await ApiService.private();
-    final result = await api.get('/mqtt/devices/status');
-    return result as List<dynamic>;
-  }
-
-  /// Toggles all streams depending on current devices status.
-  /// If at least one device is playing, it will stop all; otherwise it will start all.
-  Future<void> toggleAllStreamsBasedOnStatus() async {
+  Future<void> setAllStreamsBasedOnStatus() async {
     final statuses = await getDevicesStatus();
     final anyPlaying = statuses.any(
       (z) => z['data'] != null && z['data']['is_playing'] == true,
@@ -70,6 +62,23 @@ class ZoneService {
         'payload': {'set_stream': !anyPlaying},
       },
     );
+  }
+
+  Future<void> setAllVolume(int volume) async {
+    final api = await ApiService.private();
+    await api.post(
+      '/mqtt/publish',
+      data: {
+        'topic': 'mass-radio/all/command',
+        'payload': {'set_volume': volume},
+      },
+    );
+  }
+
+  Future<List<dynamic>> getDevicesStatus() async {
+    final api = await ApiService.private();
+    final result = await api.get('/mqtt/status');
+    return result as List<dynamic>;
   }
 
   /// Subscribe to realtime zone status updates. The provided callback receives
