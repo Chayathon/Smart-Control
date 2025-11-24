@@ -326,8 +326,6 @@ function connectAndSend({
             return;
         }
 
-        
-        // else console.log("cmdMatch isn't maching");
 
         if (topic === 'mass-radio/select/command') {
             if (!message || !message.toString().trim()) return;
@@ -351,6 +349,51 @@ function connectAndSend({
         }
         
 
+        if (topic === 'mass-radio/all/status') {
+            if (!message || !message.toString().trim()) return;
+            try {
+                const data = JSON.parse(message.toString());
+                const streamEnabled = !!data.stream_enabled;
+                const now = Date.now();
+
+                console.log('[RadioZone] ALL status from panel -> set all zones to', streamEnabled ? 'ON' : 'OFF');
+
+                deviceStatus = deviceStatus.map(d => ({
+                    ...d,
+                    data: {
+                        ...d.data,
+                        stream_enabled: streamEnabled,
+                        is_playing: streamEnabled,
+                    },
+                    lastSeen: now,
+                }));
+
+                await Device.updateMany(
+                    {},
+                    {
+                        $set: {
+                            'status.stream_enabled': streamEnabled,
+                            'status.is_playing': streamEnabled,
+                            lastSeen: new Date(),
+                        },
+                    }
+                );
+
+                deviceStatus.forEach(d => {
+                    broadcast({
+                        zone: d.zone,
+                        stream_enabled: streamEnabled,
+                        is_playing: streamEnabled,
+                        source: 'manual-all',   // เผื่ออยากเอาไปใช้แยกใน UI
+                    });
+                });
+            } catch (err) {
+                console.error('❌ Failed to handle mass-radio/all/status:', err.message);
+            }
+            return; // อย่าให้หล่นไปเข้า logic status ปกติด้านล่าง
+        }
+
+        
         const match = topic.match(/mass-radio\/([^/]+)\/status/);
         const zoneStr = match ? match[1] : null;
         if (!zoneStr) return;

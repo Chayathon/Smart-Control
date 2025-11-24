@@ -247,6 +247,28 @@ function onRxFrame(frameBuf) {
     } catch (e) {
       console.error('[RadioZone] MQTT publish error (status):', e.message);
     }
+  } else if (type === 'volume') {
+    const topicCmd = isAll
+      ? 'mass-radio/all/status'
+      : `mass-radio/zone${zone}/status`;
+
+    const payloadCmd = {
+      zone,
+      set_volume: parsed.volume,
+      source: 'manual',
+      raw: parsed.raw,
+    };
+
+    try {
+      mqttSvc.publish(topicCmd, payloadCmd, { qos: 1, retain: false });
+      console.log(
+        '[RadioZone] MQTT TX -> (from panel VOL)',
+        topicCmd,
+        JSON.stringify(payloadCmd)
+      );
+    } catch (e) {
+      console.error('[RadioZone] MQTT publish error (panel->command VOL):', e.message);
+    }
   }
 }
 
