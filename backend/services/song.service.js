@@ -5,9 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 const multer = require('multer');
-const { json } = require('body-parser');
 
-// -------- Utils --------
 function ensureDir(dir) {
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 }
@@ -49,7 +47,7 @@ const storage = multer.diskStorage({
     filename: (req, file, cb) => {
         const base = sanitizeBaseName(req.body.filename || path.parse(file.originalname).name);
         const unique = Math.random().toString(36).slice(2);
-        cb(null, `${base}-${unique}.mp3`); // บังคับ .mp3
+        cb(null, `${base}-${unique}.mp3`);
     }
 });
 
@@ -104,7 +102,6 @@ async function uploadSongYT(youtubeUrl, filename) {
 
   const MAX_DURATION_SEC = 10 * 60;
 
-  // ดึงเมตาดาต้า (เอา title ถ้าไม่ได้ส่ง filename)
   let title = safeBase;
 
   if (!filename) {
@@ -114,7 +111,7 @@ async function uploadSongYT(youtubeUrl, filename) {
 
   // ดาวน์โหลดเสียงด้วย yt-dlp (บังคับ bestaudio เฉพาะเสียง)
   const ytdlpArgs = [
-    '-f', 'bestaudio[ext=m4a]/bestaudio/bestaudio*', // พยายาม m4a ก่อน
+    '-f', 'bestaudio[ext=m4a]/bestaudio/bestaudio*',
     '-x', '--audio-format', 'm4a',
     '--no-playlist',
     '--no-warnings',
@@ -164,7 +161,6 @@ async function updateSongName(id, newName) {
       throw err;
     }
 
-    // Load the existing song to get the current filename
     const song = await Song.findById(id);
     if (!song) {
       const err = new Error('ไม่พบเพลงที่ระบุ');
@@ -185,10 +181,8 @@ async function updateSongName(id, newName) {
     const oldPath = path.join(UPLOAD_DIR, oldUrl || '');
     const newPath = path.join(UPLOAD_DIR, newUrl);
 
-    // Rename on disk first (if the source file exists and names differ)
     try {
       if (oldUrl && oldUrl !== newUrl && fs.existsSync(oldPath)) {
-        // use promise API so we can await
         await fs.promises.rename(oldPath, newPath);
       } else if (oldUrl && !fs.existsSync(oldPath)) {
         console.warn('Old file not found, will update DB anyway:', oldPath);
@@ -200,7 +194,6 @@ async function updateSongName(id, newName) {
       throw e;
     }
 
-    // Update DB to point to the new filename
     const updated = await Song.findByIdAndUpdate(
       id,
       { name: safeName, url: newUrl },
