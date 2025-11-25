@@ -234,8 +234,18 @@ function connectAndSend({
                 return;
             }
 
+            if (json.source === 'manual-panel') {
+                // console.log('[RadioZone] ALL command from manual-panel, skip UART echo:', json);
+                return;
+            }
+
             if (json.get_status) return; // ข้ามคำสั่ง get_status
 
+            if(typeof json.source === 'string') {
+                updateDeviceInDB(0, { last_command_source: json.source });
+            }
+
+            
             // set_stream (เปิด/ปิดทุกโซน)
             const allZoneCode = 1111; 
             if (typeof json.set_stream === 'boolean') {
@@ -282,6 +292,14 @@ function connectAndSend({
                 json = JSON.parse(payloadStr);
             } catch (e) {
                 console.error('[MQTT] invalid JSON on zone command:', e.message, 'payload =', payloadStr);
+                return;
+            }
+
+            if (json.source === 'manual-panel') {
+                // console.log('[RadioZone] zone command from manual-panel, skip UART echo:', {
+                //     zone,
+                //     json,
+                // });
                 return;
             }
 
