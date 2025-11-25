@@ -302,20 +302,16 @@ function connectAndSend({
                 // 1. Regex เดียว ดักจับทุกรูปแบบ (all / zone... / select)
         const cmdMatch = topic.match(/^mass-radio\/([^/]+)\/command$/);
         if (cmdMatch) {
+            let json;
             const target = cmdMatch[1]; // ค่าที่ได้จะเป็น "all", "zone1", "select", "zone99"
             const payloadStr = message.toString();
-
-            let json;
             try {
                 json = JSON.parse(payloadStr);
             } catch (e) {
                 console.error(`[MQTT] Invalid JSON for ${target}/command:`, e.message);
                 return;
             }
-
             if (!json || json.source === 'manual-panel' || json.get_status) return;
-
-
             if (target === 'select') {
                 if (json.zone && Array.isArray(json.zone)) {
                     console.log(`📨 Received SELECT command for zones:`, json.zone);
@@ -327,7 +323,6 @@ function connectAndSend({
                 }
                 return; 
             }
-
             let zoneNum = null;
             if (target === 'all') {
                 zoneNum = 1111; 
@@ -335,7 +330,6 @@ function connectAndSend({
                 const numMatch = target.match(/\d+/); 
                 if (numMatch) zoneNum = parseInt(numMatch[0], 10);
             }
-
             if (zoneNum !== null) {
                 if (typeof json.set_stream === 'boolean') {
                     console.log(`[RadioZone] CMD -> UART (Zone ${zoneNum}): stream=${json.set_stream}`);
@@ -466,27 +460,21 @@ function connectAndSend({
 
 
         const statusMatch = topic.match(/^mass-radio\/([^/]+)\/status$/);
-
-        if (statusMatch) {
+        if (statusMatch) {ฃ
+            let json;
             const target = statusMatch[1]; // ได้ค่า "all" หรือ "zone1", "zone2"
             const payloadStr = message.toString();
-
             if (!payloadStr.trim()) return; 
-
-            let json;
             try {
                 json = JSON.parse(payloadStr);
             } catch (e) {
                 console.error(`[MQTT] Invalid JSON on ${target}/status:`, e.message);
                 return;
             }
-
             if (target === 'all') {
                 const streamEnabled = !!json.stream_enabled;
                 const now = Date.now();
-
                 console.log('[RadioZone] ALL status -> set all zones to', streamEnabled ? 'ON' : 'OFF');
-
                 deviceStatus = deviceStatus.map(d => ({
                     ...d,
                     data: {
@@ -534,57 +522,36 @@ function connectAndSend({
                     }
                     return;
                 }
-
                 if (pendingRequestsByZone[no]) {
                     pendingRequestsByZone[no].resolve({ zone: no, ...json });
                     delete pendingRequestsByZone[no];
                 }
-
                 const now = Date.now();
                 const isManual = json.source === 'manual' || json.source === 'manual-panel';
-
                 if (isManual) {
                     lastManualByZone.set(no, now);
                 }
-
                 const prev = getCurrentStatusOfZone(no);
                 const prevStreamStatus = prev ? prev.stream_enabled : null;
                 let merged = { ...json };
-
-                const lastManualTs = lastManualByZone.get(no);
-                // ถ้าเพิ่งกด Manual ไปไม่ถึง 5 วิ แต่มี Status (ที่ไม่ใช่ Manual) แทรกเข้ามา -> ให้เชื่อค่าเดิม (Manual) ไว้ก่อน
-                if (!isManual && lastManualTs && (now - lastManualTs) < 5000) {
-                    if (prev) {
-                        merged.stream_enabled = prev.stream_enabled;
-                        merged.is_playing = prev.is_playing;
-                    }
-                    console.log(`[Status] protect manual state for zone ${no} (within 5s)`);
-                }
-
+                const isFromManualPanel = merged.source === 'manual-panel'; 
                 upsertDeviceStatus(no, merged);
-
-                if (merged.stream_enabled !== undefined && merged.stream_enabled !== prevStreamStatus) {
-    
-                    console.log(`[RadioZone] State changed (Zone ${no}): ${prevStreamStatus} -> ${merged.stream_enabled}`);
-                    console.log(`[Sync] Updating UART Machine (Manual Panel) to match Node status...`);
-                    
-                    // ✅ ยิง UART ไปบอกเครื่อง Manual ให้ไฟติด/ดับ ตามสถานะจริงของ Node
+                if (!isFromManualPanel && merged.stream_enabled !== undefined && merged.stream_enabled !== prevStreamStatus) {
+                    console.log(`[Sync] Node/Web changed status (Zone ${no}). Syncing to UART Machine...`);
                     sendZoneUartCommand(no, merged.stream_enabled).catch(err => {
                         console.error(`[RadioZone] UART sync error zone ${no}:`, err.message);
                     });
+                } else if (isFromManualPanel) {
+                    console.log(`[Sync] Action from Manual Panel (Zone ${no})`);
                 }
-
                 console.log(`✅ Response from zone ${no}:`, merged);
-
                 broadcast({ zone: no, ...merged });
-                updateDeviceInDB(no, merged);
-                
+                updateDeviceInDB(no, merged);              
                 return;
             }
         }
 
     });
-
     client.on('error', (err) => console.error('❌ MQTT error:', err.message));
     client.on('reconnect', () => console.log('🔁 MQTT reconnecting...'));
     client.on('offline', () => console.warn('⚠️ MQTT offline'));
