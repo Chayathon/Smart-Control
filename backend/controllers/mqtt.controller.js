@@ -1,20 +1,6 @@
 // controllers/mqtt.controller.js
 const mqttSvc = require('../services/mqtt.service');
-// const radioZone = require('../services/radioZone.service');
 
-/**
- * รับจากแอปเป็น JSON:
- * {
- *   "topic": "mass-radio/zone1/command",
- *   "payload": { "set_stream": false },
- *   "qos": 1,
- *   "retain": false
- * }
- *
- * จากนั้น:
- * 1) พยายาม map command -> UART (เช่น $S0001N$) ผ่าน radioZone.handleAppCommand()
- * 2) ยัง publish ไป MQTT ตามเดิม (ถ้าต้องการ)
- */
 async function publish(req, res) {
   const { topic, payload, qos = 1, retain = false } = req.body || {};
 
