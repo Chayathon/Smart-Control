@@ -92,9 +92,8 @@ class _StreamScreenState extends State<StreamScreen> {
 
         print('🎵 Attempting to play stream from: $_streamUrl');
 
-        // Retry logic for stream that might not be ready immediately
+        // Retry logic with longer delays for stream that might not be ready
         int maxRetries = 3;
-        int retryDelay = 2000; // 2 seconds
         bool success = false;
         String? lastError;
 
@@ -102,10 +101,22 @@ class _StreamScreenState extends State<StreamScreen> {
           try {
             print('🔄 Attempt ${attempt + 1}/$maxRetries to connect to stream');
 
+            // Show progress message
+            if (attempt > 0 && mounted) {
+              setState(() {
+                _errorMessage = 'กำลังเชื่อมต่อ (ครั้งที่ ${attempt + 1}/$maxRetries)...';
+              });
+            }
+
             await _audioPlayer.setUrl(_streamUrl);
             await _audioPlayer.play();
 
             success = true;
+            if (mounted) {
+              setState(() {
+                _errorMessage = null;
+              });
+            }
             AppSnackbar.success('สำเร็จ', 'กำลังเล่นเสียงจากเซิร์ฟเวอร์');
             break;
           } catch (e) {
@@ -113,8 +124,9 @@ class _StreamScreenState extends State<StreamScreen> {
             print('⚠️ Attempt ${attempt + 1} failed: $e');
 
             if (attempt < maxRetries - 1) {
-              // Wait before retry
-              await Future.delayed(Duration(milliseconds: retryDelay));
+              // Progressive delays: 3s, 5s, 8s
+              final delay = [3000, 5000, 8000][attempt];
+              await Future.delayed(Duration(milliseconds: delay));
             }
           }
         }
@@ -124,19 +136,24 @@ class _StreamScreenState extends State<StreamScreen> {
         }
       }
     } catch (e) {
-      print('Error in _togglePlayback: $e');
+      print('❌ All attempts failed: $e');
       if (mounted) {
         String errorMsg = 'ไม่สามารถเล่นเสียงได้';
 
-        if (e.toString().contains('Source error') ||
-            e.toString().contains('NO_ACTIVE_STREAM')) {
+        final errorStr = e.toString().toLowerCase();
+
+        if (errorStr.contains('no_active_stream')) {
           errorMsg =
-              'กรุณาเริ่มเล่นเพลงในระบบก่อน แล้วค่อยกลับมาเปิดเสียงอีกครั้ง';
-        } else if (e.toString().contains('STREAM_NOT_READY')) {
-          errorMsg = 'Stream กำลังเริ่มต้น กรุณารอสักครู่แล้วลองใหม่';
-        } else if (e.toString().contains('Connection') ||
-            e.toString().contains('Network')) {
-          errorMsg = 'ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้';
+              '⚠️ ไม่มีเพลงกำลังเล่นในระบบ\nกรุณาเริ่มเล่นเพลงก่อน';
+        } else if (errorStr.contains('stream_not_ready')) {
+          errorMsg =
+              '⏳ Stream กำลังเริ่มต้น\nรอ 10-15 วินาทีแล้วลองใหม่';
+        } else if (errorStr.contains('source error')) {
+          errorMsg =
+              '⚠️ Stream ยังไม่พร้อม\nกรุณารอสักครู่แล้วลองอีกครั้ง';
+        } else if (errorStr.contains('connection') ||
+            errorStr.contains('network')) {
+          errorMsg = '🔌 ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้';
         }
 
         setState(() {
