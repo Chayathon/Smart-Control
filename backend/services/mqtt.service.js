@@ -18,6 +18,72 @@ const pendingRequestsByZone = {};
 const lastManualByZone = new Map();  
 
 
+async function sendZoneUartCommand(zone, set_stream) {
+    const zoneStr = String(zone).padStart(4, '0');
+    const baseCmd = set_stream
+        ? `$S${zoneStr}Y$`  // เปิดโซน
+        : `$S${zoneStr}N$`; // ปิดโซน
+
+    const now = Date.now();
+    const key = `${baseCmd}`;
+
+    if (lastUartCmd === key && (now - lastUartTs) < 300) {
+        console.log('[RadioZone] skip duplicate UART cmd:', key);
+        return;
+    }
+    lastUartCmd = key;
+    lastUartTs = now;
+
+    console.log('[RadioZone] MQTT zone command -> UART:', {
+        zone,
+        set_stream,
+        uartCmd: baseCmd,
+    });
+
+    try {
+        await uart.writeString(baseCmd, 'ascii');
+    } catch (err) {
+        console.error('[RadioZone] UART write error for zone command:', err.message);
+    }
+}
+
+async function sendVolUartCommand(zone, set_volume) {
+    const zoneStr = String(zone).padStart(4, '0');
+
+    // clamp 0–21
+    let vol = Number(set_volume);
+    if (!Number.isFinite(vol)) {
+        console.warn('[RadioZone] invalid volume value:', set_volume);
+        return;
+    }
+    if (vol < 0) vol = 0;
+    if (vol > 21) vol = 21;
+
+    const baseCmd = `$V${zoneStr}${vol}$`;
+    const now = Date.now();
+    const key = baseCmd;
+
+    // กันยิงซ้ำในเวลาใกล้ ๆ กัน (เหมือน set_stream)
+    if (lastUartCmd === key && (now - lastUartTs) < 300) {
+        console.log('[RadioZone] skip duplicate UART cmd (VOL):', key);
+        return;
+    }
+    lastUartCmd = key;
+    lastUartTs = now;
+
+    console.log('[RadioZone] MQTT volume command -> UART:', {
+        zone,
+        volume: vol,
+        uartCmd: baseCmd,
+    });
+
+    try {
+        await uart.writeString(baseCmd, 'ascii');
+    } catch (err) {
+        console.error('[RadioZone] UART write error for volume command:', err.message);
+    }
+}
+
 function connectAndSend({
     brokerUrl = 'mqtt://192.168.1.83:1883',
     username = 'admin',
@@ -71,71 +137,6 @@ function connectAndSend({
         console.warn('⚠️ MQTT connection closed');
     });
 
-    async function sendZoneUartCommand(zone, set_stream) {
-        const zoneStr = String(zone).padStart(4, '0');
-        const baseCmd = set_stream
-            ? `$S${zoneStr}Y$`  // เปิดโซน
-            : `$S${zoneStr}N$`; // ปิดโซน
-
-        const now = Date.now();
-        const key = `${baseCmd}`;
-
-        if (lastUartCmd === key && (now - lastUartTs) < 300) {
-            console.log('[RadioZone] skip duplicate UART cmd:', key);
-            return;
-        }
-        lastUartCmd = key;
-        lastUartTs = now;
-
-        console.log('[RadioZone] MQTT zone command -> UART:', {
-            zone,
-            set_stream,
-            uartCmd: baseCmd,
-        });
-
-        try {
-            await uart.writeString(baseCmd, 'ascii');
-        } catch (err) {
-            console.error('[RadioZone] UART write error for zone command:', err.message);
-        }
-    }
-
-    async function sendVolUartCommand(zone, set_volume) {
-        const zoneStr = String(zone).padStart(4, '0');
-
-        // clamp 0–21
-        let vol = Number(set_volume);
-        if (!Number.isFinite(vol)) {
-            console.warn('[RadioZone] invalid volume value:', set_volume);
-            return;
-        }
-        if (vol < 0) vol = 0;
-        if (vol > 21) vol = 21;
-
-        const baseCmd = `$V${zoneStr}${vol}$`;
-        const now = Date.now();
-        const key = baseCmd;
-
-        // กันยิงซ้ำในเวลาใกล้ ๆ กัน (เหมือน set_stream)
-        if (lastUartCmd === key && (now - lastUartTs) < 300) {
-            console.log('[RadioZone] skip duplicate UART cmd (VOL):', key);
-            return;
-        }
-        lastUartCmd = key;
-        lastUartTs = now;
-
-        console.log('[RadioZone] MQTT volume command -> UART:', {
-            zone,
-            volume: vol,
-            uartCmd: baseCmd,
-        });
-
-        try {
-            await uart.writeString(baseCmd, 'ascii');
-        } catch (err) {
-            console.error('[RadioZone] UART write error for volume command:', err.message);
-        }
-    }
 
 
     client.on('message', async (topic, message, packet) => {
