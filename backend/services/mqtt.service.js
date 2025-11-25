@@ -460,7 +460,7 @@ function connectAndSend({
 
 
         const statusMatch = topic.match(/^mass-radio\/([^/]+)\/status$/);
-        if (statusMatch) {ฃ
+        if (statusMatch) {
             let json;
             const target = statusMatch[1]; // ได้ค่า "all" หรือ "zone1", "zone2"
             const payloadStr = message.toString();
