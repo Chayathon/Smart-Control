@@ -13,6 +13,8 @@ let connected = false;
 let lastUartCmd = null;
 let lastUartTs = 0;
 
+let blockSyncUntil = 0;
+
 const pendingRequestsByZone = {};
 
 const lastManualByZone = new Map();  
@@ -238,7 +240,10 @@ function connectAndSend({
             }
             if (zoneNum !== null) {
                 if (typeof json.set_stream === 'boolean') {
-                    console.log(`[RadioZone] CMD -> UART (Zone ${zoneNum}): stream=${json.set_stream}`);
+                    if (zoneNum === 1111) {
+                        console.log(`[RadioZone] CMD -> UART (Zone ${zoneNum}): stream=${json.set_stream}`);
+                        blockSyncUntil = Date.now() + 5000;
+                    }
                     await sendZoneUartCommand(zoneNum, json.set_stream);
                 } 
                 else if (typeof json.set_volume === 'number') {
@@ -332,10 +337,16 @@ function connectAndSend({
                 const isFromManualPanel = merged.source === 'manual-panel'; 
                 upsertDeviceStatus(no, merged);
                 if (!isFromManualPanel && merged.stream_enabled !== undefined && merged.stream_enabled !== prevStreamStatus) {
-                    console.log(`[Sync] Node/Web changed status (Zone ${no}). Syncing to UART Machine...`);
-                    sendZoneUartCommand(no, merged.stream_enabled).catch(err => {
-                        console.error(`[RadioZone] UART sync error zone ${no}:`, err.message);
-                    });
+                    
+                    if (Date.now() < blockSyncUntil) {
+                        return;
+                    } else {
+                        console.log(`[Sync] Node/Web changed status (Zone ${no}). Syncing to UART Machine...`);
+                        sendZoneUartCommand(no, merged.stream_enabled).catch(err => {
+                            console.error(`[RadioZone] UART sync error zone ${no}:`, err.message);
+                        });
+                    }
+
                 } else if (isFromManualPanel) {
                     console.log(`[Sync] Action from Manual Panel (Zone ${no})`);
                 }
@@ -469,7 +480,9 @@ async function checkOfflineZones() {
                     offline: true
                 });
             });
-
+            sendZoneUartCommand(1111, false).catch(err => {
+                console.error('❌ UART error when marking all offline:', err.message);
+            });
             console.log("⚠️ deviceStatus ว่าง → ตั้งค่าทุกโซนเป็น offline");
         } catch (err) {
             console.error("❌ Failed to mark all devices offline:", err.message);
