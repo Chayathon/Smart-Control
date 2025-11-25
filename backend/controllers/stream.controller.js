@@ -1,9 +1,63 @@
 const stream = require('../services/stream.service');
 const Song = require('../models/Song');
 const path = require('path');
+const axios = require('axios');
+const cfg = require('../config/config');
 
 function status(_req, res) {
     res.json({ status: 'success', data: stream.getStatus() });
+}
+
+async function streamAudio(req, res) {
+    try {
+        // Get Icecast stream URL from config
+        const { icecast } = cfg;
+        const streamUrl = `http://${icecast.host}:${icecast.port}${icecast.mount}`;
+        
+        console.log('📻 Client requesting audio stream, proxying from:', streamUrl);
+
+        // Set headers for audio streaming
+        res.setHeader('Content-Type', 'audio/mpeg');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
+        res.setHeader('Accept-Ranges', 'none');
+
+        // Proxy the stream from Icecast
+        const response = await axios({
+            method: 'get',
+            url: streamUrl,
+            responseType: 'stream',
+            timeout: 30000,
+            headers: {
+                'User-Agent': 'Smart-Control-Backend',
+            }
+        });
+
+        // Pipe the Icecast stream to the client
+        response.data.pipe(res);
+
+        // Handle errors
+        response.data.on('error', (error) => {
+            console.error('❌ Stream error:', error.message);
+            if (!res.headersSent) {
+                res.status(500).json({ status: 'error', message: 'Stream error' });
+            }
+        });
+
+        req.on('close', () => {
+            console.log('🔌 Client disconnected from audio stream');
+            response.data.destroy();
+        });
+
+    } catch (error) {
+        console.error('❌ Error streaming audio:', error.message);
+        if (!res.headersSent) {
+            res.status(500).json({ 
+                status: 'error', 
+                message: 'ไม่สามารถเชื่อมต่อ stream ได้ กรุณาตรวจสอบว่ามีเพลงกำลังเล่นอยู่' 
+            });
+        }
+    }
 }
 
 async function enableStream(_req, res) {
@@ -136,6 +190,7 @@ async function stopAll(_req, res) {
 
 module.exports = { 
     status,
+    streamAudio,
     enableStream,
     disableStream,
     startFile,
