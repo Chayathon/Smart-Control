@@ -4,6 +4,9 @@
 *.pyc
 *.swp
 .DS_Store
+
+# Environment variables
+.env
 .atom/
 .build/
 .buildlog/

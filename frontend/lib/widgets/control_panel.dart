@@ -65,7 +65,7 @@ class _ControlPanelState extends State<ControlPanel> {
   List<int> scheduleDays = [];
   String scheduleDescription = '';
 
-  static const String _micServerUrl = AppConfig.wsMic;
+  static final String _micServerUrl = AppConfig.wsMic;
 
   @override
   void initState() {

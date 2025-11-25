@@ -3,6 +3,7 @@ abstract class AppRoutes {
   static const login = "/login";
   static const playlist = '/playlist';
   static const song = '/song';
+  static const stream = '/stream';
   static const monitoring = '/monitoring';
   static const system = '/settings/system';
   static const schedule = '/settings/schedule';
