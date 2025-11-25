@@ -704,6 +704,9 @@ async function checkOfflineZones() {
                 }
             );
             offlineZones.forEach(zoneNo => {
+                sendZoneUartCommand(zoneNo, false).catch(err => {
+                    console.error(`[Offline] UART error for zone ${zoneNo}:`, err.message);
+                });
                 broadcast({
                     zone: zoneNo,
                     stream_enabled: false,
