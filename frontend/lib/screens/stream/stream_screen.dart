@@ -53,9 +53,14 @@ class _StreamScreenState extends State<StreamScreen> {
           String errorMsg = 'ไม่สามารถเล่นเสียงได้';
 
           // Provide more specific error messages
-          if (e.toString().contains('Source error')) {
-            errorMsg = 'ไม่มีเพลงกำลังเล่นในระบบ กรุณาเริ่มเล่นเพลงก่อน';
-          } else if (e.toString().contains('Connection')) {
+          if (e.toString().contains('Source error') ||
+              e.toString().contains('NO_ACTIVE_STREAM')) {
+            errorMsg =
+                'กรุณาเริ่มเล่นเพลงในระบบก่อน แล้วค่อยกลับมาเปิดเสียงอีกครั้ง';
+          } else if (e.toString().contains('STREAM_NOT_READY')) {
+            errorMsg = 'Stream กำลังเริ่มต้น กรุณารอสักครู่แล้วลองใหม่';
+          } else if (e.toString().contains('Connection') ||
+              e.toString().contains('Network')) {
             errorMsg = 'ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้';
           }
 
@@ -87,18 +92,51 @@ class _StreamScreenState extends State<StreamScreen> {
 
         print('🎵 Attempting to play stream from: $_streamUrl');
 
-        await _audioPlayer.setUrl(_streamUrl);
-        await _audioPlayer.play();
+        // Retry logic for stream that might not be ready immediately
+        int maxRetries = 3;
+        int retryDelay = 2000; // 2 seconds
+        bool success = false;
+        String? lastError;
 
-        AppSnackbar.success('สำเร็จ', 'กำลังเล่นเสียงจากเซิร์ฟเวอร์');
+        for (int attempt = 0; attempt < maxRetries; attempt++) {
+          try {
+            print('🔄 Attempt ${attempt + 1}/$maxRetries to connect to stream');
+
+            await _audioPlayer.setUrl(_streamUrl);
+            await _audioPlayer.play();
+
+            success = true;
+            AppSnackbar.success('สำเร็จ', 'กำลังเล่นเสียงจากเซิร์ฟเวอร์');
+            break;
+          } catch (e) {
+            lastError = e.toString();
+            print('⚠️ Attempt ${attempt + 1} failed: $e');
+
+            if (attempt < maxRetries - 1) {
+              // Wait before retry
+              await Future.delayed(Duration(milliseconds: retryDelay));
+            }
+          }
+        }
+
+        if (!success) {
+          throw Exception(lastError ?? 'Failed to connect to stream');
+        }
       }
     } catch (e) {
       print('Error in _togglePlayback: $e');
       if (mounted) {
         String errorMsg = 'ไม่สามารถเล่นเสียงได้';
 
-        if (e.toString().contains('Source error')) {
-          errorMsg = 'ไม่มีเพลงกำลังเล่นในระบบ กรุณาเริ่มเล่นเพลงก่อน';
+        if (e.toString().contains('Source error') ||
+            e.toString().contains('NO_ACTIVE_STREAM')) {
+          errorMsg =
+              'กรุณาเริ่มเล่นเพลงในระบบก่อน แล้วค่อยกลับมาเปิดเสียงอีกครั้ง';
+        } else if (e.toString().contains('STREAM_NOT_READY')) {
+          errorMsg = 'Stream กำลังเริ่มต้น กรุณารอสักครู่แล้วลองใหม่';
+        } else if (e.toString().contains('Connection') ||
+            e.toString().contains('Network')) {
+          errorMsg = 'ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้';
         }
 
         setState(() {

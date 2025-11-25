@@ -21,41 +21,84 @@ async function streamAudio(req, res) {
         res.setHeader('Cache-Control', 'no-cache');
         res.setHeader('Connection', 'keep-alive');
         res.setHeader('Accept-Ranges', 'none');
+        res.setHeader('icy-name', 'Smart Control Stream');
 
-        // Proxy the stream from Icecast
-        const response = await axios({
-            method: 'get',
-            url: streamUrl,
-            responseType: 'stream',
-            timeout: 30000,
-            headers: {
-                'User-Agent': 'Smart-Control-Backend',
+        // Retry logic: try to connect to Icecast with retries
+        let lastError = null;
+        const maxRetries = 3;
+        const retryDelay = 1000; // 1 second
+
+        for (let attempt = 0; attempt < maxRetries; attempt++) {
+            try {
+                console.log(`📻 Attempt ${attempt + 1}/${maxRetries} to connect to Icecast`);
+                
+                // Proxy the stream from Icecast
+                const response = await axios({
+                    method: 'get',
+                    url: streamUrl,
+                    responseType: 'stream',
+                    timeout: 10000,
+                    headers: {
+                        'User-Agent': 'Smart-Control-Backend',
+                        'Icy-MetaData': '1',
+                    },
+                    validateStatus: (status) => status === 200
+                });
+
+                console.log('✅ Successfully connected to Icecast stream');
+
+                // Pipe the Icecast stream to the client
+                response.data.pipe(res);
+
+                // Handle errors
+                response.data.on('error', (error) => {
+                    console.error('❌ Stream pipe error:', error.message);
+                    if (!res.headersSent) {
+                        res.status(500).end();
+                    }
+                });
+
+                req.on('close', () => {
+                    console.log('🔌 Client disconnected from audio stream');
+                    response.data.destroy();
+                });
+
+                return; // Success - exit function
+
+            } catch (err) {
+                lastError = err;
+                console.warn(`⚠️ Attempt ${attempt + 1} failed:`, err.message);
+                
+                if (attempt < maxRetries - 1) {
+                    await new Promise(resolve => setTimeout(resolve, retryDelay));
+                }
             }
-        });
+        }
 
-        // Pipe the Icecast stream to the client
-        response.data.pipe(res);
-
-        // Handle errors
-        response.data.on('error', (error) => {
-            console.error('❌ Stream error:', error.message);
-            if (!res.headersSent) {
-                res.status(500).json({ status: 'error', message: 'Stream error' });
-            }
-        });
-
-        req.on('close', () => {
-            console.log('🔌 Client disconnected from audio stream');
-            response.data.destroy();
-        });
+        // All retries failed
+        throw lastError;
 
     } catch (error) {
-        console.error('❌ Error streaming audio:', error.message);
+        console.error('❌ Error streaming audio after all retries:', error.message);
+        
         if (!res.headersSent) {
-            res.status(500).json({ 
-                status: 'error', 
-                message: 'ไม่สามารถเชื่อมต่อ stream ได้ กรุณาตรวจสอบว่ามีเพลงกำลังเล่นอยู่' 
-            });
+            // Send a more helpful error message
+            const streamStatus = stream.getStatus();
+            const isPlaying = streamStatus.isPlaying || streamStatus.playlistMode;
+            
+            if (!isPlaying) {
+                res.status(503).json({ 
+                    status: 'error', 
+                    message: 'ไม่มีเพลงกำลังเล่นในระบบ กรุณาเริ่มเล่นเพลงก่อน',
+                    code: 'NO_ACTIVE_STREAM'
+                });
+            } else {
+                res.status(503).json({ 
+                    status: 'error', 
+                    message: 'กำลังโหลด stream กรุณารอสักครู่แล้วลองใหม่',
+                    code: 'STREAM_NOT_READY'
+                });
+            }
         }
     }
 }
