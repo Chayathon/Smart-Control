@@ -17,69 +17,39 @@ function toDate(v) {
 }
 
 /**
- * 🔹 decode flag 4–5 หลัก เช่น "$12010" → object แยก field
+ * 🔹 decode flag 2 หลัก ตามสเปคใหม่
  *
- * ลำดับตัวเลข (จากซ้ายไปขวา):
- *   0: voltage
- *   1: current
- *   2: power
- *   3: oat      (ใช้ 0/1 เป็น ปิด/เปิด ตามที่ frontend แปลความหมาย)
- *   4: online   (ใช้ 0/1 → 0 = online, 1 = offline)  [optional, รองรับกรณีข้อมูลเก่า 4 หลัก]
- *
- * สำหรับ field ที่เป็นค่าทางไฟฟ้า (voltage/current/power):
- *   0 = ปกติ
- *   1 = สูงผิดปกติ
- *   2 = ต่ำผิดปกติ
+ * รูปแบบ: "$XY"
+ *   X = voltage  : 0 ปกติ, 1 สูง, 2 ต่ำ
+ *   Y = current  : 0 ปกติ, 1 over current (2 ยังไม่ใช้)
  *
  * ตัวอย่าง:
- *   "$0000"   → ปกติทั้งหมด (ไม่มี oat, ไม่มี online)
- *   "$1201"   → voltage=1, current=2, power=0, oat=1
- *   "$12010"  → voltage=1, current=2, power=0, oat=1, online=0
+ *   "$00" → voltage=0, current=0 (ปกติ)
+ *   "$10" → voltage สูง, current ปกติ
+ *   "$01" → voltage ปกติ, current over current
  */
 function decodeFlag(flag) {
   if (!flag || typeof flag !== 'string') return null;
 
   let s = flag.trim();
-  if (s.startsWith('$')) s = s.slice(1); // "$12010" → "12010"
+  if (s.startsWith('$')) s = s.slice(1); // "$10" → "10"
 
-  // รองรับอย่างน้อย 4 หลัก (เก่า) และได้มากสุด 5 หลัก (ใหม่)
-  if (s.length < 4) {
+  // ต้องยาว 2 ตัว และเป็นตัวเลข 0–2
+  if (!/^[0-2]{2}$/.test(s)) {
     console.warn(
-      '[deviceData.service] flag too short (expect 4–5 digits):',
+      '[deviceData.service] invalid 2-digit flag format:',
       flag
     );
     return null;
   }
 
-  // ตัดให้เหลือสูงสุด 5 หลัก เผื่ออนาคตเผลอส่งมาเยอะกว่านี้
-  if (s.length > 5) {
-    s = s.slice(0, 5);
-  }
+  const v = parseInt(s[0], 10);
+  const c = parseInt(s[1], 10);
 
-  // ต้องเป็นตัวเลข 0–2 เท่านั้น (online ใช้ 0/1 ก็อยู่ในช่วงนี้)
-  if (/[^0-2]/.test(s)) {
-    console.warn(
-      '[deviceData.service] invalid flag format (must contain only 0,1,2):',
-      flag
-    );
-    return null;
-  }
-
-  const d = s.split('').map((c) => parseInt(c, 10));
-
-  const result = {
-    voltage: d[0],
-    current: d[1],
-    power: d[2],
-    oat: d[3], // oat จะใช้ 0/1 แล้วไปตีความใน frontend
+  return {
+    voltage: v, // 0 ปกติ, 1 สูง, 2 ต่ำ
+    current: c, // 0 ปกติ, 1 over current
   };
-
-  // หลักที่ 5 (ถ้ามี) ใช้เป็น online 0/1
-  if (d.length >= 5) {
-    result.online = d[4]; // 0 = online, 1 = offline
-  }
-
-  return result;
 }
 
 /** ประกอบ payload ตามลำดับฟิลด์ที่ต้องการเก็บใน DB */
@@ -87,11 +57,9 @@ function buildOrderedPayload(raw = {}) {
   const ts = toDate(raw.timestamp);
 
   const meta = {};
-  // ถ้ามี meta ด้านนอก เข้ามาแล้ว เอามา merge
   if (raw.meta && typeof raw.meta === 'object') {
     Object.assign(meta, raw.meta);
   }
-  // รองรับกรณีส่ง no / deviceId มาเป็น root และยังไม่ได้ยัดเข้า meta
   if (raw.no != null && meta.no == null) {
     meta.no = raw.no;
   }
@@ -101,7 +69,6 @@ function buildOrderedPayload(raw = {}) {
 
   const flagRaw = raw.flag;
 
-  // ✅ จัดลำดับฟิลด์ให้ใกล้เคียงตัวอย่าง document ที่คุณให้มา
   return {
     timestamp: ts,
     meta,
@@ -109,8 +76,8 @@ function buildOrderedPayload(raw = {}) {
     dcA: raw.dcA,
     type: raw.type,
     lat: raw.lat,
-    flag: flagRaw,
-    oat: raw.oat,
+    flag: flagRaw,   // เก็บ flag ดิบไว้
+    oat: raw.oat,    // oat ที่ส่งเข้ามา (0/1 ตามสเปคใหม่)
     dcV: raw.dcV,
     dcW: raw.dcW,
     lng: raw.lng,
@@ -120,18 +87,37 @@ function buildOrderedPayload(raw = {}) {
 /**
  * แปลง doc/data -> รูปแบบส่งให้ frontend
  * - timestamp เป็น ISO string
- * - เติม alarms ที่ decode จาก flag (ใช้แค่ส่งออก ไม่บันทึก DB)
+ * - เติม alarms ที่ decode จาก flag + oat
+ *
+ * alarms รูปแบบ:
+ * {
+ *   voltage: 0|1|2,
+ *   current: 0|1,
+ *   oat: 0|1    // 0 ไม่ได้ประกาศ, 1 กำลังประกาศ
+ * }
  */
 function toFrontendRow(docOrData) {
   const r = docOrData.toObject ? docOrData.toObject() : { ...docOrData };
 
-  const alarms = decodeFlag(r.flag);
+  // 1) ดึงจาก flag 2 หลัก
+  const alarmsFromFlag = decodeFlag(r.flag) || {};
+
+  // 2) อิง oat จากค่าที่เก็บใน DB (0/1)
+  const alarms = { ...alarmsFromFlag };
+
+  if (typeof r.oat === 'number') {
+    const oatBit = r.oat > 0 ? 1 : 0;
+    // ถ้าอยากให้แสดงเฉพาะตอน "กำลังประกาศ" ให้เก็บเฉพาะ oatBit === 1
+    if (oatBit !== 0) {
+      alarms.oat = oatBit;
+    }
+  }
 
   return {
     ...r,
     timestamp:
       r.timestamp instanceof Date ? r.timestamp.toISOString() : r.timestamp,
-    ...(alarms ? { alarms } : {}),
+    ...(Object.keys(alarms).length ? { alarms } : {}),
   };
 }
 
@@ -141,7 +127,7 @@ async function ingestOne(raw) {
   const saved = await DeviceData.create(data);
 
   try {
-    // ส่งไปให้ frontend ผ่าน WS (ใช้ฟิลด์ alarms ที่ decode แล้ว)
+    // ส่งไปให้ frontend ผ่าน WS (ใช้ field alarms ที่ decode แล้ว)
     broadcastDeviceData(toFrontendRow(saved));
   } catch (e) {
     console.warn('[deviceData.service] broadcast error:', e.message || e);
@@ -197,4 +183,5 @@ module.exports = {
   getDeviceDataList,
   initRealtimeBridge,
   decodeFlag,
+  toFrontendRow,
 };

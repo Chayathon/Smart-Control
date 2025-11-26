@@ -202,7 +202,7 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
 
   /// ดึง alarms จาก row ให้กลายเป็น Map<String,int>
   /// รองรับ alarms จาก backend ใหม่:
-  /// { voltage, current, power, oat (On Air Target) }
+  /// { voltage, current, power, oat, online }
   Map<String, int> _extractAlarms(dynamic raw) {
     if (raw is Map) {
       final result = <String, int>{};
@@ -229,8 +229,12 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
   ///
   /// ใช้ "ข้อมูลล่าสุดของแต่ละโหนด" เป็นตัวตัดสิน:
   /// - ถ้าแถวนี้เก่ากว่า timestamp ที่เคยจำไว้ของโหนดนั้น → ข้าม
-  /// - ถ้าแถวนี้ใหม่สุดและทุกค่า alarm = 0 → ลบโหนดนี้ออกจาก _nodeAlarms
-  /// - ถ้าแถวนี้ใหม่สุดและมีค่า != 0 → เก็บเป็น NodeAlarmSummary
+  /// - ถ้าแถวนี้ใหม่สุดและไม่มี alarm / สถานะให้แสดง → ลบโหนดนี้ออกจาก _nodeAlarms
+  /// - ถ้าแถวนี้ใหม่สุดและมีอย่างน้อย 1 field → เก็บเป็น NodeAlarmSummary
+  ///
+  /// ✅ พิเศษ:
+  /// - field `online` ให้เก็บทั้งค่า 0 และ 1 (สถานะออนไลน์/ออฟไลน์)
+  /// - field อื่น (voltage/current/power/oat) เก็บเฉพาะค่าที่ != 0
   void _updateNodeAlarmFromRow(Json row, {required bool fromRealtime}) {
     final id = _idOf(row);
     if (id == null) return;
@@ -252,19 +256,29 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
     final name = _nameOf(row);
     final alarms = _extractAlarms(row['alarms']);
 
-    // เก็บเฉพาะ field ที่ผิดปกติ ( != 0 )
+    // ✅ เก็บ field ที่ต้องแสดงบนการ์ด
     final abnormal = <String, int>{};
+
     alarms.forEach((key, value) {
-      if (value != 0) {
-        abnormal[key] = value;
+      if (value == null) return;
+
+      if (key == 'online') {
+        // ✅ online: เก็บทั้ง 0 และ 1 เป็นสถานะ
+        abnormal[key] = _asInt(value) ?? 0;
+      } else {
+        // field อื่น: เก็บเฉพาะค่าที่ != 0
+        final intVal = _asInt(value);
+        if (intVal != null && intVal != 0) {
+          abnormal[key] = intVal;
+        }
       }
     });
 
     if (abnormal.isEmpty) {
-      // ✅ แถวล่าสุดบอกว่าทุกค่า 0 (เช่น flag = 0000)
-      //    → โหนดนี้กลับสู่ปกติ → ลบออกจากแผงแจ้งเตือน
+      // ✅ ไม่มีอะไรให้แสดง (ไม่มี alarm และไม่มีสถานะ online)
+      //    → ลบโหนดนี้ออกจากแผงแจ้งเตือน
       debugPrint(
-          '✅ [Monitoring] clear alarm nodeId=$id (all zeros in latest row)');
+          '✅ [Monitoring] clear alarm nodeId=$id (no alarms & no online field)');
       _nodeAlarms.remove(id);
       return;
     }
@@ -272,7 +286,7 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
     final existing = _nodeAlarms[id];
 
     if (existing == null) {
-      // โหนดนี้เพิ่งมี alarm จาก "ข้อมูลล่าสุด" เป็นครั้งแรก
+      // โหนดนี้เพิ่งมีข้อมูลแจ้งเตือน/สถานะครั้งแรก
       debugPrint(
           '⚠️ [Monitoring] new node alarm nodeId=$id fields=$abnormal fromRealtime=$fromRealtime');
       _nodeAlarms[id] = NodeAlarmSummary(
