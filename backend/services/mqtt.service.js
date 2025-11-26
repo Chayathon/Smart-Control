@@ -5,7 +5,6 @@ const DeviceData = require('../models/DeviceData');
 const uart = require('./uart.handle');
 const deviceDataService = require('../services/deviceData.service');
 
-
 let deviceStatus = [];
 let seenZones = new Set();
 let client = null;
