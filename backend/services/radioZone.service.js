@@ -1,7 +1,7 @@
 // services/radioZone.service.js
 const uart = require('./uart.handle');
 const mqttSvc = require('./mqtt.service');
-const Device = require('../models/device.model');
+// const Device = require('../models/device.service');
 
 function parseStatusFrame(rawStr) {
   const s = rawStr.trim(); // ตัด \r\n, space
