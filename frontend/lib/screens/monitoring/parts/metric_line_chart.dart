@@ -1,4 +1,3 @@
-// lib/screens/monitoring/parts/metric_line_chart.dart
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'mini_stats.dart'; // ใช้ MetricKey จากไฟล์นี้
@@ -31,29 +30,37 @@ class MetricLineChart extends StatefulWidget {
 }
 
 class _MetricLineChartState extends State<MetricLineChart> {
-  /// index ของจุดที่เลือก (นับจากข้อมูลทั้งหมดหลังกรองช่วงเวลาแล้ว)
-  int? _hitIndexGlobal;
+  /// index ของจุดที่เลือก (อิงจาก list "หลังซูมแล้ว" = pts)
+  int? _hitIndex;
 
   /// เริ่มต้นที่ 1D
   HistorySpan _selectedSpan = HistorySpan.day1;
 
-  /// ระดับซูม (1–6) แสดงเป็น x1, x2, ... x6
-  int _zoomStep = 1;
-  static const int _zoomStepMin = 1;
-  static const int _zoomStepMax = 6;
+  /// ระดับซูม (แสดงเป็น x1, x2, x4, x6, x8)
+  /// ค่ามาก = ซูมเข้า (เห็นช่วงเวลาสั้นลง → จุดห่างกันมากขึ้น)
+  static const List<double> _zoomLevels = [1, 2, 4, 6, 8];
+  int _zoomIndex = 0; // 0 = x1 (ไม่ซูม)
+  double get _zoomFactor => _zoomLevels[_zoomIndex];
 
-  /// ตำแหน่ง center ของ window ซูม (0–1) อิงจากช่วงเวลา minT→maxT
-  /// ค่าเริ่มต้น 1.0 = ช่วงท้ายสุด
-  double _viewCenter = 1.0;
+  /// ตำแหน่งเลื่อน (pan) 0.0 = ซ้ายสุด (เก่าสุด), 1.0 = ขวาสุด (ใหม่สุด)
+  double _pan = 1.0;
+
+  /// index เริ่มต้นของ window ที่กำลังแสดงอยู่ (อิงจาก list ที่กรองวันแล้ว = basePoints)
+  int _visibleStartIndex = 0;
 
   @override
   Widget build(BuildContext context) {
-    // ===== เตรียมข้อมูลสำหรับกราฟ (ทั้งหมดก่อนซูม) =====
-    final allPoints = _buildPoints(
+    // ===== เตรียมข้อมูลสำหรับกราฟ =====
+    // 1) กรองตามวัน + limit จำนวนจุด -> list "ฐาน" ทั้งหมดสำหรับ span นี้
+    final basePoints = _buildPoints(
       widget.history,
       widget.metric,
       _selectedSpan,
     );
+    final totalPoints = basePoints.length; // ✅ จำนวนจุดทั้งหมดหลังกรองวันแล้ว
+
+    // 2) นำไป apply zoom + pan -> list ที่เอาไปวาดบนจอ
+    final pts = _applyZoom(basePoints); // 🔍 ตัดช่วงตามระดับซูม + pan
 
     final unit = _unitOf(widget.metric);
     final mainColor = _metricColor(widget.metric);
@@ -64,27 +71,6 @@ class _MetricLineChartState extends State<MetricLineChart> {
         : '$metricTitle — ${widget.deviceName}';
 
     final border = Colors.grey[200]!;
-
-    // sync ค่า index ให้ไม่เกินจำนวนจุด
-    if (allPoints.isEmpty) {
-      _hitIndexGlobal = null;
-    } else if (_hitIndexGlobal != null &&
-        (_hitIndexGlobal! < 0 || _hitIndexGlobal! >= allPoints.length)) {
-      _hitIndexGlobal = allPoints.length - 1;
-    }
-
-    // สร้าง window ซูม + mapping index global <-> บนจอ
-    final zoomWindow = _makeZoomWindow(
-      allPoints: allPoints,
-      hitIndexGlobal: _hitIndexGlobal,
-      zoomStep: _zoomStep,
-      viewCenter: _viewCenter,
-    );
-
-    final visiblePoints = zoomWindow.viewPoints;
-    final hitIndexVisible = zoomWindow.viewHitIndex;
-
-    final totalCount = allPoints.length;
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(20),
@@ -110,7 +96,7 @@ class _MetricLineChartState extends State<MetricLineChart> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // ===== Header: Title + ปุ่มช่วงเวลา + ปุ่มซูม =====
+            // ===== Header: Title + ปุ่มช่วงเวลา + Zoom =====
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
               child: Row(
@@ -177,8 +163,8 @@ class _MetricLineChartState extends State<MetricLineChart> {
                   ),
                   const SizedBox(width: 12),
                   _buildTimeRangeSelector(mainColor),
-                  const SizedBox(width: 10),
-                  _buildZoomControls(mainColor),
+                  const SizedBox(width: 8),
+                  _buildZoomControl(mainColor), // 🔍 ปุ่มซูม
                 ],
               ),
             ),
@@ -186,7 +172,7 @@ class _MetricLineChartState extends State<MetricLineChart> {
 
             // ===== ตัวกราฟ =====
             Expanded(
-              child: visiblePoints.isEmpty
+              child: pts.isEmpty
                   ? const Center(
                       child: Text(
                         'ยังไม่มีข้อมูลสำหรับช่วงเวลานี้',
@@ -197,76 +183,78 @@ class _MetricLineChartState extends State<MetricLineChart> {
                         ),
                       ),
                     )
-                  : LayoutBuilder(
-                      builder: (context, constraints) {
-                        return GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onTapDown: (d) {
-                            if (visiblePoints.isEmpty) return;
-                            final hitLocal = _nearestIndex(
-                              visiblePoints,
-                              d.localPosition,
-                              context,
-                            );
-                            if (hitLocal < 0 ||
-                                hitLocal >=
-                                    zoomWindow.globalIndices.length) {
-                              return;
-                            }
-                            final global =
-                                zoomWindow.globalIndices[hitLocal];
-                            setState(() {
-                              _hitIndexGlobal = global;
-                              _viewCenter =
-                                  _positionOfIndex(allPoints, global);
-                            });
-                          },
-                          onHorizontalDragUpdate: (d) {
-                            if (visiblePoints.isEmpty) return;
-                            final render =
-                                context.findRenderObject() as RenderBox?;
-                            if (render == null) return;
-                            final local =
-                                render.globalToLocal(d.globalPosition);
-                            final hitLocal = _nearestIndex(
-                              visiblePoints,
-                              local,
-                              context,
-                            );
-                            if (hitLocal < 0 ||
-                                hitLocal >=
-                                    zoomWindow.globalIndices.length) {
-                              return;
-                            }
-                            final global =
-                                zoomWindow.globalIndices[hitLocal];
-                            setState(() {
-                              _hitIndexGlobal = global;
-                              _viewCenter =
-                                  _positionOfIndex(allPoints, global);
-                            });
-                          },
-                          child: Padding(
-                            padding: const EdgeInsets.fromLTRB(
-                                12, 10, 16, 6),
-                            child: _ChartCanvas(
-                              points: visiblePoints,
-                              unit: unit,
-                              hitIndex: hitIndexVisible,
-                              mainColor: mainColor,
-                              span: _selectedSpan,
-                            ),
-                          ),
-                        );
+                  : GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTapDown: (d) {
+                        if (pts.isEmpty) return;
+                        final hit =
+                            _nearestIndex(pts, d.localPosition, context);
+                        setState(() => _hitIndex = hit);
                       },
+                      onHorizontalDragUpdate: (d) {
+                        if (pts.isEmpty) return;
+                        final render =
+                            context.findRenderObject() as RenderBox?;
+                        if (render == null) return;
+                        final size = render.size;
+
+                        // ถ้า zoom > x1 → ใช้ drag เพื่อ pan ซ้าย–ขวา
+                        if (_zoomFactor > 1.0) {
+                          const double left = 54.0;
+                          const double right = 12.0;
+                          final chartW = size.width - left - right;
+                          if (chartW <= 0) return;
+
+                          final dx = d.primaryDelta ?? d.delta.dx;
+                          // drag ไปทางขวา → ดูข้อมูลเก่าขึ้น → pan ลดลง
+                          final deltaPan = -(dx / chartW);
+
+                          setState(() {
+                            _pan = (_pan + deltaPan).clamp(0.0, 1.0);
+                            _hitIndex =
+                                null; // เลื่อนกราฟแล้ว เคลียร์ highlight ก่อน
+                          });
+                        } else {
+                          // ถ้าไม่ zoom → drag เพื่อเลื่อน highlight เหมือนเดิม
+                          final local =
+                              render.globalToLocal(d.globalPosition);
+                          final hit =
+                              _nearestIndex(pts, local, context);
+                          setState(() => _hitIndex = hit);
+                        }
+                      },
+                      child: Padding(
+                        padding:
+                            const EdgeInsets.fromLTRB(12, 10, 16, 16),
+                        child: _ChartCanvas(
+                          points: pts,
+                          unit: unit,
+                          hitIndex: _hitIndex,
+                          mainColor: mainColor,
+                          span: _selectedSpan, // 🔹 ส่ง span เข้าไป
+                          totalPoints: totalPoints, // ✅ ใหม่
+                          visibleStartIndex:
+                              _visibleStartIndex, // ✅ ใหม่
+                        ),
+                      ),
                     ),
             ),
 
-            // ===== แถบข้อมูลจุดด้านล่าง =====
-            _buildBottomInfo(
-              allPoints: allPoints,
-              unit: unit,
-            ),
+            // ===== แถบด้านล่าง: แสดงจุด + ปุ่มเลื่อน < > =====
+            if (pts.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+                // ให้สูงคงที่กัน “เด้งกราฟ”
+                child: SizedBox(
+                  height: 56,
+                  child: _buildPointNavigator(
+                    pts,
+                    totalPoints, // ✅ ส่ง "จำนวนจุดทั้งหมดหลังกรองวัน" เข้าไป
+                    unit,
+                    mainColor,
+                  ),
+                ),
+              ),
           ],
         ),
       ),
@@ -315,9 +303,9 @@ class _MetricLineChartState extends State<MetricLineChart> {
                 onTap: () {
                   setState(() {
                     _selectedSpan = span;
-                    _hitIndexGlobal = null;
-                    _zoomStep = 1;
-                    _viewCenter = 1.0;
+                    _hitIndex = null;
+                    _zoomIndex = 0; // เปลี่ยนช่วงเวลา → reset เป็น x1
+                    _pan = 1.0; // และเลื่อนไปดูข้อมูลล่าสุด
                   });
                 },
                 child: AnimatedContainer(
@@ -359,8 +347,11 @@ class _MetricLineChartState extends State<MetricLineChart> {
     );
   }
 
-  /// ปุ่มซูม x1..x6
-  Widget _buildZoomControls(Color mainColor) {
+  /// ปุ่ม Zoom แบบ segmented (x1 / x2 / x4 / x6 / x8)
+  Widget _buildZoomControl(Color mainColor) {
+    // label ของแต่ละระดับซูม ตาม _zoomLevels
+    final labels = _zoomLevels.map((z) => 'x${z.toStringAsFixed(0)}').toList();
+
     return Material(
       color: Colors.transparent,
       child: Container(
@@ -379,59 +370,377 @@ class _MetricLineChartState extends State<MetricLineChart> {
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
-          children: [
-            _zoomIconButton(
-              icon: Icons.remove_rounded,
-              onTap: () {
-                if (_zoomStep <= _zoomStepMin) return;
-                setState(() {
-                  _zoomStep--;
-                });
-              },
-            ),
-            Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              child: Text(
-                'x$_zoomStep',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  color: mainColor,
+          children: List.generate(labels.length, (index) {
+            final label = labels[index];
+            final isSelected = index == _zoomIndex;
+
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 2),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(999),
+                splashColor: Colors.transparent,
+                highlightColor: Colors.transparent,
+                hoverColor: Colors.transparent,
+                onTap: () {
+                  setState(() {
+                    _zoomIndex = index;
+                    _hitIndex = null;
+
+                    // ถ้าเป็น x1 → ดูเต็มช่วงและเลื่อนไปท้ายสุด
+                    if (_zoomFactor <= 1.0) {
+                      _pan = 1.0;
+                    } else {
+                      _pan = _pan.clamp(0.0, 1.0);
+                    }
+                  });
+                },
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 160),
+                  curve: Curves.easeInOut,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 5,
+                  ),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(999),
+                    gradient: isSelected
+                        ? LinearGradient(
+                            colors: [
+                              mainColor,
+                              mainColor.withOpacity(0.7),
+                            ],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          )
+                        : null,
+                    color: isSelected ? null : Colors.white,
+                  ),
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: .3,
+                      color: isSelected ? Colors.white : Colors.black54,
+                    ),
+                  ),
                 ),
               ),
-            ),
-            _zoomIconButton(
-              icon: Icons.add_rounded,
-              onTap: () {
-                if (_zoomStep >= _zoomStepMax) return;
-                setState(() {
-                  _zoomStep++;
-                });
-              },
-            ),
-          ],
+            );
+          }),
         ),
       ),
     );
   }
 
-  Widget _zoomIconButton({
-    required IconData icon,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(999),
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-        child: Icon(
-          icon,
-          size: 16,
-          color: Colors.grey[800],
+  // ===== แถบด้านล่าง: แสดงจุด + ปุ่มเลื่อน < > =====
+  /// pts         = list จุดที่ "แสดงบนกราฟตอนนี้" (หลังซูมแล้ว)
+  /// totalPoints = จำนวนจุดทั้งหมดหลังกรองวันแล้ว (basePoints.length)
+  Widget _buildPointNavigator(
+    List<_Pt> pts,
+    int totalPoints,
+    String unit,
+    Color mainColor,
+  ) {
+    final totalAll = totalPoints; // ✅ จำนวนจุดทั้งหมดสำหรับ span นี้
+
+    final hasHit =
+        _hitIndex != null && _hitIndex! >= 0 && _hitIndex! < pts.length;
+
+    int idxLocal = 0; // index ในหน้าจอ (pts)
+    _Pt? pt;
+    if (hasHit) {
+      idxLocal = _hitIndex!.clamp(0, pts.length - 1);
+      pt = pts[idxLocal];
+    }
+
+    // globalIndex = ลำดับจริงใน "จุดทั้งหมด" (หลังกรองวันแล้ว)
+    int globalIndex = 0;
+    if (hasHit && totalAll > 0) {
+      globalIndex =
+          (_visibleStartIndex + idxLocal).clamp(0, totalAll - 1);
+    }
+
+    // ขนาด window ปัจจุบัน + ขอบซ้าย-ขวาใน index global
+    final visibleCount = pts.length;
+    final maxStart = (totalAll - visibleCount).clamp(0, totalAll);
+    final canPan = _zoomFactor > 1.0 && totalAll > visibleCount;
+
+    final windowStart = _visibleStartIndex.clamp(
+      0,
+      totalAll == 0 ? 0 : totalAll - 1,
+    );
+    final windowEnd = (windowStart + visibleCount - 1).clamp(
+      0,
+      totalAll == 0 ? 0 : totalAll - 1,
+    );
+
+    // ปรับเงื่อนไขให้ดู "จุดทั้งหมด" ไม่ใช่แค่ในหน้าจอ
+    final canGoPrev = hasHit && globalIndex > 0;
+    final canGoNext =
+        (hasHit && globalIndex < totalAll - 1) ||
+            (!hasHit && totalAll > 0);
+
+    final titleText =
+        hasHit ? '${pt!.y.toStringAsFixed(2)} $unit' : 'ยังไม่ได้เลือกจุด';
+
+    // ✅ subtitle แสดง "จุดที่ X/Y • เวลา"
+    final subtitleText = hasHit && totalAll > 0
+        ? 'จุดที่ ${globalIndex + 1}/$totalAll • ${_formatTimeForNavigator(pt!.t)}'
+        : 'แตะจุดบนกราฟ หรือใช้ปุ่มเลื่อนด้านขวา';
+
+    // ✅ แสดงเป็น "ลำดับ / จำนวนทั้งหมด" ตามที่ต้องการ (ด้านขวา)
+    final indexLabel = (hasHit && totalAll > 0)
+        ? '${globalIndex + 1}/$totalAll'
+        : '0/$totalAll';
+
+    // helper เล็ก ๆ สำหรับปุ่มลูกศรสไตล์ฟองกลม + เงา
+    Widget navButton({
+      required IconData icon,
+      required bool enabled,
+      required VoidCallback onTap,
+    }) {
+      final bgColor = enabled ? Colors.white : const Color(0xFFE5E7EB);
+      final iconColor =
+          enabled ? const Color(0xFF334155) : const Color(0xFF9CA3AF);
+      final shadows = enabled
+          ? [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.05),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
+              ),
+            ]
+          : <BoxShadow>[];
+
+      return Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(999),
+          onTap: enabled ? onTap : null,
+          child: Container(
+            width: 30,
+            height: 30,
+            decoration: BoxDecoration(
+              color: bgColor,
+              borderRadius: BorderRadius.circular(999),
+              boxShadow: shadows,
+            ),
+            child: Icon(
+              icon,
+              size: 18,
+              color: iconColor,
+            ),
+          ),
         ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 8, 14, 10),
+      decoration: const BoxDecoration(
+        color: Color(0xFFF7F9FC),
+        borderRadius: BorderRadius.all(Radius.circular(16)),
+      ),
+      child: Row(
+        children: [
+          // === ชิปด้านซ้าย: "จุดบนกราฟ N" แบบฟอง gradient ===
+          Container(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(999),
+              gradient: const LinearGradient(
+                colors: [
+                  Color(0xFFE0ECFF),
+                  Color(0xFFD6F4FF),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              boxShadow: const [
+                BoxShadow(
+                  color: Colors.black12,
+                  blurRadius: 8,
+                  offset: Offset(0, 3),
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 20,
+                  height: 20,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.white.withOpacity(0.9),
+                  ),
+                  child: const Icon(
+                    Icons.scatter_plot_rounded,
+                    size: 12,
+                    color: Color(0xFF2563EB),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  // ✅ ใช้จำนวน "ทั้งหมด" ไม่ใช่เฉพาะที่เห็นบนจอ
+                  'จุดบนกราฟ $totalAll',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF1E293B),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(width: 12),
+
+          // === ข้อความกลาง 2 บรรทัด ===
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  titleText,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: hasHit
+                        ? const Color(0xFF0F172A)
+                        : Colors.black87,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitleText,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 10,
+                    color: Color(0xFF64748B),
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(width: 8),
+
+          // === ปุ่มเลื่อน + index ===
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // ปุ่มก่อนหน้า
+              navButton(
+                icon: Icons.chevron_left_rounded,
+                enabled: canGoPrev,
+                onTap: () {
+                  if (!canGoPrev) return;
+                  setState(() {
+                    if (!hasHit || totalAll <= 0) return;
+
+                    // จุดใหม่ใน global index
+                    final newGlobal =
+                        (globalIndex - 1).clamp(0, totalAll - 1);
+
+                    if (canPan && newGlobal < windowStart) {
+                      // ต้องเลื่อน window ไปทางซ้ายให้ครอบ newGlobal
+                      final newStart =
+                          newGlobal.clamp(0, maxStart);
+                      _pan = maxStart > 0
+                          ? newStart / maxStart
+                          : 0.0;
+                      _hitIndex = newGlobal - newStart;
+                    } else {
+                      // ยังอยู่ใน window เดิม → เลื่อนใน pts อย่างเดียว
+                      _hitIndex =
+                          (idxLocal - 1).clamp(0, pts.length - 1);
+                    }
+                  });
+                },
+              ),
+
+              const SizedBox(width: 4),
+
+              // index
+              Text(
+                indexLabel,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Colors.grey[600],
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+
+              const SizedBox(width: 4),
+
+              // ปุ่มถัดไป
+              navButton(
+                icon: Icons.chevron_right_rounded,
+                enabled: canGoNext,
+                onTap: () {
+                  if (!canGoNext) return;
+                  setState(() {
+                    if (!hasHit) {
+                      // ยังไม่เลือก → เลือกจุดแรกของ window ปัจจุบัน
+                      _hitIndex = 0;
+                      return;
+                    }
+                    if (totalAll <= 0) return;
+
+                    final newGlobal =
+                        (globalIndex + 1).clamp(0, totalAll - 1);
+
+                    if (canPan && newGlobal > windowEnd) {
+                      // ต้องเลื่อน window ไปทางขวาให้ครอบ newGlobal
+                      final newStart = (newGlobal -
+                              (visibleCount - 1))
+                          .clamp(0, maxStart);
+                      _pan = maxStart > 0
+                          ? newStart / maxStart
+                          : 0.0;
+                      _hitIndex = newGlobal - newStart;
+                    } else {
+                      // ยังอยู่ใน window เดิม → เลื่อนใน pts อย่างเดียว
+                      _hitIndex =
+                          (idxLocal + 1).clamp(0, pts.length - 1);
+                    }
+                  });
+                },
+              ),
+            ],
+          ),
+        ],
       ),
     );
+  }
+
+  String _formatTimeForNavigator(DateTime dt) {
+    // ใช้รูปแบบใกล้เคียง tooltip แต่ย่อให้สั้นลง
+    switch (_selectedSpan) {
+      case HistorySpan.day1:
+        final hh = dt.hour.toString().padLeft(2, '0');
+        final mn = dt.minute.toString().padLeft(2, '0');
+        final ss = dt.second.toString().padLeft(2, '0');
+        return '$hh:%02d:%02d'
+            .replaceFirst('%02d', mn)
+            .replaceFirst('%02d', ss);
+      case HistorySpan.day7:
+      case HistorySpan.day15:
+      case HistorySpan.day30:
+        final dd = dt.day.toString().padLeft(2, '0');
+        final mm = dt.month.toString().padLeft(2, '0');
+        final hh = dt.hour.toString().padLeft(2, '0');
+        final mn = dt.minute.toString().padLeft(2, '0');
+        return '$dd/$mm $hh:$mn';
+    }
   }
 
   // ===== สร้างจุดกราฟจาก history จริง + กรองตามช่วงเวลา + limit จำนวนจุด =====
@@ -489,6 +798,101 @@ class _MetricLineChartState extends State<MetricLineChart> {
     return reduced;
   }
 
+  /// ตัดช่วงข้อมูลตามระดับซูม + ตำแหน่ง pan
+  ///
+  /// - x1 = ทั้งหมดในช่วงเวลา (ไม่ตัด, pan = 1.0)
+  /// - x2 = แสดง ~1/2 ของช่วงเวลา
+  /// - x4 = แสดง ~1/4 ของช่วงเวลา
+  /// - x6 = แสดง ~1/6 ของช่วงเวลา
+  /// - x8 = แสดง ~1/8 ของช่วงเวลา
+  ///
+  /// _pan = 0.0 → ซ้ายสุด, 1.0 → ขวาสุด
+  List<_Pt> _applyZoom(List<_Pt> pts) {
+    // กรณีจุดน้อย หรือยังไม่ซูม → แสดงทั้งหมด
+    if (pts.length <= 2 || _zoomFactor <= 1.0) {
+      _visibleStartIndex = 0;
+      return pts;
+    }
+
+    final total = pts.length;
+
+    // ==== ช่วงเวลาเต็มทั้งหมด ====
+    final minT = pts.first.t;
+    final maxT = pts.last.t;
+    int totalMs = maxT.difference(minT).inMilliseconds;
+    if (totalMs <= 0) {
+      _visibleStartIndex = 0;
+      return pts;
+    }
+
+    // ==== ช่วงเวลาที่อยากเห็นตามระดับซูม ====
+    int visibleMs = (totalMs / _zoomFactor).round();
+    if (visibleMs <= 0) visibleMs = totalMs;
+
+    final panClamped = _pan.clamp(0.0, 1.0);
+
+    // center ตาม pan (0 = ซ้าย, 1 = ขวา)
+    int centerOffsetMs = (totalMs * panClamped).round();
+    var centerT = minT.add(Duration(milliseconds: centerOffsetMs));
+
+    var startT = centerT.subtract(Duration(milliseconds: visibleMs ~/ 2));
+    var endT = startT.add(Duration(milliseconds: visibleMs));
+
+    // clamp ไม่ให้หลุดช่วงเวลา
+    if (startT.isBefore(minT)) {
+      startT = minT;
+      endT = startT.add(Duration(milliseconds: visibleMs));
+    }
+    if (endT.isAfter(maxT)) {
+      endT = maxT;
+      startT = endT.subtract(Duration(milliseconds: visibleMs));
+      if (startT.isBefore(minT)) startT = minT;
+    }
+
+    // ==== เลือกจุดที่อยู่ในช่วงเวลา [startT, endT] ====
+    int firstIdx = -1;
+    int lastIdx = -1;
+    for (int i = 0; i < total; i++) {
+      final t = pts[i].t;
+      if (!t.isBefore(startT) && !t.isAfter(endT)) {
+        if (firstIdx == -1) firstIdx = i;
+        lastIdx = i;
+      }
+    }
+
+    // ถ้ามีจุดในช่วงเวลา → ใช้ช่วงนี้
+    if (firstIdx != -1 && lastIdx >= firstIdx) {
+      _visibleStartIndex = firstIdx;
+      return pts.sublist(firstIdx, lastIdx + 1);
+    }
+
+    // ==== Fallback: หากช่วงเวลานั้นไม่มีจุดเลย ====
+    // ใช้ index window ให้มีอย่างน้อย 2 จุดเสมอ
+    int visibleCount = (total / _zoomFactor).round();
+    if (visibleCount < 2) visibleCount = 2;
+    if (visibleCount > total) visibleCount = total;
+
+    // center ประมาณจาก pan
+    int approxCenterIndex = (panClamped * (total - 1)).round();
+    int half = visibleCount ~/ 2;
+
+    int startIndex = approxCenterIndex - half;
+    int endIndex = startIndex + visibleCount;
+
+    if (startIndex < 0) {
+      endIndex -= startIndex;
+      startIndex = 0;
+    }
+    if (endIndex > total) {
+      startIndex -= (endIndex - total);
+      endIndex = total;
+      if (startIndex < 0) startIndex = 0;
+    }
+
+    _visibleStartIndex = startIndex;
+    return pts.sublist(startIndex, endIndex);
+  }
+
   // อ่าน timestamp จาก String / int / DateTime
   DateTime? _parseTs(dynamic v) {
     try {
@@ -518,6 +922,7 @@ class _MetricLineChartState extends State<MetricLineChart> {
         raw = row['dcW'];
         break;
       case MetricKey.oat:
+        // ไม่ใช้ oat ทำกราฟแล้ว → คืน null
         return null;
     }
 
@@ -601,365 +1006,6 @@ class _MetricLineChartState extends State<MetricLineChart> {
         return const Color(0xFF06B6D4);
     }
   }
-
-  /// แปลง index → ตำแหน่ง 0–1 ตามเวลา (ใช้ไว้กำหนด center ตอนแพนกราฟ)
-  double _positionOfIndex(List<_Pt> pts, int index) {
-    if (pts.isEmpty) return 1.0;
-    final clamped = index.clamp(0, pts.length - 1);
-    final minT = pts.first.t;
-    final maxT = pts.last.t;
-    int totalMs = maxT.difference(minT).inMilliseconds;
-    if (totalMs <= 0) return 1.0;
-    final t = pts[clamped].t;
-    final pos =
-        t.difference(minT).inMilliseconds / totalMs;
-    return pos.clamp(0.0, 1.0);
-  }
-
-  /// UI แถบด้านล่าง: จำนวนจุด + จุดที่เลือก + ปุ่มเลื่อน
-  Widget _buildBottomInfo({
-    required List<_Pt> allPoints,
-    required String unit,
-  }) {
-    final total = allPoints.length;
-    final hasSelection = _hitIndexGlobal != null &&
-        _hitIndexGlobal! >= 0 &&
-        _hitIndexGlobal! < total;
-
-    final _Pt? selectedPt =
-        hasSelection ? allPoints[_hitIndexGlobal!] : null;
-
-    String subtitle;
-    if (hasSelection && selectedPt != null) {
-      final idx = _hitIndexGlobal! + 1;
-      subtitle = 'จุดที่เลือก: $idx / $total';
-    } else {
-      subtitle = 'ยังไม่ได้เลือกจุด';
-    }
-
-    String timeLabel;
-    if (hasSelection && selectedPt != null) {
-      timeLabel = _fmtTimeTooltip(selectedPt.t);
-    } else if (total > 0) {
-      timeLabel = 'แตะจุดบนกราฟ หรือใช้ปุ่มเลื่อนด้านขวา';
-    } else {
-      timeLabel = 'ยังไม่มีข้อมูลในช่วงเวลานี้';
-    }
-
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14, 6, 14, 10),
-      decoration: const BoxDecoration(
-        color: Color(0xFFF7F9FC),
-        borderRadius: BorderRadius.vertical(
-          bottom: Radius.circular(20),
-        ),
-      ),
-      child: Row(
-        children: [
-          // pill แสดงจำนวนจุด
-          Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(999),
-              gradient: const LinearGradient(
-                colors: [
-                  Color(0xFFE0ECFF),
-                  Color(0xFFD6F4FF),
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black12,
-                  blurRadius: 8,
-                  offset: Offset(0, 3),
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 20,
-                  height: 20,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Colors.white.withOpacity(0.9),
-                  ),
-                  child: const Icon(
-                    Icons.scatter_plot_rounded,
-                    size: 12,
-                    color: Color(0xFF2563EB),
-                  ),
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  'จุดบนกราฟ $total',
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF1E293B),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 12),
-          // ข้อมูลจุดที่เลือก
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  subtitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF0F172A),
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  timeLabel,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 10,
-                    color: Color(0xFF64748B),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          // ปุ่มเลื่อนจุดก่อนหน้า / ถัดไป
-          Row(
-            children: [
-              _navButton(
-                icon: Icons.chevron_left_rounded,
-                onTap: () {
-                  if (allPoints.isEmpty) return;
-                  setState(() {
-                    if (!hasSelection) {
-                      _hitIndexGlobal = allPoints.length - 1;
-                    } else if (_hitIndexGlobal! > 0) {
-                      _hitIndexGlobal = _hitIndexGlobal! - 1;
-                    }
-                    if (_hitIndexGlobal != null) {
-                      _viewCenter = _positionOfIndex(
-                        allPoints,
-                        _hitIndexGlobal!,
-                      );
-                    }
-                  });
-                },
-              ),
-              const SizedBox(width: 4),
-              _navButton(
-                icon: Icons.chevron_right_rounded,
-                onTap: () {
-                  if (allPoints.isEmpty) return;
-                  setState(() {
-                    if (!hasSelection) {
-                      _hitIndexGlobal = 0;
-                    } else if (_hitIndexGlobal! <
-                        allPoints.length - 1) {
-                      _hitIndexGlobal = _hitIndexGlobal! + 1;
-                    }
-                    if (_hitIndexGlobal != null) {
-                      _viewCenter = _positionOfIndex(
-                        allPoints,
-                        _hitIndexGlobal!,
-                      );
-                    }
-                  });
-                },
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _navButton({
-    required IconData icon,
-    required VoidCallback onTap,
-  }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(999),
-        onTap: onTap,
-        child: Container(
-          width: 30,
-          height: 30,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(999),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.05),
-                blurRadius: 6,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Icon(
-            icon,
-            size: 18,
-            color: const Color(0xFF334155),
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// เวลาใน tooltip (ใช้ทั้ง tooltip และบรรทัดล่าง)
-  String _fmtTimeTooltip(DateTime dt) {
-    switch (_selectedSpan) {
-      case HistorySpan.day1:
-        final dd = dt.day.toString().padLeft(2, '0');
-        final mm = dt.month.toString().padLeft(2, '0');
-        final hh = dt.hour.toString().padLeft(2, '0');
-        final mn = dt.minute.toString().padLeft(2, '0');
-        final ss = dt.second.toString().padLeft(2, '0');
-        return '$dd/$mm $hh:$mn:$ss';
-      case HistorySpan.day7:
-      case HistorySpan.day15:
-      case HistorySpan.day30:
-        final dd = dt.day.toString().padLeft(2, '0');
-        final mm = dt.month.toString().padLeft(2, '0');
-        final yy = dt.year.toString().substring(2);
-        final hh = dt.hour.toString().padLeft(2, '0');
-        final mn = dt.minute.toString().padLeft(2, '0');
-        final ss = dt.second.toString().padLeft(2, '0');
-        return '$dd/$mm/$yy $hh:$mn:$ss';
-    }
-  }
-}
-
-/// โครงสร้างผลลัพธ์ window ซูม
-class _ZoomWindow {
-  final List<_Pt> viewPoints;
-  final List<int> globalIndices;
-  final int? viewHitIndex;
-
-  const _ZoomWindow({
-    required this.viewPoints,
-    required this.globalIndices,
-    required this.viewHitIndex,
-  });
-}
-
-/// คำนวณ window ซูมจาก allPoints + zoomStep + center
-_ZoomWindow _makeZoomWindow({
-  required List<_Pt> allPoints,
-  required int? hitIndexGlobal,
-  required int zoomStep,
-  required double viewCenter,
-}) {
-  if (allPoints.isEmpty) {
-    return const _ZoomWindow(
-      viewPoints: [],
-      globalIndices: [],
-      viewHitIndex: null,
-    );
-  }
-
-  // ไม่ซูม → แสดงทั้งหมด
-  if (zoomStep <= 1) {
-    final indices = List<int>.generate(allPoints.length, (i) => i);
-    int? hit = hitIndexGlobal;
-    if (hit != null &&
-        (hit < 0 || hit >= allPoints.length)) {
-      hit = null;
-    }
-    return _ZoomWindow(
-      viewPoints: allPoints,
-      globalIndices: indices,
-      viewHitIndex: hit,
-    );
-  }
-
-  final minT = allPoints.first.t;
-  final maxT = allPoints.last.t;
-  int totalMs = maxT.difference(minT).inMilliseconds;
-  if (totalMs <= 0) {
-    final indices = List<int>.generate(allPoints.length, (i) => i);
-    return _ZoomWindow(
-      viewPoints: allPoints,
-      globalIndices: indices,
-      viewHitIndex: hitIndexGlobal,
-    );
-  }
-
-  // ถ้ามีจุดที่เลือก ให้ center ที่เวลาของจุดนั้น
-  double center;
-  if (hitIndexGlobal != null &&
-      hitIndexGlobal >= 0 &&
-      hitIndexGlobal < allPoints.length) {
-    final t = allPoints[hitIndexGlobal].t;
-    center =
-        t.difference(minT).inMilliseconds / totalMs;
-  } else {
-    center = viewCenter;
-  }
-  center = center.clamp(0.0, 1.0);
-
-  final windowFraction = 1.0 / zoomStep;
-  final windowMs = (totalMs * windowFraction).toInt();
-  final halfMs = (windowMs / 2).round();
-
-  int centerMs = (totalMs * center).round();
-  int startMs = centerMs - halfMs;
-  int endMs = centerMs + halfMs;
-
-  if (startMs < 0) {
-    endMs -= startMs;
-    startMs = 0;
-  }
-  if (endMs > totalMs) {
-    startMs -= (endMs - totalMs);
-    endMs = totalMs;
-    if (startMs < 0) startMs = 0;
-  }
-
-  final startT = minT.add(Duration(milliseconds: startMs));
-  final endT = minT.add(Duration(milliseconds: endMs));
-
-  final vp = <_Pt>[];
-  final gi = <int>[];
-  int? viewHit;
-
-  for (int i = 0; i < allPoints.length; i++) {
-    final p = allPoints[i];
-    if (p.t.isBefore(startT) || p.t.isAfter(endT)) continue;
-    gi.add(i);
-    vp.add(p);
-    if (hitIndexGlobal != null && i == hitIndexGlobal) {
-      viewHit = gi.length - 1;
-    }
-  }
-
-  if (vp.isEmpty) {
-    final indices = List<int>.generate(allPoints.length, (i) => i);
-    return _ZoomWindow(
-      viewPoints: allPoints,
-      globalIndices: indices,
-      viewHitIndex: hitIndexGlobal,
-    );
-  }
-
-  return _ZoomWindow(
-    viewPoints: vp,
-    globalIndices: gi,
-    viewHitIndex: viewHit,
-  );
 }
 
 class _Pt {
@@ -975,12 +1021,18 @@ class _ChartCanvas extends StatelessWidget {
   final Color mainColor;
   final HistorySpan span;
 
+  // ✅ ใหม่
+  final int totalPoints;
+  final int visibleStartIndex;
+
   const _ChartCanvas({
     required this.points,
     required this.unit,
     this.hitIndex,
     required this.mainColor,
     required this.span,
+    required this.totalPoints,
+    required this.visibleStartIndex,
   });
 
   @override
@@ -992,6 +1044,8 @@ class _ChartCanvas extends StatelessWidget {
         hitIndex: hitIndex,
         mainColor: mainColor,
         span: span,
+        totalPoints: totalPoints,
+        visibleStartIndex: visibleStartIndex,
       ),
     );
   }
@@ -1004,12 +1058,18 @@ class _ChartPainter extends CustomPainter {
   final Color mainColor;
   final HistorySpan span;
 
+  // ✅ ใหม่
+  final int totalPoints;
+  final int visibleStartIndex;
+
   _ChartPainter({
     required this.points,
     required this.unit,
     required this.hitIndex,
     required this.mainColor,
     required this.span,
+    required this.totalPoints,
+    required this.visibleStartIndex,
   });
 
   @override
@@ -1088,9 +1148,8 @@ class _ChartPainter extends CustomPainter {
       tp.text = TextSpan(
         text: '${val.toStringAsFixed(digits)} $unit',
         style: labelStyle.copyWith(
-          color: isMin || isMax
-              ? Colors.black87
-              : Colors.grey[600],
+          color:
+              isMin || isMax ? Colors.black87 : Colors.grey[600],
           fontWeight:
               isMin || isMax ? FontWeight.w700 : FontWeight.w500,
         ),
@@ -1140,8 +1199,7 @@ class _ChartPainter extends CustomPainter {
           chart.width *
               (p.t.difference(minT).inSeconds / totalSec);
       final ny = chart.bottom -
-          chart.height *
-              ((p.y - minY) / (maxY - minY));
+          chart.height * ((p.y - minY) / (maxY - minY));
 
       final pos = Offset(nx, ny);
       pointPositions.add(pos);
@@ -1176,8 +1234,7 @@ class _ChartPainter extends CustomPainter {
     canvas.drawPath(areaPath, areaPaint);
 
     // เงาเส้นบาง ๆ
-    final shadowPath = Path.from(path)
-      ..shift(const Offset(0, 2));
+    final shadowPath = Path.from(path)..shift(const Offset(0, 2));
     final shadowPaint = Paint()
       ..color = Colors.black.withOpacity(0.12)
       ..strokeWidth = 3
@@ -1215,8 +1272,7 @@ class _ChartPainter extends CustomPainter {
           chart.width *
               (p.t.difference(minT).inSeconds / totalSec);
       final ny = chart.bottom -
-          chart.height *
-              ((p.y - minY) / (maxY - minY));
+          chart.height * ((p.y - minY) / (maxY - minY));
 
       // เส้นแนวตั้ง
       final vline = Paint()
@@ -1237,9 +1293,21 @@ class _ChartPainter extends CustomPainter {
         Paint()..color = dot.color.withOpacity(0.18),
       );
 
-      // tooltip
+      // ✅ คำนวณ index global ของจุดนี้ (0-based)
+      final safeTotal =
+          totalPoints > 0 ? totalPoints : points.length;
+      int globalIndex = visibleStartIndex + hitIndex!;
+      if (globalIndex < 0) globalIndex = 0;
+      if (globalIndex > safeTotal - 1) {
+        globalIndex = safeTotal - 1;
+      }
+
+      // tooltip: เพิ่มบรรทัด "จุดที่ X/Y"
       final tooltip =
-          '${p.y.toStringAsFixed(2)} $unit\n${_fmtTimeTooltip(p.t)}';
+          'จุดที่ ${globalIndex + 1}/$safeTotal\n'
+          '${p.y.toStringAsFixed(2)} $unit\n'
+          '${_fmtTimeTooltip(p.t)}';
+
       const pad = 8.0;
       final textPainter = TextPainter(
         text: TextSpan(
@@ -1279,6 +1347,8 @@ class _ChartPainter extends CustomPainter {
     }
   }
 
+  // ==== formatting เวลา ====
+
   /// label ที่แกน X
   ///  - 1D  : HH:mm
   ///  - 7D+ : dd/MM
@@ -1297,7 +1367,9 @@ class _ChartPainter extends CustomPainter {
     }
   }
 
-  /// เวลาใน tooltip (ใช้ version day1 / 7D+)
+  /// เวลาใน tooltip
+  ///  - 1D  : HH:mm:ss
+  ///  - 7D+ : dd/MM/yy HH:mm:ss
   String _fmtTimeTooltip(DateTime dt) {
     switch (span) {
       case HistorySpan.day1:
@@ -1324,5 +1396,7 @@ class _ChartPainter extends CustomPainter {
       old.unit != unit ||
       old.hitIndex != hitIndex ||
       old.mainColor != mainColor ||
-      old.span != span;
+      old.span != span ||
+      old.totalPoints != totalPoints || // ✅ เช็ค field ใหม่
+      old.visibleStartIndex != visibleStartIndex; // ✅
 }

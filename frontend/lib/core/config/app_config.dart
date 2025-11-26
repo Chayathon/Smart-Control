@@ -4,8 +4,8 @@
 /// and make environment switches easier.
 class AppConfig {
   // Base HTTP endpoint for REST APIs
-  static const String baseUrl = 'http://192.168.1.83:8080';
-  // static const String baseUrl = 'http://localhost:8080';
+  // static const String baseUrl = 'http://192.168.1.83:8080';
+  static const String baseUrl = 'http://localhost:8080';
 
   // WebSocket endpoints
   static const String wsMic = 'ws://192.168.1.83:8080/ws/mic';

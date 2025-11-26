@@ -1,4 +1,3 @@
-// lib/screens/monitoring/parts/mini_stats.dart
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
@@ -146,6 +145,12 @@ class MiniStats extends StatelessWidget {
                         value: t.boolValue ?? false,
                       );
 
+                    case _TileKind.lastUpdate:
+                      return _LastUpdateTile(
+                        width: colW,
+                        timestamp: t.dateTime!,
+                      );
+
                     case _TileKind.metric:
                       final m = t.metric!;
                       final value = t.value!;
@@ -153,6 +158,7 @@ class MiniStats extends StatelessWidget {
                       final color = metricColor(m);
                       final isActive = (m == activeMetric);
 
+                      // ตอนนี้ยังใช้ค่าเดียวทำเส้นตรง
                       final List<double> lineValues =
                           value.isFinite ? [value, value, value] : const <double>[];
 
@@ -202,7 +208,7 @@ class MiniStats extends StatelessWidget {
       ),
     );
 
-    // Metric ที่เหลือจริงจาก backend: DC
+    // Metric จาก backend: DC
     _maybeAddMetricTile(row, tiles, 'DC Voltage', MetricKey.dcV);
     _maybeAddMetricTile(row, tiles, 'DC Current', MetricKey.dcA);
     _maybeAddMetricTile(row, tiles, 'DC Power', MetricKey.dcW);
@@ -213,7 +219,13 @@ class MiniStats extends StatelessWidget {
     final onAir = _onAirTarget(row);
     tiles.add(_TileSpec.onAirTarget(onAir));
 
-    // ให้เป็นจำนวนคู่ (2 คอลัมน์)
+    // การ์ดใหม่: เวลาอัปเดตล่าสุด
+    final ts = _timestampOf(row);
+    if (ts != null) {
+      tiles.add(_TileSpec.lastUpdate(timestamp: ts));
+    }
+
+    // ให้เป็นจำนวนคู่ (2 คอลัมน์) ถ้ายังแปลกอยู่
     if (tiles.length.isOdd) {
       tiles.add(_TileSpec.spacer());
     }
@@ -266,7 +278,8 @@ class MiniStats extends StatelessWidget {
     return '-';
   }
 
-  bool _onlineOf(Map<String, dynamic> row) {
+  /// ดึง timestamp จาก row แล้วบังคับเป็น UTC
+  DateTime? _timestampOf(Map<String, dynamic> row) {
     final tsRaw = row['timestamp'];
 
     DateTime? ts;
@@ -278,7 +291,11 @@ class MiniStats extends StatelessWidget {
       // เผื่อเก็บเป็น millisecondsSinceEpoch
       ts = DateTime.fromMillisecondsSinceEpoch(tsRaw, isUtc: true);
     }
+    return ts;
+  }
 
+  bool _onlineOf(Map<String, dynamic> row) {
+    final ts = _timestampOf(row);
     if (ts == null) return false;
 
     final diff = DateTime.now().toUtc().difference(ts);
@@ -374,6 +391,7 @@ enum _TileKind {
   metric,
   status,
   onAirTarget,
+  lastUpdate,
   spacer,
 }
 
@@ -384,6 +402,7 @@ class _TileSpec {
   final double? value;
   final bool? boolValue;
   final MetricKey? metric;
+  final DateTime? dateTime;
 
   _TileSpec._(
     this.kind, {
@@ -392,6 +411,7 @@ class _TileSpec {
     this.value,
     this.boolValue,
     this.metric,
+    this.dateTime,
   });
 
   factory _TileSpec.metric({
@@ -420,6 +440,14 @@ class _TileSpec {
 
   factory _TileSpec.onAirTarget(bool v) =>
       _TileSpec._(_TileKind.onAirTarget, boolValue: v);
+
+  factory _TileSpec.lastUpdate({
+    required DateTime timestamp,
+  }) =>
+      _TileSpec._(
+        _TileKind.lastUpdate,
+        dateTime: timestamp,
+      );
 
   factory _TileSpec.spacer() => _TileSpec._(_TileKind.spacer);
 }
@@ -812,5 +840,125 @@ class _OnAirTargetTile extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+// ------------------- _LastUpdateTile -------------------
+
+class _LastUpdateTile extends StatelessWidget {
+  final double width;
+  final DateTime timestamp;
+
+  const _LastUpdateTile({
+    super.key,
+    required this.width,
+    required this.timestamp,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    const borderColor = MiniStats.kBorderNormal;
+    const bgColor = Colors.white;
+
+    final localTs = timestamp.toLocal();
+    final agoText = _formatTimeAgo(timestamp);
+    final detailText = _formatDateTime(localTs);
+
+    return Container(
+      width: width,
+      height: _kTileHeight,
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: borderColor, width: 1.0),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'อัปเดตล่าสุด',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: Colors.black54,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      agoText,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.black,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      detailText,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.black54,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: Colors.indigo.shade50,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.schedule_rounded,
+                  color: Colors.indigo.shade400,
+                  size: 22,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatTimeAgo(DateTime tsUtc) {
+    final now = DateTime.now().toUtc();
+    final diff = now.difference(tsUtc);
+
+    if (diff.inSeconds < 5) return 'เมื่อสักครู่';
+    if (diff.inSeconds < 60) return '${diff.inSeconds} วินาทีที่แล้ว';
+    if (diff.inMinutes < 60) return '${diff.inMinutes} นาทีที่แล้ว';
+    if (diff.inHours < 24) return '${diff.inHours} ชั่วโมงที่แล้ว';
+    if (diff.inDays < 30) return '${diff.inDays} วันที่แล้ว';
+    return 'มากกว่า 30 วันที่แล้ว';
+  }
+
+  String _formatDateTime(DateTime dt) {
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${dt.year}-${two(dt.month)}-${two(dt.day)} '
+        '${two(dt.hour)}:${two(dt.minute)}:${two(dt.second)}';
   }
 }
