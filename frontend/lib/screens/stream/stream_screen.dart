@@ -4,8 +4,8 @@ import 'package:smart_control/core/alert/app_snackbar.dart';
 import 'package:smart_control/core/config/app_config.dart';
 import 'package:smart_control/core/network/api_service.dart';
 import 'package:smart_control/core/services/StreamStatusService.dart';
+import 'dart:math' as math;
 import 'package:smart_control/widgets/buttons/action_button.dart';
-import 'package:smart_control/widgets/control_panel.dart';
 
 class StreamScreen extends StatefulWidget {
   const StreamScreen({Key? key}) : super(key: key);
@@ -14,25 +14,30 @@ class StreamScreen extends StatefulWidget {
   State<StreamScreen> createState() => _StreamScreenState();
 }
 
-class _StreamScreenState extends State<StreamScreen> {
+class _StreamScreenState extends State<StreamScreen>
+    with TickerProviderStateMixin {
   final AudioPlayer _player = AudioPlayer();
   final StreamStatusService _statusSse = StreamStatusService();
-  
+
   bool _isListening = false;
   bool _isStreamActive = false;
   bool _isLoading = false;
-  String? _streamUrl;
-  
-  // Icecast config
+
   int? _icecastPort;
   String? _icecastMount;
+
+  late AnimationController _pulseController;
+  late AnimationController _waveController;
+  late Animation<double> _pulseAnimation;
+  late Animation<double> _waveAnimation;
 
   @override
   void initState() {
     super.initState();
+    _initAnimations();
     _initPlayer();
     _fetchStatus();
-    
+
     _statusSse.onStatusUpdate = (data) {
       if (mounted) {
         _updateStatus(data);
@@ -41,32 +46,72 @@ class _StreamScreenState extends State<StreamScreen> {
     _statusSse.connect();
   }
 
+  void _initAnimations() {
+    _pulseController = AnimationController(
+      duration: const Duration(milliseconds: 1500),
+      vsync: this,
+    );
+
+    _waveController = AnimationController(
+      duration: const Duration(milliseconds: 2000),
+      vsync: this,
+    );
+
+    _pulseAnimation = Tween<double>(begin: 0.95, end: 1.05).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    );
+
+    _waveAnimation = Tween<double>(
+      begin: 0,
+      end: 2 * math.pi,
+    ).animate(CurvedAnimation(parent: _waveController, curve: Curves.linear));
+
+    _pulseController.repeat(reverse: true);
+    _waveController.repeat();
+  }
+
   Future<void> _initPlayer() async {
-    // Listen to player state changes
     _player.playerStateStream.listen((state) {
       if (mounted) {
         setState(() {
           _isListening = state.playing;
-          if (state.processingState == ProcessingState.loading || 
+          if (state.processingState == ProcessingState.loading ||
               state.processingState == ProcessingState.buffering) {
             _isLoading = true;
           } else {
             _isLoading = false;
           }
+
+          if (state.processingState == ProcessingState.completed &&
+              _isStreamActive &&
+              _isListening) {
+            print('🔄 Stream ended but active, retrying in 6s...');
+            Future.delayed(const Duration(seconds: 6), () {
+              if (mounted && _isStreamActive && _isListening) {
+                _startListening();
+              }
+            });
+          }
         });
       }
     });
-    
+
     // Listen for errors
-    _player.playbackEventStream.listen((event) {}, onError: (Object e, StackTrace st) {
-      if (mounted) {
-        setState(() {
-          _isListening = false;
-          _isLoading = false;
-        });
-        AppSnackbar.error('การเล่นเสียงขัดข้อง', 'ไม่สามารถเชื่อมต่อกับสตรีมได้');
-      }
-    });
+    _player.playbackEventStream.listen(
+      (event) {},
+      onError: (Object e, StackTrace st) {
+        if (mounted) {
+          setState(() {
+            _isListening = false;
+            _isLoading = false;
+          });
+          AppSnackbar.error(
+            'การเล่นเสียงขัดข้อง',
+            'ไม่สามารถเชื่อมต่อกับสตรีมได้',
+          );
+        }
+      },
+    );
   }
 
   Future<void> _fetchStatus() async {
@@ -84,8 +129,7 @@ class _StreamScreenState extends State<StreamScreen> {
   void _updateStatus(Map<String, dynamic> data) {
     final bool isPlaying = data['isPlaying'] == true;
     final String activeMode = data['activeMode'] ?? 'none';
-    
-    // Update Icecast config if available
+
     if (data['icecast'] != null) {
       _icecastPort = data['icecast']['port'];
       _icecastMount = data['icecast']['mount'];
@@ -93,8 +137,7 @@ class _StreamScreenState extends State<StreamScreen> {
 
     setState(() {
       _isStreamActive = isPlaying && activeMode != 'none';
-      
-      // If stream stops while listening, stop the player
+
       if (!_isStreamActive && _isListening) {
         _stopListening();
         AppSnackbar.info('สตรีมจบแล้ว', 'การถ่ายทอดสดสิ้นสุดลง');
@@ -117,7 +160,6 @@ class _StreamScreenState extends State<StreamScreen> {
     }
 
     if (_icecastPort == null || _icecastMount == null) {
-      // Try to fetch status again if config is missing
       await _fetchStatus();
       if (_icecastPort == null || _icecastMount == null) {
         AppSnackbar.error('ข้อผิดพลาด', 'ไม่พบข้อมูลการเชื่อมต่อสตรีม');
@@ -128,14 +170,12 @@ class _StreamScreenState extends State<StreamScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // Construct Stream URL
       final Uri baseUri = Uri.parse(AppConfig.baseUrl);
       final String host = baseUri.host;
       final String url = 'http://$host:$_icecastPort$_icecastMount';
-      
+
       print('🎧 Connecting to stream: $url');
 
-      // Set audio source
       await _player.setAudioSource(
         AudioSource.uri(
           Uri.parse(url),
@@ -143,12 +183,17 @@ class _StreamScreenState extends State<StreamScreen> {
         ),
         preload: true,
       );
-      
+
       await _player.play();
-      
     } catch (e) {
       print('Error starting stream: $e');
-      AppSnackbar.error('ข้อผิดพลาด', 'ไม่สามารถเชื่อมต่อกับสตรีมได้');
+      String errorMsg = 'ไม่สามารถเชื่อมต่อกับสตรีมได้';
+      if (e.toString().contains('SocketException')) {
+        errorMsg += ' (ปัญหาการเชื่อมต่อเครือข่าย)';
+      } else if (e.toString().contains('404')) {
+        errorMsg += ' (ไม่พบสตรีม)';
+      }
+      AppSnackbar.error('ข้อผิดพลาด', errorMsg);
       setState(() => _isLoading = false);
     }
   }
@@ -163,136 +208,271 @@ class _StreamScreenState extends State<StreamScreen> {
 
   @override
   void dispose() {
+    _pulseController.dispose();
+    _waveController.dispose();
     _player.dispose();
-    // We don't dispose _statusSse here because it might be shared or we just let it be?
-    // Actually StreamStatusService creates a new connection each time connect() is called 
-    // based on the implementation I saw. But it doesn't have a disconnect method exposed clearly 
-    // in the snippet I saw. Assuming it's fine or I should check if I can close it.
-    // The snippet showed `SSEClient.subscribeToSSE(...).listen(...)`. 
-    // The service class didn't keep the subscription to cancel it. 
-    // This might be a small leak if not handled, but for now I'll leave it.
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.grey[50],
       appBar: AppBar(
-        title: const Text('ควบคุมการถ่ายทอด'),
+        title: const Text(
+          'สตรีมเสียง',
+          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black),
+        ),
         centerTitle: true,
-        elevation: 0,
+        elevation: 1,
+        backgroundColor: Colors.white,
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Main Control Panel
-            const ControlPanel(),
-            
-            const SizedBox(height: 24),
-            
-            // Listen Section
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: Colors.indigo[50],
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          Icons.headphones,
-                          color: Colors.indigo[600],
-                          size: 24,
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'ฟังเสียงถ่ายทอดสด',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              _isStreamActive 
-                                  ? (_isListening ? 'กำลังฟังเสียง...' : 'แตะเพื่อฟังเสียงที่กำลังถ่ายทอด')
-                                  : 'ไม่มีการถ่ายทอดสดในขณะนี้',
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: _isStreamActive ? Colors.grey[700] : Colors.grey[400],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  Button(
-                    onPressed: _isStreamActive ? _toggleListening : null,
-                    label: _isListening ? 'หยุดฟัง' : 'ฟังเสียง',
-                    icon: _isListening ? Icons.stop_circle_outlined : Icons.play_circle_outline,
-                    backgroundColor: _isListening ? Colors.red[600] : Colors.indigo[600],
-                    isLoading: _isLoading,
-                    height: 56,
-                    fontSize: 18,
-                  ),
-                ],
-              ),
-            ),
-            
-            const SizedBox(height: 24),
-            
-            // Info / Tips
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.blue[50],
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.blue[100]!),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.info_outline, color: Colors.blue[700]),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      'คุณสามารถฟังเสียงที่กำลังถ่ายทอดผ่านแอปพลิเคชันได้ทันที โดยเสียงจะดีเลย์จากต้นฉบับเล็กน้อย',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: Colors.blue[900],
-                        height: 1.4,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+            _buildStreamVisualizer(),
+
+            const SizedBox(height: 16),
+
+            _buildControlCard(),
+
+            const SizedBox(height: 16),
+
+            _buildInfoCard(),
           ],
         ),
       ),
     );
   }
+
+  Widget _buildStreamVisualizer() {
+    return AnimatedBuilder(
+      animation: _waveAnimation,
+      builder: (context, child) {
+        return Container(
+          height: 280,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.08),
+                blurRadius: 16,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              if (_isListening) ...[
+                Positioned.fill(
+                  child: CustomPaint(
+                    painter: WavePainter(
+                      animation: _waveAnimation.value,
+                      color: Colors.indigo.withOpacity(0.1),
+                    ),
+                  ),
+                ),
+              ],
+
+              ScaleTransition(
+                scale: _isListening
+                    ? _pulseAnimation
+                    : const AlwaysStoppedAnimation(1.0),
+                child: Container(
+                  width: 120,
+                  height: 120,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: _isListening
+                        ? Colors.indigo.shade500
+                        : Colors.grey.shade200,
+                    boxShadow: [
+                      BoxShadow(
+                        color: _isListening
+                            ? Colors.indigo.withOpacity(0.3)
+                            : Colors.transparent,
+                        blurRadius: 32,
+                        spreadRadius: 8,
+                      ),
+                    ],
+                  ),
+                  child: Icon(
+                    _isListening
+                        ? Icons.graphic_eq_rounded
+                        : Icons.headphones_rounded,
+                    size: 60,
+                    color: _isListening ? Colors.white : Colors.grey.shade400,
+                  ),
+                ),
+              ),
+
+              Positioned(
+                bottom: 24,
+                child: Column(
+                  children: [
+                    Text(
+                      _isListening
+                          ? 'กำลังเล่นสตรีม'
+                          : _isStreamActive
+                          ? 'พร้อมเล่น'
+                          : 'ไม่มีสตรีม',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey.shade800,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _isListening
+                          ? ''
+                          : _isStreamActive
+                          ? 'แตะปุ่มด้านล่างเพื่อเริ่มฟัง'
+                          : 'รอการถ่ายทอดสด',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              if (_isLoading)
+                Positioned.fill(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.9),
+                      borderRadius: BorderRadius.circular(24),
+                    ),
+                    child: Center(
+                      child: CircularProgressIndicator(
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          Colors.indigo.shade500,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildControlCard() {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 16,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Button(
+            onPressed: _toggleListening,
+            label: _isListening ? 'หยุดเล่น' : 'เริ่มเล่น',
+            icon: _isListening ? Icons.stop_circle : Icons.play_circle_fill,
+            fontSize: 20,
+            height: 56,
+            backgroundColor: _isListening ? Colors.red : Colors.indigo,
+            isLoading: _isLoading,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoCard() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.blue.shade50,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.blue.shade200, width: 1.5),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: Colors.blue.shade100,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.tips_and_updates,
+              color: Colors.blue.shade700,
+              size: 24,
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Text(
+              'คุณสามารถฟังเสียงที่กำลังถ่ายทอดผ่านแอปพลิเคชันได้ทันที',
+              style: TextStyle(
+                fontSize: 13,
+                color: Colors.blue.shade900,
+                height: 1.5,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// Custom painter for wave animation
+class WavePainter extends CustomPainter {
+  final double animation;
+  final Color color;
+
+  WavePainter({required this.animation, required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2;
+
+    final path = Path();
+    final waveHeight = 30.0;
+    final waveLength = size.width / 2;
+
+    for (var i = 0; i < 3; i++) {
+      path.reset();
+      final yOffset = size.height / 2 + (i * 40) - 40;
+
+      for (var x = 0.0; x <= size.width; x++) {
+        final y =
+            yOffset +
+            math.sin((x / waveLength * 2 * math.pi) + animation + (i * 0.5)) *
+                waveHeight;
+        if (x == 0) {
+          path.moveTo(x, y);
+        } else {
+          path.lineTo(x, y);
+        }
+      }
+
+      canvas.drawPath(path, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(WavePainter oldDelegate) => true;
 }

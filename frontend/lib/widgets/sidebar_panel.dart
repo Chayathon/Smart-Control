@@ -36,7 +36,11 @@ class _SidebarPanelState extends State<SidebarPanel> {
       'อัปโหลดเพลง',
       () => Get.toNamed(AppRoutes.song),
     ),
-    _MenuItem(Icons.stream, 'สตรีมเพลง', () => Get.toNamed(AppRoutes.stream)),
+    _MenuItem(
+      Icons.multitrack_audio_rounded,
+      'สตรีมเสียง',
+      () => Get.toNamed(AppRoutes.stream),
+    ),
     _MenuItem(
       Icons.monitor_rounded,
       'ตรวจสอบสถานะ',
