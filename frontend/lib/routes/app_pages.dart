@@ -7,7 +7,6 @@ import 'package:smart_control/screens/settings/system/system_screen.dart';
 import 'package:smart_control/screens/song/song_screen.dart';
 import 'package:smart_control/screens/splash_screen/splash_screen.dart';
 import 'package:smart_control/screens/monitoring/monitoring_screen.dart';
-import 'package:smart_control/screens/stream/stream_screen.dart';
 
 import 'app_routes.dart';
 
@@ -17,7 +16,6 @@ class AppPages {
     GetPage(name: AppRoutes.login, page: () => const LoginScreen()),
     GetPage(name: AppRoutes.playlist, page: () => const PlaylistScreen()),
     GetPage(name: AppRoutes.song, page: () => const SongScreen()),
-    GetPage(name: AppRoutes.stream, page: () => const StreamScreen()),
     GetPage(name: AppRoutes.monitoring, page: () => const MonitoringScreen()),
     GetPage(name: AppRoutes.system, page: () => const SystemScreen()),
     GetPage(name: AppRoutes.schedule, page: () => const ScheduleScreen()),

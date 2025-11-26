@@ -3,7 +3,6 @@ const ctrl = require('../controllers/stream.controller');
 const { authenticateToken } = require('../middleware/auth');
 
 router.get('/status', ctrl.status);
-router.get('/audio', ctrl.streamAudio);
 router.post('/enable', authenticateToken, ctrl.enableStream);
 router.post('/disable', authenticateToken, ctrl.disableStream);
 
