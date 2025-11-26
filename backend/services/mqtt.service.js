@@ -136,7 +136,7 @@ function connectAndSend({
         //     publish(allCommandTopic, { get_status: true });
         // }, 30000);
 
-        setInterval(checkOfflineZones, 10000);
+        // setInterval(checkOfflineZones, 10000);
     });
 
     client.on('close', () => {
