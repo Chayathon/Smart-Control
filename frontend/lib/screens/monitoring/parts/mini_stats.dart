@@ -191,7 +191,6 @@ class MiniStats extends StatelessWidget {
   }
 
   // ===================== tile builder =====================
-
   List<_TileSpec> _buildTiles(
     Map<String, dynamic> row, {
     required bool online,
@@ -199,8 +198,14 @@ class MiniStats extends StatelessWidget {
     final tiles = <_TileSpec>[];
 
     final deviceName = _nameOf(row);
+    final lastUpdate = _timestampOf(row);
 
-    // การ์ดแรก: สถานะอุปกรณ์ + ชื่ออุปกรณ์ + online/offline
+    // ======================
+    // 🔥 NEW LAYOUT ORDER
+    // Status | Last Update
+    // ======================
+
+    // 1) Status (ซ้าย)
     tiles.add(
       _TileSpec.status(
         online: online,
@@ -208,24 +213,27 @@ class MiniStats extends StatelessWidget {
       ),
     );
 
-    // Metric จาก backend: DC
-    _maybeAddMetricTile(row, tiles, 'DC Voltage', MetricKey.dcV);
-    _maybeAddMetricTile(row, tiles, 'DC Current', MetricKey.dcA);
-    _maybeAddMetricTile(row, tiles, 'DC Power', MetricKey.dcW);
-    // **ลบการ์ด On Air Target (ตัวเลข) ออก ตาม requirement**
-    // _maybeAddMetricTile(row, tiles, 'On Air Target', MetricKey.oat);
+    // 2) Last Update (ขวา)
+    if (lastUpdate != null) {
+      tiles.add(_TileSpec.lastUpdate(timestamp: lastUpdate));
+    } else {
+      tiles.add(_TileSpec.spacer());
+    }
 
-    // สถานะ OnAir (ใช้ oat + เช็ค online)
+    // 3) DC Voltage
+    _maybeAddMetricTile(row, tiles, 'DC Voltage', MetricKey.dcV);
+
+    // 4) DC Current
+    _maybeAddMetricTile(row, tiles, 'DC Current', MetricKey.dcA);
+
+    // 5) DC Power
+    _maybeAddMetricTile(row, tiles, 'DC Power', MetricKey.dcW);
+
+    // 6) On Air Target
     final onAir = _onAirTarget(row);
     tiles.add(_TileSpec.onAirTarget(onAir));
 
-    // การ์ดใหม่: เวลาอัปเดตล่าสุด
-    final ts = _timestampOf(row);
-    if (ts != null) {
-      tiles.add(_TileSpec.lastUpdate(timestamp: ts));
-    }
-
-    // ให้เป็นจำนวนคู่ (2 คอลัมน์) ถ้ายังแปลกอยู่
+    // ให้เป็นจำนวนคู่ (2 คอลัมน์)
     if (tiles.length.isOdd) {
       tiles.add(_TileSpec.spacer());
     }
