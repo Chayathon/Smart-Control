@@ -11,7 +11,6 @@ let client = null;
 let connected = false;
 let lastUartCmd = null;
 let lastUartTs = 0;
-
 let blockSyncUntil = 0;
 
 const pendingRequestsByZone = {};
@@ -126,6 +125,7 @@ function connectAndSend({
             else console.log(`📥 Subscribed to ${statusTopic}`);
         });
 
+
         setInterval(() => {
             publish(allCommandTopic, { get_status: true });
         }, 30000);
@@ -219,6 +219,12 @@ function connectAndSend({
                 return;
             }
             if (!json || json.source === 'manual-panel' || json.get_status) return;
+            if (json.source === 'node')
+            // if (json.get_status) {
+            //     console.log('📥 App requested sync via MQTT.');
+            //     await requestAllStatus(); 
+            //     return;
+            // }
             if (target === 'select') {
                 if (json.zone && Array.isArray(json.zone)) {
                     console.log(`📨 Received SELECT command for zones:`, json.zone);
@@ -355,8 +361,8 @@ function connectAndSend({
                 return;
             }
         }
-
     });
+
     client.on('error', (err) => console.error('❌ MQTT error:', err.message));
     client.on('reconnect', () => console.log('🔁 MQTT reconnecting...'));
     client.on('offline', () => console.warn('⚠️ MQTT offline'));
@@ -422,8 +428,6 @@ function getCurrentStatusOfZone(no) {
     return item ? item.data : null;
 }
 
-
-
 async function updateDeviceInDB(no, data) {
     try {
         await Device.findOneAndUpdate(
@@ -443,69 +447,140 @@ async function updateDeviceInDB(no, data) {
     }
 }
 
+// async function checkOfflineZones() {
+//     const now = Date.now();
+//     const beforeCount = deviceStatus.length;
+
+//     const onlineZones = [];
+//     const offlineZones = [];
+
+//     // กรณีที่ 1: ไม่มีข้อมูลใน Memory เลย (เช่น เพิ่งรีสตาร์ท Server)
+//     if (deviceStatus.length === 0) {
+//         // ส่วนนี้อาจจะเก็บไว้ หรือจะลบออกก็ได้ถ้าไม่อยากให้มัน Reset ทุกครั้งที่ Restart Service
+//         // แต่ถ้าเก็บไว้ ต้องเพิ่มการสั่งปิด UART ด้วย
+//         try {
+//             await Device.updateMany(
+//                 {},
+//                 {
+//                     $set: {
+//                         'status.stream_enabled': false,
+//                         'status.volume': 0,
+//                         'status.is_playing': false,
+//                         'status.playback_mode': 'none',
+//                         // lastSeen: new Date() // ไม่ควรอัปเดต lastSeen ถ้ามัน offline
+//                     }
+//                 }
+//             );
+
+//             const allDevices = await Device.find({});
+//             allDevices.forEach(d => {
+//                 // 1. แจ้ง UI
+//                 broadcast({
+//                     zone: d.no,
+//                     stream_enabled: false,
+//                     volume: 0,
+//                     is_playing: false,
+//                     offline: true
+//                 });
+//             });
+//             sendZoneUartCommand(1111, false).catch(err => {
+//                 console.error('❌ UART error when marking all offline:', err.message);
+//             });
+//             console.log("⚠️ deviceStatus ว่าง → ตั้งค่าทุกโซนเป็น offline");
+//         } catch (err) {
+//             console.error("❌ Failed to mark all devices offline:", err.message);
+//         }
+//         return;
+//     }
+
+//     // กรองแยก Online / Offline
+//     deviceStatus = deviceStatus.filter(d => {
+//         const online = now - d.lastSeen <= 35000; // Timeout 35 วินาที
+//         if (online) {
+//             onlineZones.push(d.zone);
+//         } else {
+//             offlineZones.push(d.zone);
+//         }
+//         return online;
+//     });
+
+//     // กรณีที่ 2: มีบางโซนหลุด (Timeout)
+//     try {
+//         if (offlineZones.length > 0) {
+//             console.log(`[Offline] Detected zones: ${offlineZones.join(', ')}`);
+
+//             // อัปเดต Database
+//             await Device.updateMany(
+//                 { no: { $in: offlineZones } },
+//                 {
+//                     $set: {
+//                         'status.stream_enabled': false,
+//                         'status.volume': 0,
+//                         'status.is_playing': false,
+//                         'status.playback_mode': 'none',
+//                     }
+//                 }
+//             );
+
+//             // วนลูปแจ้งเตือนและสั่งปิดไฟ
+//             offlineZones.forEach(zoneNo => {
+//                 // ✅ 1. เพิ่มตรงนี้: สั่ง UART ให้ไฟดับทันทีเมื่อ Node หลุด
+//                 console.log(`[Offline] Zone ${zoneNo} timed out. Sending OFF to UART.`);
+//                 sendZoneUartCommand(zoneNo, false).catch(err => {
+//                     console.error(`[Offline] UART error zone ${zoneNo}:`, err.message);
+//                 });
+
+//                 // 2. แจ้ง UI
+//                 broadcast({
+//                     zone: zoneNo,
+//                     stream_enabled: false,
+//                     volume: 0,
+//                     is_playing: false,
+//                     offline: true
+//                 });
+//             });
+//         }
+//     } catch (err) {
+//         console.error('❌ Failed to update offline zones in DB:', err.message);
+//     }
+
+//     if (deviceStatus.length !== beforeCount) {
+//         console.log(`⚠️ Removed offline zones. Active zones: ${deviceStatus.length}`);
+//     }
+// }
+
 async function checkOfflineZones() {
     const now = Date.now();
-    const beforeCount = deviceStatus.length;
-
-    const onlineZones = [];
+    
+    // ❌ ลบส่วนที่เช็ค deviceStatus.length === 0 ออก หรือ comment ไว้ก่อนก็ได้ 
+    // เพื่อโฟกัสที่ Logic การจัดการ Offline รายตัว
+    
     const offlineZones = [];
 
-    // กรณีที่ 1: ไม่มีข้อมูลใน Memory เลย (เช่น เพิ่งรีสตาร์ท Server)
-    if (deviceStatus.length === 0) {
-        // ส่วนนี้อาจจะเก็บไว้ หรือจะลบออกก็ได้ถ้าไม่อยากให้มัน Reset ทุกครั้งที่ Restart Service
-        // แต่ถ้าเก็บไว้ ต้องเพิ่มการสั่งปิด UART ด้วย
-        try {
-            await Device.updateMany(
-                {},
-                {
-                    $set: {
-                        'status.stream_enabled': false,
-                        'status.volume': 0,
-                        'status.is_playing': false,
-                        'status.playback_mode': 'none',
-                        // lastSeen: new Date() // ไม่ควรอัปเดต lastSeen ถ้ามัน offline
-                    }
-                }
-            );
-
-            const allDevices = await Device.find({});
-            allDevices.forEach(d => {
-                // 1. แจ้ง UI
-                broadcast({
-                    zone: d.no,
-                    stream_enabled: false,
-                    volume: 0,
-                    is_playing: false,
-                    offline: true
-                });
-            });
-            sendZoneUartCommand(1111, false).catch(err => {
-                console.error('❌ UART error when marking all offline:', err.message);
-            });
-            console.log("⚠️ deviceStatus ว่าง → ตั้งค่าทุกโซนเป็น offline");
-        } catch (err) {
-            console.error("❌ Failed to mark all devices offline:", err.message);
-        }
-        return;
-    }
-
-    // กรองแยก Online / Offline
-    deviceStatus = deviceStatus.filter(d => {
-        const online = now - d.lastSeen <= 35000; // Timeout 35 วินาที
-        if (online) {
-            onlineZones.push(d.zone);
-        } else {
+    // 1. วนลูปเช็ค Memory (ห้ามใช้ .filter เพื่อลบของออก!)
+    deviceStatus.forEach(d => {
+        const isOnline = (now - d.lastSeen) <= 35000; // 35 วินาที
+        
+        if (!isOnline) {
+            // ถ้าหลุด.. ให้เก็บเข้า list ว่าจะไปจัดการ DB
             offlineZones.push(d.zone);
+
+            // ✅ KEY FIX: อัปเดต Memory ให้เป็น "ปิด" (อย่าลบทิ้ง!)
+            // เพื่อให้ตอน UART ตอบกลับมา มันจะได้รู้ว่า "อ๋อ ค่าเดิมก็ปิดอยู่แล้ว" ไม่ต้องส่งซ้ำ
+            if (d.data) {
+                d.data.stream_enabled = false;
+                d.data.is_playing = false;
+                // d.data.volume = 0; // จะรีเซ็ต volume ด้วยไหมแล้วแต่ดีไซน์
+            }
         }
-        return online;
     });
 
-    // กรณีที่ 2: มีบางโซนหลุด (Timeout)
-    try {
-        if (offlineZones.length > 0) {
-            console.log(`[Offline] Detected zones: ${offlineZones.join(', ')}`);
+    // 2. จัดการพวกที่ Offline (DB & UART)
+    if (offlineZones.length > 0) {
+        console.log(`[Offline] Detected zones: ${offlineZones.join(', ')}`);
 
-            // อัปเดต Database
+        try {
+            // Update Database
             await Device.updateMany(
                 { no: { $in: offlineZones } },
                 {
@@ -518,15 +593,16 @@ async function checkOfflineZones() {
                 }
             );
 
-            // วนลูปแจ้งเตือนและสั่งปิดไฟ
+            // Send UART & Broadcast
             offlineZones.forEach(zoneNo => {
-                // ✅ 1. เพิ่มตรงนี้: สั่ง UART ให้ไฟดับทันทีเมื่อ Node หลุด
                 console.log(`[Offline] Zone ${zoneNo} timed out. Sending OFF to UART.`);
+                
+                // สั่ง UART (แบบไม่รอ)
                 sendZoneUartCommand(zoneNo, false).catch(err => {
                     console.error(`[Offline] UART error zone ${zoneNo}:`, err.message);
                 });
 
-                // 2. แจ้ง UI
+                // แจ้ง UI
                 broadcast({
                     zone: zoneNo,
                     stream_enabled: false,
@@ -535,19 +611,28 @@ async function checkOfflineZones() {
                     offline: true
                 });
             });
-        }
-    } catch (err) {
-        console.error('❌ Failed to update offline zones in DB:', err.message);
-    }
 
-    if (deviceStatus.length !== beforeCount) {
-        console.log(`⚠️ Removed offline zones. Active zones: ${deviceStatus.length}`);
+        } catch (err) {
+            console.error('❌ Offline update error:', err.message);
+        }
     }
+    
+    // ลบบรรทัดที่ log ว่า "Removed offline zones" ออก เพราะเราไม่ได้ remove แล้ว
 }
+
+// async function requestAllStatus() {
+//     console.log('[RadioZone] 🔄 Requesting FULL status from Manual Panel...');
+//     try {
+//         await uart.writeString('$G1111S$', 'ascii');
+//     } catch (err) {
+//         console.error('[RadioZone] Failed to request status:', err.message);
+//     }
+// }
 
 module.exports = {
     connectAndSend,
     getStatus,
     publish,
-    publishAndWaitByZone
+    publishAndWaitByZone,
+    upsertDeviceStatus
 };
