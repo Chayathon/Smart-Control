@@ -6,8 +6,12 @@ class NodeAlarmSummary {
   final String name; // ชื่อโหนด เช่น NODE1
   DateTime lastUpdated;
 
-  /// key = field เช่น 'voltage', 'current', 'watt', 'oat' (oat = On Air Target)
-  /// value = ระดับ 0/1/2 (0 = ปกติ, 1/2 = ผิดปกติ)
+  /// key = field เช่น
+  /// - 'voltage'  : 0 = ปกติ, 1 = สูง, 2 = ต่ำ
+  /// - 'current'  : 0 = ปกติ, 1 = over current
+  /// - 'oat'      : 0 = ไม่ได้ประกาศ, 1 = กำลังประกาศ
+  ///
+  /// value = int ตามสเปคด้านบน
   final Map<String, int> fields;
 
   bool hasUnread;
@@ -209,9 +213,14 @@ class _NotificationCenterState extends State<NotificationCenter> {
             return const SizedBox.shrink();
           }
 
-          // ✅ ตัดสินสีตามระดับรุนแรงรวมของโหนด
-          final bool hasRed = abnormalEntries.any((e) => e.value == 1);
-          final bool hasYellow = abnormalEntries.any((e) => e.value == 2);
+          // ✅ ตัดสิน "สี" ของการ์ดจาก field ทางไฟฟ้าเท่านั้น (voltage/current/power)
+          final criticalForColor = abnormalEntries.where((e) {
+            final k = e.key;
+            return k != 'oat'; // oat = สถานะประกาศ, ไม่ใช้ตัดสินสีแดง/เหลือง
+          }).toList();
+
+          final bool hasRed = criticalForColor.any((e) => e.value == 1);
+          final bool hasYellow = criticalForColor.any((e) => e.value == 2);
 
           final Color baseColor;
           if (hasRed && hasYellow) {
@@ -221,6 +230,7 @@ class _NotificationCenterState extends State<NotificationCenter> {
           } else if (hasYellow) {
             baseColor = Colors.yellow[700] ?? Colors.yellow;
           } else {
+            // กรณีไม่มี critical field (มีแต่ oat หรือ field อื่น)
             baseColor = _accentColor;
           }
 
@@ -395,8 +405,10 @@ class _NotificationCenterState extends State<NotificationCenter> {
     return '${diff.inDays}d ago';
   }
 
-  /// แปลงชื่อ key ใน alarms (ตอนนี้ใช้ 4 field หลัก)
-  /// voltage, current, watt, oat
+  /// แปลงชื่อ key ใน alarms
+  /// - voltage  : แรงดันไฟ
+  /// - current  : กระแสไฟ
+  /// - oat      : สถานะการประกาศ
   String _fieldLabel(String key) {
     switch (key) {
       case 'voltage':
@@ -410,8 +422,7 @@ class _NotificationCenterState extends State<NotificationCenter> {
       case 'dcW':
         return 'กำลังไฟ ';
       case 'oat':
-        // ใช้แทนสถานะการประกาศ (On Air Target)
-        return 'On Air Target ';
+        return 'สถานะประกาศ ';
       default:
         return '$key ';
     }
@@ -419,29 +430,45 @@ class _NotificationCenterState extends State<NotificationCenter> {
 
   /// แปลค่าระดับความผิดปกติ ตามชนิด field
   ///
-  /// - field ปกติ (voltage / current / watt): 1 = สูงผิดปกติ, 2 = ต่ำผิดปกติ
-  /// - field oat:
-  ///   - 1 = ไม่ได้ประกาศแต่ลำโพงมีไฟ (oat = 0, ลำโพง = 1)
-  ///   - 2 = กำลังประกาศแต่ลำโพงไม่มีไฟ (oat = 1, ลำโพง = 0)
+  /// - voltage:
+  ///   0 = ปกติ, 1 = สูง, 2 = ต่ำ
+  ///
+  /// - current:
+  ///   0 = ปกติ, 1 = over current
+  ///
+  /// - oat:
+  ///   0 = ไม่ได้ประกาศ, 1 = กำลังประกาศ
   String _severityLabel(String key, int v) {
-    // เคสพิเศษสำหรับ oat (On Air Target / สถานะประกาศ vs ลำโพง)
     if (key == 'oat') {
       switch (v) {
         case 1:
-          return 'ปิดแต่ลำโพงเปิด';
-        case 2:
-          return 'เปิดแต่ลำโพงปิด';
+          return 'กำลังประกาศ';
+        case 0:
+          return 'ไม่ได้ประกาศ';
         default:
-          return 'ผิดปกติ';
+          return 'สถานะผิดปกติ';
       }
     }
 
-    // field ปกติอื่น ๆ: voltage / current / watt
+    if (key == 'current' || key == 'dcA') {
+      switch (v) {
+        case 1:
+          return 'กระแสเกิน (Over current)';
+        case 0:
+          return 'ปกติ';
+        default:
+          return 'ค่าผิดปกติ';
+      }
+    }
+
+    // field ปกติอื่น ๆ: voltage / power
     switch (v) {
       case 1:
         return 'สูงผิดปกติ';
       case 2:
         return 'ต่ำผิดปกติ';
+      case 0:
+        return 'ปกติ';
       default:
         return 'ผิดปกติ';
     }
