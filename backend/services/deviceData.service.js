@@ -17,36 +17,46 @@ function toDate(v) {
 }
 
 /**
- * 🔹 decode flag 4 หลัก เช่น "$1201" → object แยก field
+ * 🔹 decode flag 4–5 หลัก เช่น "$12010" → object แยก field
  *
- * ลำดับตัวเลข:
+ * ลำดับตัวเลข (จากซ้ายไปขวา):
  *   0: voltage
  *   1: current
  *   2: power
- *   3: oat (อุณหภูมิภายนอก)
+ *   3: oat      (ใช้ 0/1 เป็น ปิด/เปิด ตามที่ frontend แปลความหมาย)
+ *   4: online   (ใช้ 0/1 → 0 = online, 1 = offline)  [optional, รองรับกรณีข้อมูลเก่า 4 หลัก]
  *
- * แต่ละหลัก:
+ * สำหรับ field ที่เป็นค่าทางไฟฟ้า (voltage/current/power):
  *   0 = ปกติ
- *   1 = สูง
- *   2 = ต่ำ
+ *   1 = สูงผิดปกติ
+ *   2 = ต่ำผิดปกติ
  *
- * ค่าปกติทุกตัว = "0000"
+ * ตัวอย่าง:
+ *   "$0000"   → ปกติทั้งหมด (ไม่มี oat, ไม่มี online)
+ *   "$1201"   → voltage=1, current=2, power=0, oat=1
+ *   "$12010"  → voltage=1, current=2, power=0, oat=1, online=0
  */
 function decodeFlag(flag) {
   if (!flag || typeof flag !== 'string') return null;
 
   let s = flag.trim();
-  if (s.startsWith('$')) s = s.slice(1); // "$1201" → "1201"
+  if (s.startsWith('$')) s = s.slice(1); // "$12010" → "12010"
 
+  // รองรับอย่างน้อย 4 หลัก (เก่า) และได้มากสุด 5 หลัก (ใหม่)
   if (s.length < 4) {
-    console.warn('[deviceData.service] flag too short (expect 4 digits):', flag);
+    console.warn(
+      '[deviceData.service] flag too short (expect 4–5 digits):',
+      flag
+    );
     return null;
   }
 
-  // ใช้แค่ 4 หลักแรก
-  s = s.slice(0, 4);
+  // ตัดให้เหลือสูงสุด 5 หลัก เผื่ออนาคตเผลอส่งมาเยอะกว่านี้
+  if (s.length > 5) {
+    s = s.slice(0, 5);
+  }
 
-  // ต้องเป็นตัวเลข 0 / 1 / 2 เท่านั้น
+  // ต้องเป็นตัวเลข 0–2 เท่านั้น (online ใช้ 0/1 ก็อยู่ในช่วงนี้)
   if (/[^0-2]/.test(s)) {
     console.warn(
       '[deviceData.service] invalid flag format (must contain only 0,1,2):',
@@ -57,12 +67,19 @@ function decodeFlag(flag) {
 
   const d = s.split('').map((c) => parseInt(c, 10));
 
-  return {
+  const result = {
     voltage: d[0],
     current: d[1],
     power: d[2],
-    oat: d[3],
+    oat: d[3], // oat จะใช้ 0/1 แล้วไปตีความใน frontend
   };
+
+  // หลักที่ 5 (ถ้ามี) ใช้เป็น online 0/1
+  if (d.length >= 5) {
+    result.online = d[4]; // 0 = online, 1 = offline
+  }
+
+  return result;
 }
 
 /** ประกอบ payload ตามลำดับฟิลด์ที่ต้องการเก็บใน DB */
@@ -146,20 +163,14 @@ async function ingestMany(rows = []) {
       broadcastDeviceData(toFrontendRow(d));
     }
   } catch (e) {
-    console.warn('[deviceData.service] broadcast error (many):', e.message || e);
+    console.warn(
+      '[deviceData.service] broadcast error (many):',
+      e.message || e
+    );
   }
 
   return docs;
 }
-
-/** โหลดเริ่มต้น (เช่น 50 แถวล่าสุด) */
-// async function getDeviceDataList(limit = 50) {
-//   const rows = await DeviceData.find({})
-//     .sort({ timestamp: -1 })
-//     .limit(limit)
-//     .lean();
-//   return rows.map(toFrontendRow);
-// }
 
 /** โหลดเริ่มต้น (ถ้าไม่ส่ง limit = ดึงทั้งหมด) */
 async function getDeviceDataList(limit) {
@@ -173,11 +184,11 @@ async function getDeviceDataList(limit) {
   return rows.map(toFrontendRow);
 }
 
-
-
 /** ตอนนี้ realtime มาจาก ingest → broadcast แล้ว (ฟังก์ชันนี้คงไว้เป็น log) */
 function initRealtimeBridge() {
-  console.log('✅ deviceData realtime bridge initialized (ingest → WS broadcast)');
+  console.log(
+    '✅ deviceData realtime bridge initialized (ingest → WS broadcast)'
+  );
 }
 
 module.exports = {
