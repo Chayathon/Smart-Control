@@ -475,6 +475,18 @@ class _MetricLineChartState extends State<MetricLineChart> {
       totalAll == 0 ? 0 : totalAll - 1,
     );
 
+    final remainingLeft = windowStart; // จุดที่อยู่ซ้ายหน้าต่าง
+    final remainingRight =
+        totalAll - (windowEnd + 1); // จุดที่อยู่ขวาหน้าต่าง
+
+    // step สำหรับเลื่อน pan ต่อ 1 คลิก (เลื่อนประมาณขนาดหน้าต่าง / ทั้งหมด)
+    double stepPan = 0.0;
+    if (canPan && totalAll > 0) {
+      stepPan = visibleCount / totalAll;
+      if (stepPan < 0.05) stepPan = 0.05;
+      if (stepPan > 0.15) stepPan = 0.15; // ไม่ให้กระโดดไกลเกิน
+    }
+
     // ปรับเงื่อนไขให้ดู "จุดทั้งหมด" ไม่ใช่แค่ในหน้าจอ
     final canGoPrev = hasHit && globalIndex > 0;
     final canGoNext =
@@ -646,20 +658,22 @@ class _MetricLineChartState extends State<MetricLineChart> {
                   setState(() {
                     if (!hasHit || totalAll <= 0) return;
 
-                    // จุดใหม่ใน global index
-                    final newGlobal =
-                        (globalIndex - 1).clamp(0, totalAll - 1);
+                    // ถ้ายังไม่ซูม → แค่เลื่อนจุดในหน้าจอ
+                    if (!canPan) {
+                      _hitIndex =
+                          (idxLocal - 1).clamp(0, pts.length - 1);
+                      return;
+                    }
 
-                    if (canPan && newGlobal < windowStart) {
-                      // ต้องเลื่อน window ไปทางซ้ายให้ครอบ newGlobal
-                      final newStart =
-                          newGlobal.clamp(0, maxStart);
-                      _pan = maxStart > 0
-                          ? newStart / maxStart
-                          : 0.0;
-                      _hitIndex = newGlobal - newStart;
+                    // ถ้าจุดชิดซ้าย และยังมีจุดเหลือทางซ้าย → เลื่อน window ด้วย pan
+                    final bool nearLeftEdge = idxLocal <= 0;
+                    if (nearLeftEdge &&
+                        remainingLeft > 0 &&
+                        stepPan > 0) {
+                      _pan = (_pan - stepPan).clamp(0.0, 1.0);
+                      _hitIndex = 0; // ให้ค้างอยู่ด้านซ้ายของหน้าต่างใหม่
                     } else {
-                      // ยังอยู่ใน window เดิม → เลื่อนใน pts อย่างเดียว
+                      // ยังอยู่กลาง ๆ → เลื่อนแค่จุด
                       _hitIndex =
                           (idxLocal - 1).clamp(0, pts.length - 1);
                     }
@@ -695,20 +709,24 @@ class _MetricLineChartState extends State<MetricLineChart> {
                     }
                     if (totalAll <= 0) return;
 
-                    final newGlobal =
-                        (globalIndex + 1).clamp(0, totalAll - 1);
+                    // ถ้ายังไม่ซูม → เลื่อนจุดในหน้าจออย่างเดียว
+                    if (!canPan) {
+                      _hitIndex =
+                          (idxLocal + 1).clamp(0, pts.length - 1);
+                      return;
+                    }
 
-                    if (canPan && newGlobal > windowEnd) {
-                      // ต้องเลื่อน window ไปทางขวาให้ครอบ newGlobal
-                      final newStart = (newGlobal -
-                              (visibleCount - 1))
-                          .clamp(0, maxStart);
-                      _pan = maxStart > 0
-                          ? newStart / maxStart
-                          : 0.0;
-                      _hitIndex = newGlobal - newStart;
+                    // ถ้าจุดชิดขวา และยังมีจุดเหลือทางขวา → เลื่อน window ด้วย pan
+                    final bool nearRightEdge =
+                        idxLocal >= visibleCount - 1;
+                    if (nearRightEdge &&
+                        remainingRight > 0 &&
+                        stepPan > 0) {
+                      _pan = (_pan + stepPan).clamp(0.0, 1.0);
+                      _hitIndex =
+                          pts.length - 1; // ค้างอยู่ด้านขวาของหน้าต่างใหม่
                     } else {
-                      // ยังอยู่ใน window เดิม → เลื่อนใน pts อย่างเดียว
+                      // ยังอยู่กลาง → เลื่อนเฉพาะจุด
                       _hitIndex =
                           (idxLocal + 1).clamp(0, pts.length - 1);
                     }
