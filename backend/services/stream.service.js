@@ -828,6 +828,10 @@ function getStatus() {
         activeMode,
         name: currentDisplayName,
         schedule: scheduleStatus,
+        icecast: {
+            port: cfg.icecast.port,
+            mount: cfg.icecast.mount,
+        },
     };
     
     if (playlistMode && currentIndex >= 0 && currentIndex < playlistQueue.length) {
