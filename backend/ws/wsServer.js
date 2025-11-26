@@ -54,8 +54,7 @@ function createWSServer(server) {
         try {
             const s = stream.getStatus();
             const mode = s.activeMode || 'none';
-            const isPlaying = s.isPlaying || false;
-            await Device.updateMany({}, { $set: { 'status.playback_mode': mode, 'status.is_playing': isPlaying } });
+            await Device.updateMany({}, { $set: { 'status.playback_mode': mode } });
         } catch (e) {
             console.error('⚠️ Failed to update devices playback_mode:', e.message || e);
         }

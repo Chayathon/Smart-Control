@@ -65,6 +65,29 @@ const ytdlpCache = new Map();
 
 const isAlive = (p) => !!p && p.exitCode === null;
 
+async function updateAllDevicesIsPlaying(isPlaying) {
+    try {
+        const result = await Device.updateMany(
+            { 'status.stream_enabled': true },
+            { $set: { 'status.is_playing': isPlaying } }
+        );
+        console.log(`📻 Updated is_playing=${isPlaying} for ${result.modifiedCount || result.nModified || 0} devices`);
+        
+        // Broadcast ไปยัง WebSocket clients
+        const { broadcast } = require('../ws/wsServer');
+        const enabledDevices = await Device.find({ 'status.stream_enabled': true }).lean();
+        enabledDevices.forEach(device => {
+            broadcast({
+                zone: device.no,
+                is_playing: isPlaying,
+                source: 'icecast'
+            });
+        });
+    } catch (error) {
+        console.error('❌ Error updating is_playing:', error.message);
+    }
+}
+
 function isMicActive() {
     // Delegate to micStream service
     return micStream.isActive();
@@ -279,12 +302,15 @@ async function _playIndex(i, seekMs = 0) {
                 console.log('✅ เพลย์ลิสต์จบครบทุกเพลง');
                 playlistMode = false;
                 activeMode = 'none';
+                await updateAllDevicesIsPlaying(false);
                 emitStatus({ event: 'playlist-ended' });
             }
         });
 
         isPaused = false;
         currentStreamUrl = source;
+        
+        await updateAllDevicesIsPlaying(true);
         
         console.log(`📡 Emitting status: title="${name}", index=${i}, total=${playlistQueue.length}`);
         emitStatus({
@@ -437,6 +463,8 @@ async function stop() {
     
     await stopAll();
     
+    await updateAllDevicesIsPlaying(false);
+    
     playlistStopping = false;
     activeMode = 'none';
     emitStatus({ event: 'stopped-all' });
@@ -486,6 +514,7 @@ async function stopAll() {
         isPaused = false;
         currentStreamUrl = null;
         activeMode = 'none';
+        await updateAllDevicesIsPlaying(false);
         emitStatus({ event: 'stopped' });
         await sleep(250);
         stopping = false;
@@ -601,6 +630,7 @@ async function startYoutubeUrl(url, seekMs = 0, opts = {}) {
             currentStreamUrl = null;
             if (!pausePendingResume) {
                 activeMode = 'none';
+                updateAllDevicesIsPlaying(false).catch(e => console.error('Error updating is_playing:', e));
             }
             if (!pausePendingResume) {
                 bus.emit('status', { event: 'ended', reason: 'ffmpeg-closed', code });
@@ -622,7 +652,8 @@ async function startYoutubeUrl(url, seekMs = 0, opts = {}) {
         currentStreamUrl = url;
         activeMode = 'youtube';
         trackBaseOffsetMs = Math.max(0, seekMs | 0);
-    trackStartMonotonic = nowMs();
+        trackStartMonotonic = nowMs();
+        await updateAllDevicesIsPlaying(true);
         bus.emit('status', { event: 'started', url });
     } finally {
         starting = false;
@@ -686,6 +717,7 @@ async function startLocalFile(filePath, seekMs = 0, opts = {}) {
             currentStreamUrl = null;
             if (!pausePendingResume) {
                 activeMode = 'none';
+                updateAllDevicesIsPlaying(false).catch(e => console.error('Error updating is_playing:', e));
             }
             if (!pausePendingResume) {
                 bus.emit('status', { event: 'ended', reason: 'ffmpeg-closed', code });
@@ -719,6 +751,7 @@ async function startLocalFile(filePath, seekMs = 0, opts = {}) {
         activeMode = isSchedule ? 'schedule' : 'file';
         trackBaseOffsetMs = Math.max(0, seekMs | 0);
         trackStartMonotonic = nowMs();
+        await updateAllDevicesIsPlaying(true);
         bus.emit('status', { event: 'started', url: absPath, name: currentDisplayName });
     } finally {
         starting = false;
