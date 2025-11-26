@@ -301,7 +301,9 @@ class _StreamScreenState extends State<StreamScreen>
                     ],
                   ),
                   child: Icon(
-                    _isListening ? Icons.graphic_eq : Icons.headphones,
+                    _isListening
+                        ? Icons.graphic_eq_rounded
+                        : Icons.headphones_rounded,
                     size: 60,
                     color: _isListening ? Colors.white : Colors.grey.shade400,
                   ),
