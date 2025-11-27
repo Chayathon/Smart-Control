@@ -187,8 +187,6 @@ function connectAndSend({
                     // 4. แจ้งหน้าเว็บ
                     broadcast({
                         zone: no,
-                        stream_enabled: false,
-                        is_playing: false,
                         offline: true,
                         source: 'lwt'
                     });
@@ -206,7 +204,7 @@ function connectAndSend({
                     broadcast({
                         zone: no,
                         offline: false,
-                        source: 'lwt-online'
+                        source: 'lwt'
                     });
                 }
             }
