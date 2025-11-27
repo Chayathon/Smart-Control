@@ -810,18 +810,17 @@ function getStatus() {
     const status = {
         isPlaying: isAlive(ffmpegProcess) && currentStreamUrl !== 'flutter-mic',
         isPaused,
+        resumeMs: lastKnownElapsedMs,
         activeMode,
         loop: playlistLoop,
-        resumeMs: lastKnownElapsedMs,
+        currentSong: null,
         schedule: scheduleStatus,
         icecast: {
             port: cfg.icecast.port,
             mount: cfg.icecast.mount,
         },
-        currentSong: null,
     };
     
-    // สร้าง currentSong object ตาม activeMode
     if (activeMode === 'playlist' && currentIndex >= 0 && currentIndex < playlistQueue.length) {
         const song = playlistQueue[currentIndex];
         status.currentSong = {
