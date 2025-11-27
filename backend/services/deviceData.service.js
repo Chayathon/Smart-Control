@@ -85,18 +85,7 @@ function buildOrderedPayload(raw = {}) {
   };
 }
 
-/**
- * แปลง doc/data -> รูปแบบส่งให้ frontend
- * - timestamp เป็น ISO string
- * - เติม alarms ที่ decode จาก flag + oat
- *
- * alarms รูปแบบ:
- * {
- *   voltage: 0|1|2,
- *   current: 0|1,
- *   oat: 0|1    // 0 ไม่ได้ประกาศ, 1 กำลังประกาศ
- * }
- */
+
 function toFrontendRow(docOrData) {
   const r = docOrData.toObject ? docOrData.toObject() : { ...docOrData };
 
