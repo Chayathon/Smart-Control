@@ -91,11 +91,11 @@ class PlaylistService with ChangeNotifier {
     _sse.onStatusUpdate = (data) {
       final event = data['event'];
       final isPlaying = data['isPlaying'] ?? false;
-      final mode = data['mode'] ?? 'single';
+      final activeMode = data['activeMode'] ?? 'none';
       final pausedState = data['isPaused'] ?? false;
       final loopState = data['loop'] ?? false;
 
-      if (mode == 'playlist') {
+      if (activeMode == 'playlist') {
         final idx = (data['index'] ?? 0) + 1;
         final tot = data['total'] ?? 0;
 
@@ -257,11 +257,11 @@ class PlaylistService with ChangeNotifier {
       final response = await api.get('/playlist/status');
 
       final isPlaying = response['isPlaying'] ?? false;
-      final playlistMode = response['playlistMode'] ?? false;
+      final activeMode = response['activeMode'] ?? 'none';
       final pausedState = response['isPaused'] ?? false;
       final loopState = response['loop'] ?? false;
 
-      if (playlistMode && (isPlaying || pausedState)) {
+      if (activeMode == 'playlist' && (isPlaying || pausedState)) {
         final currentSong = response['currentSong'];
         state.value = state.value.copyWith(
           active: true,

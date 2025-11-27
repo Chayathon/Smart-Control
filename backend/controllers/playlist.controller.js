@@ -27,7 +27,7 @@ async function getPlaylistStatus(_req, res) {
         const payload = {
             isPlaying: status.isPlaying,
             isPaused: status.isPaused,
-            playlistMode: status.playlistMode,
+            activeMode: status.activeMode,
             currentIndex: status.currentIndex,
             totalSongs: status.totalSongs,
             loop: status.loop,

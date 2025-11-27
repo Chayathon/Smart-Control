@@ -176,7 +176,7 @@ class _ControlPanelState extends State<ControlPanel> {
       }
 
       final PlaybackMode mode = _parseMode(
-        data['activeMode'] ?? data['requestedMode'] ?? data['mode'],
+        data['activeMode'] ?? data['requestedMode'],
       );
 
       final bool? playingMaybe = data.containsKey('isPlaying')
@@ -350,12 +350,9 @@ class _ControlPanelState extends State<ControlPanel> {
       final data = engine['data'] ?? engine;
       final bool engIsPlaying = data['isPlaying'] == true;
       final bool engIsPaused = data['isPaused'] == true;
-      final PlaybackMode activeMode = _parseMode(
-        data['activeMode'] ?? data['mode'] ?? 'none',
-      );
+      final PlaybackMode activeMode = _parseMode(data['activeMode'] ?? 'none');
       mode = activeMode;
-      final bool engPlaylistMode =
-          activeMode == PlaybackMode.playlist || data['playlistMode'] == true;
+      final bool engPlaylistMode = activeMode == PlaybackMode.playlist;
 
       // ดึงข้อมูล schedule
       bool schedActive = false;
