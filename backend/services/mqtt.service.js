@@ -5,6 +5,7 @@ const DeviceData = require('../models/DeviceData');
 const uart = require('./uart.handle');
 const deviceDataService = require('../services/deviceData.service');
 const { stream } = require('../config/config');
+const mongoose = require('mongoose');
 
 let deviceStatus = [];
 let seenZones = new Set();
