@@ -50,7 +50,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     zones[idx]["status"]["stream_enabled"] =
                         data["stream_enabled"];
                     zones[idx]["status"]["volume"] = data["volume"];
-                    zones[idx]["status"]["is_playing"] = data["is_playing"];
                   });
                 }
               }

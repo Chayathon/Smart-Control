@@ -345,12 +345,7 @@ class _ControlPanelState extends State<ControlPanel> {
         }
       }
 
-      if (devices.isNotEmpty) {
-        final first = devices.first;
-        final m = (first['status']?['playback_mode'] ?? 'none').toString();
-        if (m.isNotEmpty) mode = _parseMode(m);
-      }
-
+      // Get playback mode from stream status (activeMode is the single source of truth)
       final engine = await api.get('/stream/status');
       final data = engine['data'] ?? engine;
       final bool engIsPlaying = data['isPlaying'] == true;
@@ -358,6 +353,7 @@ class _ControlPanelState extends State<ControlPanel> {
       final PlaybackMode activeMode = _parseMode(
         data['activeMode'] ?? data['mode'] ?? 'none',
       );
+      mode = activeMode;
       final bool engPlaylistMode =
           activeMode == PlaybackMode.playlist || data['playlistMode'] == true;
 

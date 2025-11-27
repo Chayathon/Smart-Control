@@ -92,7 +92,6 @@ function onRxFrame(frameBuf) {
     const payloadStatus = {
       zone,
       stream_enabled: parsed.set_stream,
-      is_playing: parsed.set_stream,
       source: 'manual-panel',
       raw: parsed.raw,
     };
