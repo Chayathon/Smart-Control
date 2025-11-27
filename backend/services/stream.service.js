@@ -810,26 +810,39 @@ function getStatus() {
     const status = {
         isPlaying: isAlive(ffmpegProcess) && currentStreamUrl !== 'flutter-mic',
         isPaused,
-        currentUrl: currentStreamUrl,
         activeMode,
-        currentIndex,
-        totalSongs: playlistQueue.length,
         loop: playlistLoop,
         resumeMs: lastKnownElapsedMs,
-        name: currentDisplayName,
         schedule: scheduleStatus,
         icecast: {
             port: cfg.icecast.port,
             mount: cfg.icecast.mount,
         },
+        currentSong: null,
     };
     
+    // สร้าง currentSong object ตาม activeMode
     if (activeMode === 'playlist' && currentIndex >= 0 && currentIndex < playlistQueue.length) {
-        const currentSong = playlistQueue[currentIndex];
+        const song = playlistQueue[currentIndex];
         status.currentSong = {
-            title: currentSong.name,
+            title: song.name,
+            url: currentStreamUrl,
             index: currentIndex,
             total: playlistQueue.length,
+        };
+    } else if (activeMode === 'file' || activeMode === 'schedule') {
+        status.currentSong = {
+            title: currentDisplayName,
+            url: currentStreamUrl,
+            index: 0,
+            total: 1,
+        };
+    } else if (activeMode === 'youtube') {
+        status.currentSong = {
+            title: currentDisplayName || 'YouTube',
+            url: currentStreamUrl,
+            index: 0,
+            total: 1,
         };
     }
     
