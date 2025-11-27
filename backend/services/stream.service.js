@@ -70,37 +70,6 @@ function isMicActive() {
     return micStream.isActive();
 }
 
-async function updateAllDevicesIsPlaying(isPlaying) {
-    try {
-        const mqttService = require('./mqtt.service');
-        
-        // Determine playback mode based on current state
-        let mode = activeMode;
-        if (!isPlaying) {
-            mode = 'none';
-        }
-        
-        // Update database
-        await Device.updateMany(
-            {},
-            {
-                $set: {
-                    'status.is_playing': isPlaying,
-                    'status.playback_mode': mode
-                }
-            }
-        );
-        
-        console.log(`📊 Updated all devices: is_playing=${isPlaying}, playback_mode=${mode}`);
-        
-        // Broadcast to MQTT devices
-        mqttService.broadcastPlaybackStatus(isPlaying, mode);
-        
-    } catch (err) {
-        console.error('❌ Error in updateAllDevicesIsPlaying:', err.message);
-    }
-}
-
 async function checkStreamEnabled() {
     try {
         // Check if any device has stream_enabled = true
