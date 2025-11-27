@@ -73,14 +73,18 @@ function buildOrderedPayload(raw = {}) {
     timestamp: ts,
     meta,
 
-    dcA: raw.dcA,
-    type: raw.type,
-    lat: raw.lat,
-    flag: flagRaw,   // เก็บ flag ดิบไว้
-    oat: raw.oat,    // oat ที่ส่งเข้ามา (0/1 ตามสเปคใหม่)
-    dcV: raw.dcV,
-    dcW: raw.dcW,
-    lng: raw.lng,
+    vac: json.vac,
+    iac: json.iac,
+    wac: json.wac,
+    acfreq: json.acfreq,
+    acenergy: json.acenergy,
+    vdc: json.vdc,
+    idc: json.idc,
+    wdc: json.wdc,               
+    flag: json.flag,
+    oat: json.oat,
+    lat: json.lat,
+    lng: json.lng
   };
 }
 

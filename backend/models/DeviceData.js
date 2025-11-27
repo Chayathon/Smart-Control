@@ -36,25 +36,31 @@ const deviceDataSchema = new mongoose.Schema(
     // meta ใช้เก็บข้อมูลประกอบ เช่น no, deviceId ฯลฯ
     meta: { type: Object, default: {} },
 
-    dcV: { type: Number }, // แรงดัน DC Volt
-    dcW: { type: Number }, // กำลังไฟ DC Watt
-    dcA: { type: Number }, // กระแส DC Ampere
-
-    status: { type: String },  // on/off หรือสถานะอื่น
+    vac: { type: Number }, // แรงดัน DC Volt
+    wac: { type: Number }, // กำลังไฟ DC Watt
+    iac: { type: Number }, // กระแส DC Ampere
+    acfreq: { type: Number }, // ความถี่ AC Hz
+    acenergy: { type: Number }, // พลังงาน AC kWh
+    vdc: { type: Number },
+    idc: { type: Number },
+    wdc: { type: Number },
+    // เก็บค่า flag ดิบ เช่น "$111110" หรือ "$0000"
+    flag: { type: String },
+    // status: { type: String },  // on/off หรือสถานะอื่น
     oat: { type: Number },     // อุณหภูมิภายนอก
-    lighting: { type: Number },
-    battery: { type: Number },
+    // lighting: { type: Number },
+    // battery: { type: Number },
 
-    snr: { type: Number },
-    rssi: { type: Number },
+    // snr: { type: Number },
+    // rssi: { type: Number },
 
     lat: { type: Number },
     lng: { type: Number },
 
-    type: { type: String }, // เช่น "sim", "wireless" ฯลฯ
 
-    // เก็บค่า flag ดิบ เช่น "$111110" หรือ "$0000"
-    flag: { type: String },
+
+
+
   },
   {
     collection: 'deviceData',

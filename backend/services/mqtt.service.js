@@ -4,6 +4,7 @@ const Device = require('../models/Device');
 const DeviceData = require('../models/DeviceData');
 const uart = require('./uart.handle');
 const deviceDataService = require('../services/deviceData.service');
+const { stream } = require('../config/config');
 
 let deviceStatus = [];
 let seenZones = new Set();
@@ -88,7 +89,6 @@ function connectAndSend({
     brokerUrl = 'mqtt://192.168.1.83:1883',
     username = 'admin',
     password = 'admin',
-    allCommandTopic = process.env.MQTT_TOPIC_ALL_COMMAND,
     statusTopic = process.env.MQTT_TOPIC_ZONE_STATUS,
     dataTopic = process.env.MQTT_TOPIC_ZONE_DATA,
     zoneCommandTopic = process.env.MQTT_TOPIC_ZONE_COMMAND,
@@ -111,8 +111,8 @@ function connectAndSend({
         console.log('✅ MQTT connected');
 
         client.subscribe(dataTopic, { qos: 1 }, (err) => {
-            if (err) console.error('📥 subscribe mass-radio/+/data error:', err.message);
-            else console.log('📥 subscribed mass-radio/+/data');
+            if (err) console.error('📥 subscribe mass-radio/+/monitoring error:', err.message);
+            else console.log('📥 subscribed mass-radio/+/monitoring');
         });
 
         client.subscribe(zoneCommandTopic, { qos: 1 }, (err) => {
@@ -150,53 +150,76 @@ function connectAndSend({
         const lwtMatch = topic.match(/^mass-radio\/([^/]+)\/lwt$/);
         if (lwtMatch) {
             const payloadStr = message.toString();
-            console.log(`[LWT] 💀 Received Last Will from ${topic}: ${payloadStr}`);
-
+            
             const target = lwtMatch[1]; 
             const zoneNumMatch = target.match(/^zone(\d+)$/);
             
             if (zoneNumMatch) {
                 const no = parseInt(zoneNumMatch[1], 10);
-                
-                console.log(`[LWT] Zone ${no} is confirmed DEAD via MQTT. Cleaning up...`);
 
-                upsertDeviceStatus(no, { 
-                    stream_enabled: false, 
-                    is_playing: false, 
-                    online: false 
-                });
+                // 👉 เพิ่มการเช็คตรงนี้ครับ 👈
+                if (payloadStr === 'offline') {
+                    
+                    console.log(`[LWT] 💀 Zone ${no} confirmed DEAD (Payload: ${payloadStr})`);
 
-                try {
-                    await Device.findOneAndUpdate({ no }, {
-                        $set: {
-                            'status.stream_enabled': false,
-                            'status.volume': 0,
-                            'status.is_playing': false,
-                            'status.playback_mode': 'none',
-                        }
+                    // 1. อัปเดต Memory
+                    upsertDeviceStatus(no, { 
+                        stream_enabled: false, 
+                        is_playing: false, 
+                        online: false 
                     });
-                } catch(e) { console.error(e); }
 
-                sendZoneUartCommand(no, false).catch(() => {});
+                    // 2. อัปเดต DB
+                    try {
+                        await Device.findOneAndUpdate({ no }, {
+                            $set: {
+                                'status.stream_enabled': false,
+                                'status.volume': 0,
+                                'status.is_playing': false,
+                                'status.playback_mode': 'none',
+                            }
+                        });
+                    } catch(e) { console.error(e); }
 
-                broadcast({
-                    zone: no,
-                    stream_enabled: false,
-                    is_playing: false,
-                    offline: true,
-                    source: 'lwt'
-                });
+                    // 3. สั่ง UART ดับไฟ
+                    sendZoneUartCommand(no, false).catch(() => {});
+
+                    // 4. แจ้งหน้าเว็บ
+                    broadcast({
+                        zone: no,
+                        stream_enabled: false,
+                        is_playing: false,
+                        offline: true,
+                        source: 'lwt'
+                    });
+
+                } else if (payloadStr === 'online') {
+                    
+                    console.log(`[LWT] 🐣 Zone ${no} is back ONLINE!`);
+                    
+                    // อัปเดต lastSeen ใน Memory ให้สดใหม่
+                    const item = deviceStatus.find(d => d.zone === no);
+                    if (item) {
+                        item.lastSeen = Date.now();
+                    }
+                    
+                    broadcast({
+                        zone: no,
+                        offline: false,
+                        source: 'lwt-online'
+                    });
+                }
             }
-            return;
+            return; 
         }
 
 
         const payloadStr = message.toString();
-        const m = topic.match(/^mass-radio\/(no\d+)\/data$/);
+        const m = topic.match(/^mass-radio\/(zone\d+)\/monitoring$/);
 
         if (m) {
             const nodeKey = m[1];
-            const noFromTopic = parseInt(nodeKey.replace(/^no/, ''), 10);
+            const noFromTopic = parseInt(nodeKey.replace(/^zone/, ''), 10);
 
             console.log('[MQTT] incoming deviceData from', nodeKey, 'payload =', payloadStr);
 
@@ -228,18 +251,35 @@ function connectAndSend({
                         ...(device ? { deviceId: device._id } : {}),
                     },
 
-                    dcV: json.dcV,
-                    dcW: json.dcW,
-                    dcA: json.dcA,
-
+                    vac: json.vac,
+                    iac: json.iac,
+                    wac: json.wac,
+                    acfreq: json.acfreq,
+                    acenergy: json.acenergy,
+                    vdc: json.vdc,
+                    idc: json.idc,
+                    wdc: json.wdc,               
+                    flag: json.flag,
                     oat: json.oat,
                     lat: json.lat,
-                    lng: json.lng,
-
-                    flag: json.flag,
-
-                    type: json.type,
+                    lng: json.lng
                 };
+
+
+                // payload ={
+                //     "vac": 213,
+                //     "iac": 23,
+                //     "wac": 13,
+                //     "acfreq" 13,
+                //     "acenergy": 213,
+                //     "vdc": 221,
+                //     "idc": 1.02,
+                //     "wdc": 213,
+                //     "flag": "$11",
+                //     "oat": 1,
+                //     "lat": 13.657844025619063,
+                //     "lng": 100.66084924318992,  
+                // }
 
                 await deviceDataService.ingestOne(payloadForIngest);
                 console.log('[MQTT] saved DeviceData via ingestOne for', nodeKey);

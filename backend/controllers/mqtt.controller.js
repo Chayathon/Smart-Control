@@ -11,7 +11,7 @@ async function publish(req, res) {
 
   const isZoneCmd = /^mass-radio\/zone\d+\/command$/.test(topic);
 
-  const isDeviceData = /^mass-radio\/no\d+\/data$/.test(topic);
+  const isDeviceData = /^mass-radio\/zone\d+\/monitoring$/.test(topic);
 
   const isSpecialCmd = ['mass-radio/select/command', 'mass-radio/all/command'].includes(topic);
 
