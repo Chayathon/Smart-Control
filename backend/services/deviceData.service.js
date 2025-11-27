@@ -17,38 +17,77 @@ function toDate(v) {
 }
 
 /**
- * 🔹 decode flag 2 หลัก ตามสเปคใหม่
+ * 🔹 decode flag 7 หลัก (มี '$' นำหน้า + 6 ตัวเลข) ตามสเปคใหม่
  *
- * รูปแบบ: "$XY"
- *   X = voltage  : 0 ปกติ, 1 สูง, 2 ต่ำ
- *   Y = current  : 0 ปกติ, 1 over current (2 ยังไม่ใช้)
+ * รูปแบบตัวอย่าง: "$010120"
  *
- * ตัวอย่าง:
- *   "$00" → voltage=0, current=0 (ปกติ)
- *   "$10" → voltage สูง, current ปกติ
- *   "$01" → voltage ปกติ, current over current
+ * นับจากซ้ายไปขวา (ไม่นับ '$' นะ → จะเหลือ 6 ตัว):
+ *
+ *   s[0] → AC sensor check
+ *          0 = normal
+ *          1 = false
+ *
+ *   s[1] → vac (AC Voltage)
+ *          0 = normal
+ *          1 = over
+ *          2 = under
+ *
+ *   s[2] → iac (AC Current)
+ *          0 = normal
+ *          1 = over
+ *
+ *   s[3] → DC sensor check
+ *          0 = normal
+ *          1 = false
+ *
+ *   s[4] → vdc (DC Voltage)
+ *          0 = normal
+ *          1 = over
+ *          2 = under
+ *
+ *   s[5] → idc (DC Current)
+ *          0 = normal
+ *          1 = over
+ *
+ * คืนค่าเป็น object:
+ * {
+ *   acSensor: 0|1,
+ *   acVoltage: 0|1|2,
+ *   acCurrent: 0|1,
+ *   dcSensor: 0|1,
+ *   dcVoltage: 0|1|2,
+ *   dcCurrent: 0|1
+ * }
  */
 function decodeFlag(flag) {
   if (!flag || typeof flag !== 'string') return null;
 
   let s = flag.trim();
-  if (s.startsWith('$')) s = s.slice(1); // "$10" → "10"
+  if (s.startsWith('$')) s = s.slice(1); // "$010120" → "010120"
 
-  // ต้องยาว 2 ตัว และเป็นตัวเลข 0–2
-  if (!/^[0-2]{2}$/.test(s)) {
+  // ต้องยาว 6 ตัว และเป็นตัวเลข 0–2
+  if (!/^[0-2]{6}$/.test(s)) {
     console.warn(
-      '[deviceData.service] invalid 2-digit flag format:',
+      '[deviceData.service] invalid 6-digit flag format:',
       flag
     );
     return null;
   }
 
-  const v = parseInt(s[0], 10);
-  const c = parseInt(s[1], 10);
+  const acSensor = parseInt(s[0], 10);   // 0/1
+  const acVoltage = parseInt(s[1], 10);  // 0/1/2
+  const acCurrent = parseInt(s[2], 10);  // 0/1
+  const dcSensor = parseInt(s[3], 10);   // 0/1
+  const dcVoltage = parseInt(s[4], 10);  // 0/1/2
+  const dcCurrent = parseInt(s[5], 10);  // 0/1
 
   return {
-    voltage: v, // 0 ปกติ, 1 สูง, 2 ต่ำ
-    current: c, // 0 ปกติ, 1 over current
+    acSensor,
+    acVoltage,
+    acCurrent,
+    dcSensor,
+    dcVoltage,
+    dcCurrent,
   };
 }
 
@@ -90,28 +129,30 @@ function buildOrderedPayload(raw = {}) {
  * - timestamp เป็น ISO string
  * - เติม alarms ที่ decode จาก flag + oat
  *
- * alarms รูปแบบ:
+ * alarms รูปแบบ (ตามสเปคใหม่):
  * {
- *   voltage: 0|1|2,
- *   current: 0|1,
- *   oat: 0|1    // 0 ไม่ได้ประกาศ, 1 กำลังประกาศ
+ *   acSensor: 0|1,
+ *   acVoltage: 0|1|2,
+ *   acCurrent: 0|1,
+ *   dcSensor: 0|1,
+ *   dcVoltage: 0|1|2,
+ *   dcCurrent: 0|1,
+ *   oat: 0|1          // 0 ไม่ประกาศ, 1 กำลังประกาศ (ส่งตรงจากค่า oat)
  * }
  */
 function toFrontendRow(docOrData) {
   const r = docOrData.toObject ? docOrData.toObject() : { ...docOrData };
 
-  // 1) ดึงจาก flag 2 หลัก
+  // 1) ดึงจาก flag 6 หลัก
   const alarmsFromFlag = decodeFlag(r.flag) || {};
 
   // 2) อิง oat จากค่าที่เก็บใน DB (0/1)
   const alarms = { ...alarmsFromFlag };
 
+  // ใช้ค่า oat จาก DB ตรง ๆ (0 หรือ 1 ก็ส่ง)
   if (typeof r.oat === 'number') {
-    const oatBit = r.oat > 0 ? 1 : 0;
-    // ถ้าอยากให้แสดงเฉพาะตอน "กำลังประกาศ" ให้เก็บเฉพาะ oatBit === 1
-    if (oatBit !== 0) {
-      alarms.oat = oatBit;
-    }
+    const oatBit = r.oat !== 0 ? 1 : 0;
+    alarms.oat = oatBit;
   }
 
   return {
