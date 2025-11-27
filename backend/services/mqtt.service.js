@@ -458,6 +458,13 @@ function connectAndSend({
                     console.log(`[RadioZone] CMD -> UART (Zone ${zoneNum}): volume=${json.set_volume}`);
                     await sendVolUartCommand(zoneNum, json.set_volume);
                 } 
+                else if (typeof json.set_playback === 'boolean') {
+                    console.log(`[RadioZone] CMD -> MQTT (Zone ${zoneNum}): playback=${json.set_playback}`);
+                    publish(topic, {
+                        is_playing: json.set_playback,
+                        playback_mode: json.playback_mode || 'none',
+                    });
+                } 
                 else {
                     console.warn(`[RadioZone] Ignore CMD Zone ${zoneNum}: Missing valid key`, json);
                 }
