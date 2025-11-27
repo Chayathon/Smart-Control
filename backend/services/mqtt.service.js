@@ -69,22 +69,49 @@ function checkIcecastStatus() {
     });
 }
 
-// ฟังก์ชัน publish is_playing และ playback_mode ผ่าน MQTT
+// ฟังก์ชัน publish is_playing และ playback_mode ผ่าน MQTT และอัพเดต DB
 async function publishPlaybackStatus(isPlaying, playbackMode) {
-    if (!client || !connected) return;
+    const mode = playbackMode || 'none';
     
-    const payload = {
-        is_playing: isPlaying,
-        playback_mode: playbackMode || 'none',
-        source: 'server'
-    };
-    
-    publish('mass-radio/all/playback', payload);
-    console.log(`📡 Published playback status: is_playing=${isPlaying}, mode=${playbackMode}`);
-    
-    // อัพเดต state
+    // อัพเดต state ก่อน
     lastIcecastPlaying = isPlaying;
-    currentPlaybackMode = playbackMode || 'none';
+    currentPlaybackMode = mode;
+    
+    // อัพเดต DB ทุก device ที่ stream_enabled = true
+    try {
+        await Device.updateMany(
+            { 'status.stream_enabled': true },
+            {
+                $set: {
+                    'status.is_playing': isPlaying,
+                    'status.playback_mode': mode
+                }
+            }
+        );
+        console.log(`📊 Updated DB: is_playing=${isPlaying}, playback_mode=${mode}`);
+    } catch (err) {
+        console.error('❌ Failed to update devices in DB:', err.message);
+    }
+    
+    // Publish ผ่าน MQTT
+    if (client && connected) {
+        const payload = {
+            is_playing: isPlaying,
+            playback_mode: mode,
+            source: 'server'
+        };
+        
+        publish('mass-radio/all/playback', payload);
+        console.log(`📡 Published playback status: is_playing=${isPlaying}, mode=${mode}`);
+    }
+    
+    // Broadcast ไปยัง WebSocket clients
+    broadcast({
+        type: 'playback_status',
+        is_playing: isPlaying,
+        playback_mode: mode,
+        source: 'server'
+    });
 }
 
 // ฟังก์ชันตั้งค่า playback_mode จากภายนอก
@@ -92,14 +119,28 @@ function setPlaybackMode(mode) {
     currentPlaybackMode = mode || 'none';
 }
 
-// ฟังก์ชันส่ง get_status ไปยังโซน
+// ฟังก์ชันดึงสถานะ playback ปัจจุบัน
+function getPlaybackStatus() {
+    return {
+        is_playing: lastIcecastPlaying || false,
+        playback_mode: currentPlaybackMode || 'none'
+    };
+}
+
+// ฟังก์ชันส่ง get_status ไปยังโซน พร้อม playback status ปัจจุบัน
 async function requestGetStatus(zones = null) {
     if (!client || !connected) {
         console.error('❌ Cannot request get_status, MQTT not connected');
         return;
     }
     
-    const payload = { get_status: true, source: 'server' };
+    // รวม playback status ปัจจุบันใน payload
+    const payload = { 
+        get_status: true, 
+        source: 'server',
+        is_playing: lastIcecastPlaying || false,
+        playback_mode: currentPlaybackMode || 'none'
+    };
     
     if (zones && Array.isArray(zones) && zones.length > 0) {
         // ส่งไปยังโซนที่ระบุ
@@ -107,11 +148,11 @@ async function requestGetStatus(zones = null) {
             const topic = `mass-radio/zone${zone}/command`;
             publish(topic, payload);
         }
-        console.log(`📤 Requested get_status for zones: [${zones.join(', ')}]`);
+        console.log(`📤 Requested get_status for zones: [${zones.join(', ')}] with playback_mode=${currentPlaybackMode}`);
     } else {
         // ส่งไปยังทุกโซน
         publish('mass-radio/all/command', payload);
-        console.log('📤 Requested get_status for all zones');
+        console.log(`📤 Requested get_status for all zones with playback_mode=${currentPlaybackMode}`);
     }
 }
 
@@ -499,7 +540,18 @@ function connectAndSend({
                 }
                 const prev = getCurrentStatusOfZone(no);
                 const prevStreamStatus = prev ? prev.stream_enabled : null;
+                
+                // ถ้าโซนมี stream_enabled = true ให้ใส่ is_playing และ playback_mode จาก server
                 let merged = { ...json };
+                if (merged.stream_enabled === true) {
+                    merged.is_playing = lastIcecastPlaying || false;
+                    merged.playback_mode = currentPlaybackMode || 'none';
+                } else {
+                    // ถ้า stream_enabled = false ให้ is_playing = false
+                    merged.is_playing = false;
+                    merged.playback_mode = 'none';
+                }
+                
                 const isFromManualPanel = merged.source === 'manual-panel'; 
                 upsertDeviceStatus(no, merged);
                 if (!isFromManualPanel && merged.stream_enabled !== undefined && merged.stream_enabled !== prevStreamStatus) {
@@ -622,5 +674,6 @@ module.exports = {
     checkIcecastStatus,
     publishPlaybackStatus,
     setPlaybackMode,
-    requestGetStatus
+    requestGetStatus,
+    getPlaybackStatus
 };
