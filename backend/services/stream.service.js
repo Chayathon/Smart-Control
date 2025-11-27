@@ -87,6 +87,18 @@ function getIcecastUrl() {
         `@${icecast.host}:${icecast.port}${icecast.mount}`;
 }
 
+// ฟังก์ชันอัพเดตสถานะ is_playing และ playback_mode ผ่าน MQTT
+async function updateAllDevicesIsPlaying(isPlaying, mode = null) {
+    const mqttService = require('./mqtt.service');
+    const playbackMode = mode || activeMode || 'none';
+    
+    // Publish playback status ผ่าน MQTT
+    await mqttService.publishPlaybackStatus(isPlaying, playbackMode);
+    mqttService.setPlaybackMode(playbackMode);
+    
+    console.log(`🎵 Updated playback status: is_playing=${isPlaying}, mode=${playbackMode}`);
+}
+
 function getPreStartDelayMs() {
     const delay = cfg.stream && typeof cfg.stream.preStartDelayMs === 'number' ? cfg.stream.preStartDelayMs : 0;
     return Math.max(0, delay | 0);
@@ -1048,9 +1060,19 @@ async function enableStream() {
     if (lastEnabledZones.length > 0) {
         console.log(`Restoring previously enabled zones: [${lastEnabledZones.join(', ')}]`);
         mqttService.publish('mass-radio/select/command', { zone: lastEnabledZones, set_stream: true });
+        
+        // รอ 2 วินาทีแล้ว get_status เพื่ออัพเดต stream_enabled จาก response
+        setTimeout(() => {
+            mqttService.requestGetStatus(lastEnabledZones);
+        }, 2000);
     } else {
         console.log('📡 No previously enabled zones found, enabling all zones');
         mqttService.publish('mass-radio/all/command', { set_stream: true });
+        
+        // รอ 2 วินาทีแล้ว get_status เพื่ออัพเดต stream_enabled จาก response
+        setTimeout(() => {
+            mqttService.requestGetStatus();
+        }, 2000);
     }
     return { success: true, message: 'Enabled stream for zones' };
 }
@@ -1075,6 +1097,12 @@ async function disableStream() {
     }
     
     mqttService.publish('mass-radio/all/command', { set_stream: false });
+    
+    // รอ 2 วินาทีแล้ว get_status เพื่ออัพเดต stream_enabled จาก response
+    setTimeout(() => {
+        mqttService.requestGetStatus();
+    }, 2000);
+    
     return { success: true, message: 'Disabled stream for all zones' };
 }
 

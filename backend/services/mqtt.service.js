@@ -1,10 +1,11 @@
 const mqtt = require('mqtt');
+const http = require('http');
 const { broadcast } = require('../ws/wsServer');
 const Device = require('../models/Device');
 const DeviceData = require('../models/DeviceData');
 const uart = require('./uart.handle');
 const deviceDataService = require('../services/deviceData.service');
-const { stream } = require('../config/config');
+const cfg = require('../config/config');
 
 let deviceStatus = [];
 let seenZones = new Set();
@@ -18,6 +19,101 @@ const pendingRequestsByZone = {};
 
 const lastManualByZone = new Map();  
 
+let lastIcecastPlaying = null;
+let currentPlaybackMode = 'none';
+
+// ฟังก์ชันเช็คสถานะ Icecast ว่ามี listener หรือไม่
+function checkIcecastStatus() {
+    return new Promise((resolve) => {
+        const options = {
+            hostname: cfg.icecast.host || 'localhost',
+            port: cfg.icecast.port || 8000,
+            path: '/status-json.xsl',
+            method: 'GET',
+            timeout: 3000
+        };
+
+        const req = http.request(options, (res) => {
+            let data = '';
+            res.on('data', chunk => data += chunk);
+            res.on('end', () => {
+                try {
+                    const json = JSON.parse(data);
+                    const source = json.icestats?.source;
+                    
+                    // ถ้า source เป็น array หรือ object ให้เช็คว่ามี listener
+                    let isPlaying = false;
+                    if (Array.isArray(source)) {
+                        isPlaying = source.some(s => s.listeners > 0);
+                    } else if (source && typeof source === 'object') {
+                        isPlaying = source.listeners > 0;
+                    }
+                    
+                    resolve({ success: true, isPlaying, source });
+                } catch (e) {
+                    resolve({ success: false, isPlaying: false, error: e.message });
+                }
+            });
+        });
+
+        req.on('error', (err) => {
+            resolve({ success: false, isPlaying: false, error: err.message });
+        });
+
+        req.on('timeout', () => {
+            req.destroy();
+            resolve({ success: false, isPlaying: false, error: 'timeout' });
+        });
+
+        req.end();
+    });
+}
+
+// ฟังก์ชัน publish is_playing และ playback_mode ผ่าน MQTT
+async function publishPlaybackStatus(isPlaying, playbackMode) {
+    if (!client || !connected) return;
+    
+    const payload = {
+        is_playing: isPlaying,
+        playback_mode: playbackMode || 'none',
+        source: 'server'
+    };
+    
+    publish('mass-radio/all/playback', payload);
+    console.log(`📡 Published playback status: is_playing=${isPlaying}, mode=${playbackMode}`);
+    
+    // อัพเดต state
+    lastIcecastPlaying = isPlaying;
+    currentPlaybackMode = playbackMode || 'none';
+}
+
+// ฟังก์ชันตั้งค่า playback_mode จากภายนอก
+function setPlaybackMode(mode) {
+    currentPlaybackMode = mode || 'none';
+}
+
+// ฟังก์ชันส่ง get_status ไปยังโซน
+async function requestGetStatus(zones = null) {
+    if (!client || !connected) {
+        console.error('❌ Cannot request get_status, MQTT not connected');
+        return;
+    }
+    
+    const payload = { get_status: true, source: 'server' };
+    
+    if (zones && Array.isArray(zones) && zones.length > 0) {
+        // ส่งไปยังโซนที่ระบุ
+        for (const zone of zones) {
+            const topic = `mass-radio/zone${zone}/command`;
+            publish(topic, payload);
+        }
+        console.log(`📤 Requested get_status for zones: [${zones.join(', ')}]`);
+    } else {
+        // ส่งไปยังทุกโซน
+        publish('mass-radio/all/command', payload);
+        console.log('📤 Requested get_status for all zones');
+    }
+}
 
 async function sendZoneUartCommand(zone, set_stream) {
     const zoneStr = String(zone).padStart(4, '0');
@@ -517,16 +613,21 @@ function getCurrentStatusOfZone(no) {
 
 async function updateDeviceInDB(no, data) {
     try {
+        const updateData = {
+            'status.is_playing': !!data.is_playing,
+            'status.stream_enabled': !!data.stream_enabled,
+            'status.volume': data.volume ?? 0,
+            lastSeen: new Date()
+        };
+        
+        // เพิ่ม playback_mode ถ้ามีค่า
+        if (data.playback_mode !== undefined) {
+            updateData['status.playback_mode'] = data.playback_mode;
+        }
+        
         await Device.findOneAndUpdate(
             { no },
-            {
-                $set: {
-                    'status.is_playing': !!data.is_playing,
-                    'status.stream_enabled': !!data.stream_enabled,
-                    'status.volume': data.volume ?? 0,
-                    lastSeen: new Date()
-                }
-            },
+            { $set: updateData },
             { upsert: true, new: true }
         );
     } catch (err) {
@@ -721,5 +822,9 @@ module.exports = {
     getStatus,
     publish,
     publishAndWaitByZone,
-    upsertDeviceStatus
+    upsertDeviceStatus,
+    checkIcecastStatus,
+    publishPlaybackStatus,
+    setPlaybackMode,
+    requestGetStatus
 };
