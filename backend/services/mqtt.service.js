@@ -421,7 +421,8 @@ function connectAndSend({
                 console.error(`[MQTT] Invalid JSON for ${target}/command:`, e.message);
                 return;
             }
-            if (!json || json.source === 'manual-panel' || json.get_status) return;
+            // ข้าม message ที่มาจาก server เอง หรือ manual-panel หรือ get_status
+            if (!json || json.source === 'manual-panel' || json.source === 'server' || json.get_status) return;
             if (json.source === 'node')
             // if (json.get_status) {
             //     console.log('📥 App requested sync via MQTT.');
