@@ -65,29 +65,6 @@ const ytdlpCache = new Map();
 
 const isAlive = (p) => !!p && p.exitCode === null;
 
-async function updateAllDevicesIsPlaying(isPlaying) {
-    try {
-        const result = await Device.updateMany(
-            { 'status.stream_enabled': true },
-            { $set: { 'status.is_playing': isPlaying } }
-        );
-        console.log(`📻 Updated is_playing=${isPlaying} for ${result.modifiedCount || result.nModified || 0} devices`);
-        
-        // Broadcast ไปยัง WebSocket clients
-        const { broadcast } = require('../ws/wsServer');
-        const enabledDevices = await Device.find({ 'status.stream_enabled': true }).lean();
-        enabledDevices.forEach(device => {
-            broadcast({
-                zone: device.no,
-                is_playing: isPlaying,
-                source: 'icecast'
-            });
-        });
-    } catch (error) {
-        console.error('❌ Error updating is_playing:', error.message);
-    }
-}
-
 function isMicActive() {
     // Delegate to micStream service
     return micStream.isActive();
@@ -630,7 +607,6 @@ async function startYoutubeUrl(url, seekMs = 0, opts = {}) {
             currentStreamUrl = null;
             if (!pausePendingResume) {
                 activeMode = 'none';
-                updateAllDevicesIsPlaying(false).catch(e => console.error('Error updating is_playing:', e));
             }
             if (!pausePendingResume) {
                 bus.emit('status', { event: 'ended', reason: 'ffmpeg-closed', code });
@@ -717,7 +693,6 @@ async function startLocalFile(filePath, seekMs = 0, opts = {}) {
             currentStreamUrl = null;
             if (!pausePendingResume) {
                 activeMode = 'none';
-                updateAllDevicesIsPlaying(false).catch(e => console.error('Error updating is_playing:', e));
             }
             if (!pausePendingResume) {
                 bus.emit('status', { event: 'ended', reason: 'ffmpeg-closed', code });

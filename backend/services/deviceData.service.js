@@ -52,7 +52,6 @@ function decodeFlag(flag) {
   };
 }
 
-/** ประกอบ payload ตามลำดับฟิลด์ที่ต้องการเก็บใน DB */
 function buildOrderedPayload(raw = {}) {
   const ts = toDate(raw.timestamp);
 
@@ -67,8 +66,6 @@ function buildOrderedPayload(raw = {}) {
     meta.deviceId = raw.deviceId;
   }
 
-  const flagRaw = raw.flag;
-
   return {
     timestamp: ts,
     meta,
@@ -80,11 +77,11 @@ function buildOrderedPayload(raw = {}) {
     acenergy: raw.acenergy,
     vdc: raw.vdc,
     idc: raw.idc,
-    wdc: raw.wdc,               
+    wdc: raw.wdc,
     flag: raw.flag,
     oat: raw.oat,
     lat: raw.lat,
-    lng: raw.lng
+    lng: raw.lng,
   };
 }
 
