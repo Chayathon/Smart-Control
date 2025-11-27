@@ -64,7 +64,12 @@ function connectAndSend({
             if (err) console.error('❌ Subscribe error for zone LWT:', err.message);
             else console.log('📥 Subscribed to mass-radio/+/lwt');
         });
-        
+
+        // setInterval(() => {
+        //     publish(allCommandTopic, { get_status: true });
+        // }, 30000);
+
+        // setInterval(checkOfflineZones, 10000);
     });
 
     // setInterval(checkOfflineZones, 10000);
@@ -163,7 +168,6 @@ async function updateDeviceInDB(no, data) {
             { no },
             {
                 $set: {
-                    'status.is_playing': !!data.is_playing,
                     'status.stream_enabled': !!data.stream_enabled,
                     'status.volume': data.volume ?? 0,
                     lastSeen: new Date()
@@ -549,3 +553,252 @@ module.exports = {
     publishAndWaitByZone,
     upsertDeviceStatus
 };
+// const lwtMatch = topic.match(/^mass-radio\/([^/]+)\/lwt$/);
+        // if (lwtMatch) {
+        //     const target = lwtMatch[1]; 
+        //     const zoneNumMatch = target.match(/^zone(\d+)$/);
+            
+        //     if (zoneNumMatch) {
+        //         const no = parseInt(zoneNumMatch[1], 10);
+        //         if (payloadStr === 'offline') {
+        //             console.log(`[LWT] 💀 Zone ${no} confirmed DEAD (Payload: ${payloadStr})`);
+        //             broadcast({
+        //                 zone: no,
+        //                 offline: true,
+        //                 source: 'lwt'
+        //             });
+
+        //         } else if (payloadStr === 'online') {
+                    
+        //             console.log(`[LWT] 🐣 Zone ${no} is back ONLINE!`);
+
+
+        //             // // อัปเดต lastSeen ใน Memory ให้สดใหม่
+        //             // const item = deviceStatus.find(d => d.zone === no);
+        //             // if (item) {
+        //             //     item.lastSeen = Date.now();
+        //             // }
+
+        //             broadcast({
+        //                 zone: no,
+        //                 offline: false,
+        //                 source: 'lwt'
+        //             });
+        //         }
+        //     }
+        //     return; 
+        // }
+
+        // const m = topic.match(/^mass-radio\/(zone\d+)\/monitoring$/);
+        // if (m) {
+        //     const nodeKey = m[1];
+        //     const noFromTopic = parseInt(nodeKey.replace(/^zone/, ''), 10);
+
+        //     console.log('[MQTT] incoming deviceData from', nodeKey, 'payload =', payloadStr);
+
+        //     let json;
+        //     try {
+        //         json = JSON.parse(payloadStr);
+        //     } catch (e) {
+        //         console.error('[MQTT] invalid JSON for deviceData:', e.message);
+        //         return;
+        //     }
+
+        //     try {
+        //         const no =
+        //         typeof json.no === 'number' && Number.isFinite(json.no)
+        //             ? json.no
+        //             : noFromTopic;
+
+        //         const device = await Device.findOne({ no });
+        //         if (!device) {
+        //             console.warn('[MQTT] device not found for no =', no, '(ยังคงบันทึก DeviceData โดยไม่ใส่ deviceId)');
+        //         }
+
+        //         const timestamp = json.timestamp ? new Date(json.timestamp) : new Date();
+        //         const payloadForIngest = {
+        //             timestamp,
+        //             meta: {
+        //                 no,
+        //                 ...(device ? { deviceId: device._id } : {}),
+        //             },
+        //             vac: json.vac,
+        //             iac: json.iac,
+        //             wac: json.wac,
+        //             acfreq: json.acfreq,
+        //             acenergy: json.acenergy,
+        //             vdc: json.vdc,
+        //             idc: json.idc,
+        //             wdc: json.wdc,               
+        //             flag: json.flag,
+        //             oat: json.oat,
+        //             lat: json.lat,
+        //             lng: json.lng
+        //         };
+
+        //         await deviceDataService.ingestOne(payloadForIngest);
+        //         console.log('[MQTT] saved DeviceData via ingestOne for', nodeKey);
+
+        //         if (device) {
+        //             device.lastSeen = timestamp;
+        //             await device.save();
+        //         }
+        //     } catch (err) {
+        //         console.error('[MQTT] error while saving DeviceData:', err.message);
+        //     }
+
+        //     return;
+        // }
+
+        // const cmdMatch = topic.match(/^mass-radio\/([^/]+)\/command$/);
+        // if (cmdMatch) {
+        //     let json;
+        //     const target = cmdMatch[1]; // ค่าที่ได้จะเป็น "all", "zone1", "select", "zone99"
+        //     try {
+        //         json = JSON.parse(payloadStr);
+        //     } catch (e) {
+        //         console.error(`[MQTT] Invalid JSON for ${target}/command:`, e.message);
+        //         return;
+        //     }
+        //     if (!json || json.source === 'manual-panel' || json.get_status) return;
+        //     if (json.source === 'node')
+        //     // if (json.get_status) {
+        //     //     console.log('📥 App requested sync via MQTT.');
+        //     //     await requestAllStatus(); 
+        //     //     return;
+        //     // }
+        //     if (target === 'select') {
+        //         if (json.zone && Array.isArray(json.zone)) {
+        //             console.log(`📨 Received SELECT command for zones:`, json.zone);
+        //             json.zone.forEach(zoneNo => {
+        //                 const zonePayload = { ...json };
+        //                 delete zonePayload.zone; // ลบ array zone ออกก่อนส่งต่อ
+        //                 publish(`mass-radio/zone${zoneNo}/command`, zonePayload);
+        //             });
+        //         }
+        //         return; 
+        //     }
+        //     let zoneNum = null;
+        //     if (target === 'all') {
+        //         zoneNum = 1111; 
+        //     } else if (target.startsWith('zone')) {
+        //         const numMatch = target.match(/\d+/); 
+        //         if (numMatch) zoneNum = parseInt(numMatch[0], 10);
+        //     }
+        //     if (zoneNum !== null) {
+        //         if (typeof json.set_stream === 'boolean') {
+        //             if (zoneNum === 1111) {
+        //                 console.log(`[RadioZone] CMD -> UART (Zone ${zoneNum}): stream=${json.set_stream}`);
+        //                 blockSyncUntil = Date.now() + 5000;
+        //             }
+        //             await sendZoneUartCommand(zoneNum, json.set_stream);
+        //         } 
+        //         else if (typeof json.set_volume === 'number') {
+        //             console.log(`[RadioZone] CMD -> UART (Zone ${zoneNum}): volume=${json.set_volume}`);
+        //             await sendVolUartCommand(zoneNum, json.set_volume);
+        //         } 
+        //         else {
+        //             console.warn(`[RadioZone] Ignore CMD Zone ${zoneNum}: Missing valid key`, json);
+        //         }
+        //     } else {
+        //         console.warn(`[RadioZone] Unknown command target: ${target}`);
+        //     }
+        //     return;
+        // }
+
+        // const statusMatch = topic.match(/^mass-radio\/([^/]+)\/status$/);
+        // if (statusMatch) {
+        //     let json;
+        //     const target = statusMatch[1]; // ได้ค่า "all" หรือ "zone1", "zone2"
+        //     if (!payloadStr.trim()) return; 
+        //     try {
+        //         json = JSON.parse(payloadStr);
+        //     } catch (e) {
+        //         console.error(`[MQTT] Invalid JSON on ${target}/status:`, e.message);
+        //         return;
+        //     }
+        //     if (target === 'all') {
+        //         const streamEnabled = !!json.stream_enabled;
+        //         const now = Date.now();
+        //         console.log('[RadioZone] ALL status -> set all zones to', streamEnabled ? 'ON' : 'OFF');
+        //         deviceStatus = deviceStatus.map(d => ({
+        //             ...d,
+        //             data: {
+        //                 ...d.data,
+        //                 stream_enabled: streamEnabled,
+        //                 is_playing: streamEnabled,
+        //             },
+        //             lastSeen: now,
+        //         }));
+
+        //         try {
+        //             await Device.updateMany({}, {
+        //                 $set: {
+        //                     'status.stream_enabled': streamEnabled,
+        //                     'status.is_playing': streamEnabled,
+        //                     lastSeen: new Date(),
+        //                 },
+        //             });
+        //         } catch (err) {
+        //             console.error('❌ DB UpdateMany failed:', err.message);
+        //         }
+
+        //         deviceStatus.forEach(d => {
+        //             broadcast({
+        //                 zone: d.zone,
+        //                 stream_enabled: streamEnabled,
+        //                 is_playing: streamEnabled,
+        //                 source: 'manual-all',
+        //             });
+        //         });
+        //         return;
+        //     }
+
+        //     const zoneNumMatch = target.match(/^zone(\d+)$/);
+        //     if (zoneNumMatch) {
+        //         const no = parseInt(zoneNumMatch[1], 10);
+
+        //         // 1. จัดการ Retain Message (เคลียร์ทิ้งถ้าเป็นของเก่าค้างท่อ)
+        //         if (packet.retain) {
+        //             if (!seenZones.has(target)) {
+        //                 seenZones.add(target);
+        //                 client.publish(topic, '', { qos: 1, retain: true }, () => {
+        //                     console.log(`🧹 Cleared retained for ${target}`);
+        //                 });
+        //             }
+        //             return;
+        //         }
+        //         if (pendingRequestsByZone[no]) {
+        //             pendingRequestsByZone[no].resolve({ zone: no, ...json });
+        //             delete pendingRequestsByZone[no];
+        //         }
+        //         const now = Date.now();
+        //         const isManual = json.source === 'manual' || json.source === 'manual-panel';
+        //         if (isManual) {
+        //             lastManualByZone.set(no, now);
+        //         }
+        //         const prev = getCurrentStatusOfZone(no);
+        //         const prevStreamStatus = prev ? prev.stream_enabled : null;
+        //         let merged = { ...json };
+        //         const isFromManualPanel = merged.source === 'manual-panel'; 
+        //         upsertDeviceStatus(no, merged);
+        //         if (!isFromManualPanel && merged.stream_enabled !== undefined && merged.stream_enabled !== prevStreamStatus) {
+                    
+        //             if (Date.now() < blockSyncUntil) {
+        //                 return;
+        //             } else {
+        //                 console.log(`[Sync] Node/Web changed status (Zone ${no}). Syncing to UART Machine...`);
+        //                 sendZoneUartCommand(no, merged.stream_enabled).catch(err => {
+        //                     console.error(`[RadioZone] UART sync error zone ${no}:`, err.message);
+        //                 });
+        //             }
+
+        //         } else if (isFromManualPanel) {
+        //             console.log(`[Sync] Action from Manual Panel (Zone ${no})`);
+        //         }
+        //         console.log(`✅ Response from zone ${no}:`, merged);
+        //         broadcast({ zone: no, ...merged });
+        //         updateDeviceInDB(no, merged);              
+        //         return;
+        //     }
+        // }

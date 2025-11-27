@@ -201,8 +201,17 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
   }
 
   /// ดึง alarms จาก row ให้กลายเป็น Map<String,int>
+  ///
   /// รองรับ alarms จาก backend ใหม่:
-  /// { voltage, current, power, oat, online }
+  /// {
+  ///   acSensor,   // 0/1
+  ///   acVoltage,  // 0/1/2
+  ///   acCurrent,  // 0/1
+  ///   dcSensor,   // 0/1
+  ///   dcVoltage,  // 0/1/2
+  ///   dcCurrent,  // 0/1
+  ///   oat         // 0/1
+  /// }
   Map<String, int> _extractAlarms(dynamic raw) {
     if (raw is Map) {
       final result = <String, int>{};
@@ -233,8 +242,8 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
   /// - ถ้าแถวนี้ใหม่สุดและมีอย่างน้อย 1 field → เก็บเป็น NodeAlarmSummary
   ///
   /// ✅ พิเศษ:
-  /// - field `online` ให้เก็บทั้งค่า 0 และ 1 (สถานะออนไลน์/ออฟไลน์)
-  /// - field อื่น (voltage/current/power/oat) เก็บเฉพาะค่าที่ != 0
+  /// - field `online` & `oat` ให้เก็บทั้งค่า 0 และ 1 (สถานะ)
+  /// - field อื่น (acSensor/acVoltage/.../dcCurrent) เก็บเฉพาะค่าที่ != 0
   void _updateNodeAlarmFromRow(Json row, {required bool fromRealtime}) {
     final id = _idOf(row);
     if (id == null) return;
@@ -262,11 +271,11 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
     alarms.forEach((key, value) {
       if (value == null) return;
 
-      if (key == 'online') {
-        // ✅ online: เก็บทั้ง 0 และ 1 เป็นสถานะ
+      if (key == 'online' || key == 'oat') {
+        // ✅ online & oat: เก็บทั้ง 0 และ 1 เป็นสถานะ
         abnormal[key] = _asInt(value) ?? 0;
       } else {
-        // field อื่น: เก็บเฉพาะค่าที่ != 0
+        // field อื่น: เก็บเฉพาะค่าที่ != 0 (ผิดปกติเท่านั้น)
         final intVal = _asInt(value);
         if (intVal != null && intVal != 0) {
           abnormal[key] = intVal;
@@ -275,10 +284,10 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
     });
 
     if (abnormal.isEmpty) {
-      // ✅ ไม่มีอะไรให้แสดง (ไม่มี alarm และไม่มีสถานะ online)
+      // ✅ ไม่มีอะไรให้แสดง (ไม่มี alarm และไม่มีสถานะ online/oat)
       //    → ลบโหนดนี้ออกจากแผงแจ้งเตือน
       debugPrint(
-          '✅ [Monitoring] clear alarm nodeId=$id (no alarms & no online field)');
+          '✅ [Monitoring] clear alarm nodeId=$id (no alarms & no online/oat field)');
       _nodeAlarms.remove(id);
       return;
     }
@@ -416,18 +425,9 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
     return diff.inSeconds <= 5;
   }
 
-  /// แยกประเภท monitoring จาก type ใหม่ใน backend
+  /// ตอนนี้มีระบบเดียวคือ wireless (SIM)
   MonitoringKind _kindOf(Json row) {
-    final type = (row['type'] ?? '').toString().toLowerCase();
-    if (type == 'sim') {
-      return MonitoringKind.wirelessSim;
-    }
-
-    // fallback: ใช้ชื่อเผื่ออนาคตอยากกลับมาแยก lighting
-    final name = (row['name'] ?? '').toString().toUpperCase();
-    if (name.contains('LIGHT')) return MonitoringKind.lighting;
-
-    return MonitoringKind.wirelessWave;
+    return MonitoringKind.wirelessSim;
   }
 
   DateTime? _toDate(dynamic v) {

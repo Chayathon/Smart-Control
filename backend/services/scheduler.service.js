@@ -165,7 +165,7 @@ async function endSchedulePlayback() {
 
         emitScheduleStatus('schedule-ended', finishedSchedule);
 
-        console.log('🏁 Schedule playback ended, is_playing set to false');
+        console.log('🏁 Schedule playback ended');
     } catch (err) {
         console.error('Error ending schedule playback:', err);
     }
@@ -193,19 +193,9 @@ async function stopSchedulePlayback() {
 }
 
 async function updateDeviceStatus(isPlaying, mode) {
-    try {
-        await Device.updateMany(
-            {},
-            {
-                $set: {
-                    'status.is_playing': isPlaying,
-                    'status.playback_mode': mode
-                }
-            }
-        );
-    } catch (err) {
-        console.error('Error updating device status:', err);
-    }
+    // Status is now managed via emitStatus with activeMode as single source of truth
+    // No need to update is_playing/playback_mode in DB anymore
+    console.log(`📡 Schedule status: isPlaying=${isPlaying}, mode=${mode}`);
 }
 
 function emitScheduleStatus(event, data) {

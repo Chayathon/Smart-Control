@@ -541,10 +541,16 @@ class _WirelessTileReal extends StatelessWidget {
     // ถ้า Offline ให้แสดง On Air Target เป็น 0 ทันที
     final oat = isOnline ? rawOat : 0;
 
-    // DC metrics จาก backend ใหม่: dcV / dcA / dcW
-    final dcV = row['dcV'];
-    final dcA = row['dcA'];
-    final dcW = row['dcW'];
+    // ✅ AC/DC metrics จาก backend ใหม่
+    final vac = row['vac'];
+    final iac = row['iac'];
+    final wac = row['wac'];
+    final acfreq = row['acfreq'];
+    final acenergy = row['acenergy'];
+
+    final vdc = row['vdc'];
+    final idc = row['idc'];
+    final wdc = row['wdc'];
 
     const vGapBetweenTitleAndBelow = 8.0;
 
@@ -606,13 +612,22 @@ class _WirelessTileReal extends StatelessWidget {
 
           const SizedBox(height: vGapBetweenTitleAndBelow),
 
-          // Metrics → เหลือเฉพาะ 4 ค่า: Voltage / Current / Power / OAT (On Air Target)
+          // Metrics → AC 5 + DC 3 + OAT
           MetricList(
             items: [
-              MetricItem('Voltage', _fmtNum(dcV, suffix: ' V')),
-              MetricItem('Current', _fmtNum(dcA, suffix: ' A')),
-              MetricItem('Power', _fmtNum(dcW, suffix: ' W')),
-              // เปลี่ยนจากอุณหภูมิเป็น On Air Target และตัดหน่วย °C ออก
+              // AC side
+              MetricItem('AC Voltage', _fmtNum(vac, suffix: ' V')),
+              MetricItem('AC Current', _fmtNum(iac, suffix: ' A')),
+              MetricItem('AC Power', _fmtNum(wac, suffix: ' W')),
+              MetricItem('AC Freq', _fmtNum(acfreq, suffix: ' Hz')),
+              MetricItem('AC Energy', _fmtNum(acenergy, suffix: ' kWh')),
+
+              // DC side
+              MetricItem('DC Voltage', _fmtNum(vdc, suffix: ' V')),
+              MetricItem('DC Current', _fmtNum(idc, suffix: ' A')),
+              MetricItem('DC Power', _fmtNum(wdc, suffix: ' W')),
+
+              // OAT (On Air Target)
               MetricItem('On Air Target', _fmtNum(oat)),
             ],
           ),
