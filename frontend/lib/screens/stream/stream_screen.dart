@@ -22,6 +22,8 @@ class _StreamScreenState extends State<StreamScreen>
   bool _isListening = false;
   bool _isStreamActive = false;
   bool _isLoading = false;
+  int _retryCount = 0;
+  static const int _maxRetries = 3;
 
   int? _icecastPort;
   String? _icecastMount;
@@ -85,12 +87,23 @@ class _StreamScreenState extends State<StreamScreen>
           if (state.processingState == ProcessingState.completed &&
               _isStreamActive &&
               _isListening) {
-            print('🔄 Stream ended but active, retrying in 6s...');
-            Future.delayed(const Duration(seconds: 6), () {
-              if (mounted && _isStreamActive && _isListening) {
-                _startListening();
-              }
-            });
+            if (_retryCount < _maxRetries) {
+              _retryCount++;
+              print(
+                '🔄 Stream ended, retry attempt $_retryCount/$_maxRetries in 8s...',
+              );
+              Future.delayed(const Duration(seconds: 8), () {
+                if (mounted && _isStreamActive && _isListening) {
+                  _startListening();
+                }
+              });
+            } else {
+              print('❌ Max retries reached, stopping stream');
+              setState(() {
+                _isListening = false;
+              });
+              AppSnackbar.info('สตรีมจบแล้ว', 'ไม่สามารถเชื่อมต่อสตรีมได้');
+            }
           }
         });
       }
@@ -136,11 +149,22 @@ class _StreamScreenState extends State<StreamScreen>
     }
 
     setState(() {
+      final wasActive = _isStreamActive;
       _isStreamActive = isPlaying && activeMode != 'none';
 
       if (!_isStreamActive && _isListening) {
+        if (wasActive) {
+          // Stream just stopped, reset retry counter
+          _retryCount = 0;
+          print('⚠️ Stream stopped by server, will retry on reconnection');
+        }
         _stopListening();
         AppSnackbar.info('สตรีมจบแล้ว', 'การถ่ายทอดสดสิ้นสุดลง');
+      }
+
+      // Reset retry count when stream becomes active again
+      if (_isStreamActive && !wasActive) {
+        _retryCount = 0;
       }
     });
   }
@@ -185,6 +209,8 @@ class _StreamScreenState extends State<StreamScreen>
       );
 
       await _player.play();
+      // Reset retry count on successful connection
+      _retryCount = 0;
     } catch (e) {
       print('Error starting stream: $e');
       String errorMsg = 'ไม่สามารถเชื่อมต่อกับสตรีมได้';
