@@ -73,18 +73,18 @@ function buildOrderedPayload(raw = {}) {
     timestamp: ts,
     meta,
 
-    vac: json.vac,
-    iac: json.iac,
-    wac: json.wac,
-    acfreq: json.acfreq,
-    acenergy: json.acenergy,
-    vdc: json.vdc,
-    idc: json.idc,
-    wdc: json.wdc,               
-    flag: json.flag,
-    oat: json.oat,
-    lat: json.lat,
-    lng: json.lng
+    vac: raw.vac,
+    iac: raw.iac,
+    wac: raw.wac,
+    acfreq: raw.acfreq,
+    acenergy: raw.acenergy,
+    vdc: raw.vdc,
+    idc: raw.idc,
+    wdc: raw.wdc,               
+    flag: raw.flag,
+    oat: raw.oat,
+    lat: raw.lat,
+    lng: raw.lng
   };
 }
 
