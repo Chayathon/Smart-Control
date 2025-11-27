@@ -73,8 +73,6 @@ function connectAndSend({
         // setInterval(checkOfflineZones, 10000);
     });
 
-    // setInterval(checkOfflineZones, 10000);
-
     client.on('close', () => {
         connected = false;
         console.warn('⚠️ MQTT connection closed');
@@ -192,6 +190,8 @@ async function handleDeviceData(topic, payloadStr, packet) {
     const nodeKey = m[1]; 
     const noFromTopic = parseInt(nodeKey.replace(/^zone/, ''), 10); 
 
+
+    console.log('[MQTT] 📥 incoming deviceData from', nodeKey, 'payload =', payloadStr);
     let json;
     try {
         json = JSON.parse(payloadStr);
