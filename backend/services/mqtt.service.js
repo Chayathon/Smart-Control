@@ -93,15 +93,16 @@ async function publishPlaybackStatus(isPlaying, playbackMode) {
         console.error('❌ Failed to update devices in DB:', err.message);
     }
     
-    // Publish ผ่าน MQTT
+    // Publish ผ่าน MQTT ไปยัง mass-radio/all/command
     if (client && connected) {
         const payload = {
+            set_playback: true,
             is_playing: isPlaying,
             playback_mode: mode,
             source: 'server'
         };
         
-        publish('mass-radio/all/playback', payload);
+        publish('mass-radio/all/command', payload);
         console.log(`📡 Published playback status: is_playing=${isPlaying}, mode=${mode}`);
     }
     
