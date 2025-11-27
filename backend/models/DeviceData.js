@@ -36,11 +36,11 @@ const deviceDataSchema = new mongoose.Schema(
     // meta ใช้เก็บข้อมูลประกอบ เช่น no, deviceId ฯลฯ
     meta: { type: Object, default: {} },
 
-    vac: { type: Number }, // แรงดัน DC Volt
-    wac: { type: Number }, // กำลังไฟ DC Watt
-    iac: { type: Number }, // กระแส DC Ampere
-    acfreq: { type: Number }, // ความถี่ AC Hz
-    acenergy: { type: Number }, // พลังงาน AC kWh
+    // vac: { type: Number }, // แรงดัน DC Volt
+    // wac: { type: Number }, // กำลังไฟ DC Watt
+    // iac: { type: Number }, // กระแส DC Ampere
+    // acfreq: { type: Number }, // ความถี่ AC Hz
+    // acenergy: { type: Number }, // พลังงาน AC kWh
     vdc: { type: Number },
     idc: { type: Number },
     wdc: { type: Number },
