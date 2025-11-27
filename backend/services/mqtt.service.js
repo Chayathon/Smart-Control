@@ -16,7 +16,24 @@ let blockSyncUntil = 0;
 
 const pendingRequestsByZone = {};
 
-const lastManualByZone = new Map();  
+const lastManualByZone = new Map();
+
+function broadcastPlaybackStatus(is_playing, playback_mode) {
+    if (!client || !connected) {
+        console.warn('⚠️ Cannot broadcast playback status: MQTT not connected');
+        return;
+    }
+    
+    const payload = {
+        is_playing,
+        playback_mode,
+        source: 'server',
+        timestamp: new Date().toISOString()
+    };
+    
+    publish('mass-radio/all/status', payload, { qos: 1, retain: false });
+    console.log(`📡 Broadcasted playback status: is_playing=${is_playing}, mode=${playback_mode}`);
+}  
 
 
 async function sendZoneUartCommand(zone, set_stream) {
@@ -46,6 +63,11 @@ async function sendZoneUartCommand(zone, set_stream) {
     } catch (err) {
         console.error('[RadioZone] UART write error for zone command:', err.message);
     }
+}
+
+async function requestAllStatus() {
+    console.log('[MQTT] 📤 Requesting status from all zones via get_status');
+    publish('mass-radio/all/command', { get_status: true }, { qos: 1 });
 }
 
 async function sendVolUartCommand(zone, set_volume) {
@@ -130,10 +152,6 @@ function connectAndSend({
             if (err) console.error('❌ Subscribe error for zone LWT:', err.message);
             else console.log('📥 Subscribed to mass-radio/+/lwt');
         });
-
-        // setInterval(() => {
-        //     publish(allCommandTopic, { get_status: true });
-        // }, 30000);
 
         // setInterval(checkOfflineZones, 10000);
     });
@@ -302,16 +320,20 @@ function connectAndSend({
             try {
                 json = JSON.parse(payloadStr);
             } catch (e) {
-                console.error(`[MQTT] Invalid JSON for ${target}/command:`, e.message);
+                console.error('[MQTT] invalid JSON for deviceData:', e.message);
                 return;
             }
-            if (!json || json.source === 'manual-panel' || json.get_status) return;
-            if (json.source === 'node')
-            // if (json.get_status) {
-            //     console.log('📥 App requested sync via MQTT.');
-            //     await requestAllStatus(); 
-            //     return;
-            // }
+            
+            // Handle get_status request from clients
+            if (json.get_status) {
+                console.log('📥 Client requested sync via get_status');
+                await requestAllStatus();
+                return;
+            }
+            
+            // Ignore manual panel and node messages
+            if (!json || json.source === 'manual-panel' || json.source === 'node') return;
+            
             if (target === 'select') {
                 if (json.zone && Array.isArray(json.zone)) {
                     console.log(`📨 Received SELECT command for zones:`, json.zone);
@@ -517,16 +539,24 @@ function getCurrentStatusOfZone(no) {
 
 async function updateDeviceInDB(no, data) {
     try {
+        const updateFields = {
+            'status.stream_enabled': !!data.stream_enabled,
+            'status.volume': data.volume ?? 0,
+            lastSeen: new Date()
+        };
+        
+        // Only update is_playing and playback_mode if explicitly provided
+        // (Server broadcasts these separately via broadcastPlaybackStatus)
+        if (data.is_playing !== undefined) {
+            updateFields['status.is_playing'] = !!data.is_playing;
+        }
+        if (data.playback_mode !== undefined) {
+            updateFields['status.playback_mode'] = data.playback_mode;
+        }
+        
         await Device.findOneAndUpdate(
             { no },
-            {
-                $set: {
-                    'status.is_playing': !!data.is_playing,
-                    'status.stream_enabled': !!data.stream_enabled,
-                    'status.volume': data.volume ?? 0,
-                    lastSeen: new Date()
-                }
-            },
+            { $set: updateFields },
             { upsert: true, new: true }
         );
     } catch (err) {
@@ -721,5 +751,7 @@ module.exports = {
     getStatus,
     publish,
     publishAndWaitByZone,
-    upsertDeviceStatus
+    upsertDeviceStatus,
+    broadcastPlaybackStatus,
+    requestAllStatus
 };
