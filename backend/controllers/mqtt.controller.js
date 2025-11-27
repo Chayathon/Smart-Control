@@ -28,21 +28,11 @@ async function publish(req, res) {
   }
 
   try {
-    // 1) ส่งเข้า radioZone เพื่อดูว่าจะต้องแปลงเป็น UART ไหม
     let uartResult = null;
-    // try {
-    //   uartResult = await radioZone.handleAppCommand(topic, payload);
-    // } catch (e) {
-    //   console.error('[publish] UART handle error:', e.message);
-    // }
-
-    // 2) ยัง publish ไป MQTT ตามเดิม (ถ้าไม่ต้องการก็ comment ทิ้งได้)
-    // ตรงนี้สำคัญ: สำหรับ /data โค้ดจะวิ่งมาทำงานบรรทัดนี้ และส่งเข้า MQTT -> Service รับไปลง Mongo
     try {
       mqttSvc.publish(topic, payload, { qos, retain });
     } catch (e) {
       console.error('[publish] MQTT publish error:', e.message);
-      // ไม่ throw ต่อ เพื่อให้ UART ยังทำงานแม้ MQTT ล้มเหลว
     }
 
     res.json({

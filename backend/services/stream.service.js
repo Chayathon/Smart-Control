@@ -65,29 +65,6 @@ const ytdlpCache = new Map();
 
 const isAlive = (p) => !!p && p.exitCode === null;
 
-async function updateAllDevicesIsPlaying(isPlaying) {
-    try {
-        const result = await Device.updateMany(
-            { 'status.stream_enabled': true },
-            { $set: { 'status.is_playing': isPlaying } }
-        );
-        console.log(`📻 Updated is_playing=${isPlaying} for ${result.modifiedCount || result.nModified || 0} devices`);
-        
-        // Broadcast ไปยัง WebSocket clients
-        const { broadcast } = require('../ws/wsServer');
-        const enabledDevices = await Device.find({ 'status.stream_enabled': true }).lean();
-        enabledDevices.forEach(device => {
-            broadcast({
-                zone: device.no,
-                is_playing: isPlaying,
-                source: 'icecast'
-            });
-        });
-    } catch (error) {
-        console.error('❌ Error updating is_playing:', error.message);
-    }
-}
-
 function isMicActive() {
     // Delegate to micStream service
     return micStream.isActive();
@@ -108,6 +85,18 @@ function getIcecastUrl() {
     const { icecast } = cfg;
     return `icecast://${icecast.username}:${icecast.password}` +
         `@${icecast.host}:${icecast.port}${icecast.mount}`;
+}
+
+// ฟังก์ชันอัพเดตสถานะ is_playing และ playback_mode ผ่าน MQTT
+async function updateAllDevicesIsPlaying(isPlaying, mode = null) {
+    const mqttService = require('./mqtt.service');
+    const playbackMode = mode || activeMode || 'none';
+    
+    // Publish playback status ผ่าน MQTT
+    await mqttService.publishPlaybackStatus(isPlaying, playbackMode);
+    mqttService.setPlaybackMode(playbackMode);
+    
+    console.log(`🎵 Updated playback status: is_playing=${isPlaying}, mode=${playbackMode}`);
 }
 
 function getPreStartDelayMs() {
@@ -630,7 +619,6 @@ async function startYoutubeUrl(url, seekMs = 0, opts = {}) {
             currentStreamUrl = null;
             if (!pausePendingResume) {
                 activeMode = 'none';
-                updateAllDevicesIsPlaying(false).catch(e => console.error('Error updating is_playing:', e));
             }
             if (!pausePendingResume) {
                 bus.emit('status', { event: 'ended', reason: 'ffmpeg-closed', code });
@@ -717,7 +705,6 @@ async function startLocalFile(filePath, seekMs = 0, opts = {}) {
             currentStreamUrl = null;
             if (!pausePendingResume) {
                 activeMode = 'none';
-                updateAllDevicesIsPlaying(false).catch(e => console.error('Error updating is_playing:', e));
             }
             if (!pausePendingResume) {
                 bus.emit('status', { event: 'ended', reason: 'ffmpeg-closed', code });
@@ -1073,9 +1060,19 @@ async function enableStream() {
     if (lastEnabledZones.length > 0) {
         console.log(`Restoring previously enabled zones: [${lastEnabledZones.join(', ')}]`);
         mqttService.publish('mass-radio/select/command', { zone: lastEnabledZones, set_stream: true });
+        
+        // รอ 2 วินาทีแล้ว get_status เพื่ออัพเดต stream_enabled จาก response
+        setTimeout(() => {
+            mqttService.requestGetStatus(lastEnabledZones);
+        }, 2000);
     } else {
         console.log('📡 No previously enabled zones found, enabling all zones');
         mqttService.publish('mass-radio/all/command', { set_stream: true });
+        
+        // รอ 2 วินาทีแล้ว get_status เพื่ออัพเดต stream_enabled จาก response
+        setTimeout(() => {
+            mqttService.requestGetStatus();
+        }, 2000);
     }
     return { success: true, message: 'Enabled stream for zones' };
 }
@@ -1100,6 +1097,12 @@ async function disableStream() {
     }
     
     mqttService.publish('mass-radio/all/command', { set_stream: false });
+    
+    // รอ 2 วินาทีแล้ว get_status เพื่ออัพเดต stream_enabled จาก response
+    setTimeout(() => {
+        mqttService.requestGetStatus();
+    }, 2000);
+    
     return { success: true, message: 'Disabled stream for all zones' };
 }
 
