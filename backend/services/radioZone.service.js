@@ -41,7 +41,7 @@ function parseStatusFrame(rawStr) {
 }
 
 function onRxFrame(frameBuf) {
-  const raw = frameBuf.toString('ascii');  // "$S0001Y$\r\n"
+  const raw = frameBuf.toString('ascii').trim();  // "$S0001Y$\r\n"
   console.log('[RadioZone] UART RX frame (raw):', JSON.stringify(raw));
   const cleanString = raw.replace(/^\$/, '').replace(/\$$/, '');
     if (cleanString.length > 10 && /^[YN]+$/.test(cleanString)) {

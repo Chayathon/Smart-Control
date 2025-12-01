@@ -14,9 +14,10 @@ let connected = false;
 let lastUartCmd = null;
 let lastUartTs = 0;
 let blockSyncUntil = 0;
+let lastBulkString = "";
+
 const deviceIdCache = new Map(); 
 const lastHeartbeatUpdate = new Map();
-
 const pendingRequestsByZone = {};
 const lastManualByZone = new Map();  
 
@@ -512,38 +513,62 @@ async function sendVolUartCommand(zone, set_volume) {
 //7. จัดการสถานะ Bulk (เช่น "YNNYYN...")
 async function handleRawBulkStatus(rawString) {
     const totalZones = rawString.length;
+    if (rawString === lastBulkString) return; 
+    lastBulkString = rawString;
     console.log(`[Bulk] Processing status for ${totalZones} zones...`);
     const bulkOps = [];
+    const updatesForBroadcast = [];
     const now = Date.now();
-    
     for (let i = 0; i < totalZones; i++) {
         const char = rawString[i];
         const zoneNum = i + 1;
         let streamEnabled = (char === 'Y');
         if (char !== 'Y' && char !== 'N') continue;
 
+        // ดึงค่าเก่าจาก Memory
+        const prev = getCurrentStatusOfZone(zoneNum);
+        const oldState = prev ? prev.stream_enabled : false;
+        if (prev) {
+            prev.lastSeen = now; 
+        } else {
+            upsertDeviceStatus(zoneNum, { stream_enabled: oldState, lastSeen: now });
+        }
+        if (streamEnabled === oldState) {
+            continue;
+        }
         bulkOps.push({
             updateOne: {
                 filter: { no: zoneNum },
-                update: { $set: { 'status.stream_enabled': streamEnabled, 'status.is_playing': streamEnabled, lastSeen: now } }
+                update: { 
+                    $set: { 
+                        'status.stream_enabled': streamEnabled, 
+                        'status.is_playing': streamEnabled, 
+                        lastSeen: now 
+                    } 
+                }
             }
         });
-
-        // อัปเดต Memory (Merge เพื่อรักษา volume เดิม)
-        const prev = getCurrentStatusOfZone(zoneNum);
         upsertDeviceStatus(zoneNum, { 
             stream_enabled: streamEnabled, 
             is_playing: streamEnabled, 
             volume: prev ? prev.volume : 0,
             source: 'bulk-scan' 
         });
+        updatesForBroadcast.push({ zone: zoneNum, stream_enabled: streamEnabled });
     }
-
     if (bulkOps.length > 0 && mongoose.connection.readyState === 1) {
         try {
             await Device.bulkWrite(bulkOps);
-            console.log(`[Bulk] ✅ DB Updated.`);
-            broadcast({ type: 'FULL_STATE_UPDATE', source: 'bulk' });
+            console.log(`[Bulk] ✅ DB Updated for ${bulkOps.length} changed zones.`);
+            
+            if (updatesForBroadcast.length > 0) {
+                broadcast({ 
+                    type: 'STATE_CHANGE_BULK',
+                    data: updatesForBroadcast,
+                    source: 'bulk' 
+                });
+            }
+
         } catch (err) { console.error('[Bulk] DB Error:', err.message); }
     }
 }
