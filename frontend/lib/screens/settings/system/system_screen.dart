@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:smart_control/core/alert/app_snackbar.dart';
 import 'package:smart_control/services/system_service.dart';
+import 'package:smart_control/widgets/inputs/text_field_box.dart';
 import 'package:smart_control/widgets/loading_overlay.dart';
 
 class SystemScreen extends StatefulWidget {
@@ -29,6 +30,12 @@ class _SystemScreenState extends State<SystemScreen> {
   bool _isLoading = false;
   bool _hasChanges = false;
 
+  final TextEditingController _channelSecretCtrl = TextEditingController();
+  final TextEditingController _channelPublicCtrl = TextEditingController();
+
+  bool _obsecureChannelSecret = true;
+  bool _obsecureChannelPublic = true;
+
   @override
   void initState() {
     super.initState();
@@ -37,13 +44,14 @@ class _SystemScreenState extends State<SystemScreen> {
 
   /// โหลดการตั้งค่าจาก API
   Future<void> _loadSettings() async {
-    setState(() => _isLoading = true);
-
+    // LoadingOverlay.show(context);
     try {
       final data = await SystemService.getSettings();
       setState(() {
         _selectedSampleRate = data['sampleRate'] ?? 44100;
         _loopPlaylist = data['loopPlaylist'] ?? false;
+        // _channelSecretCtrl.text = data['channelSecret'] ?? '';
+        // _channelPublicCtrl.text = data['channelPublic'] ?? '';
         _hasChanges = false;
       });
     } catch (error) {
@@ -53,7 +61,7 @@ class _SystemScreenState extends State<SystemScreen> {
         'เกิดข้อผิดพลาดในการโหลดการตั้งค่า กรุณาลองใหม่อีกครั้ง',
       );
     } finally {
-      setState(() => _isLoading = false);
+      LoadingOverlay.hide();
     }
   }
 
@@ -167,34 +175,88 @@ class _SystemScreenState extends State<SystemScreen> {
         iconTheme: const IconThemeData(color: Colors.black),
         elevation: 1,
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: _loadSettings,
-              child: ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  _buildSettingCard(
-                    title: 'Sample Rate (kHz)',
-                    subtitle: 'ความละเอียดของเสียง',
-                    icon: Icons.graphic_eq,
-                    child: _buildSampleRateSelector(),
-                  ),
-                  const SizedBox(height: 12),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          _buildSettingCard(
+            title: 'Sample Rate (kHz)',
+            subtitle: 'ความละเอียดของเสียง',
+            icon: Icons.graphic_eq,
+            child: _buildSampleRateSelector(),
+          ),
+          const SizedBox(height: 12),
 
-                  _buildSettingCard(
-                    title: 'วนซ้ำรายการเพลง',
-                    subtitle: 'เล่นเพลงซ้ำเมื่อเล่นครบทุกเพลง',
-                    icon: Icons.repeat,
-                    child: _buildLoopSwitch(),
-                  ),
-                  // const SizedBox(height: 24),
+          _buildSettingCard(
+            title: 'วนซ้ำรายการเพลง',
+            subtitle: 'เล่นเพลงซ้ำเมื่อเล่นครบทุกเพลง',
+            icon: Icons.repeat,
+            child: _buildLoopSwitch(),
+          ),
+          const SizedBox(height: 12),
 
-                  // _buildResetButton(),
-                  // const SizedBox(height: 16),
-                ],
+          _buildSettingCard(
+            title: 'channelSecret',
+            subtitle: 'channelSecret',
+            icon: Icons.key_rounded,
+            child: TextFieldBox(
+              hint: 'channelSecret',
+              controller: _channelSecretCtrl,
+              obscureText: _obsecureChannelSecret,
+              suffixIcon: IconButton(
+                onPressed: () {
+                  setState(
+                    () => _obsecureChannelSecret = !_obsecureChannelSecret,
+                  );
+                },
+                icon: Icon(
+                  _obsecureChannelSecret
+                      ? Icons.visibility_off
+                      : Icons.visibility,
+                ),
               ),
+              onChanged: (value) {
+                setState(() {
+                  _hasChanges = true;
+                });
+              },
             ),
+          ),
+          const SizedBox(height: 12),
+
+          _buildSettingCard(
+            title: 'channelPublic',
+            subtitle: 'channelPublic',
+            icon: Icons.key_rounded,
+            child: TextFieldBox(
+              hint: 'channelPublic',
+              controller: _channelPublicCtrl,
+              obscureText: _obsecureChannelPublic,
+              suffixIcon: IconButton(
+                onPressed: () {
+                  setState(
+                    () => _obsecureChannelPublic = !_obsecureChannelPublic,
+                  );
+                },
+                icon: Icon(
+                  _obsecureChannelPublic
+                      ? Icons.visibility_off
+                      : Icons.visibility,
+                ),
+              ),
+              onChanged: (value) {
+                setState(() {
+                  _hasChanges = true;
+                });
+              },
+            ),
+          ),
+
+          // const SizedBox(height: 24),
+
+          // _buildResetButton(),
+          // const SizedBox(height: 16),
+        ],
+      ),
       floatingActionButton: _hasChanges
           ? FloatingActionButton.extended(
               onPressed: _saveSettings,
