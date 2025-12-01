@@ -1,15 +1,26 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
-/// ความสูงการ์ดทุกใบ ให้เท่ากันหมด
-const double _kTileHeight = 110;
+/// ความสูงการ์ดของ metric (AC/DC)
+const double _kTileHeight = 90;
 
-/// metric key ที่ใช้กับค่าจริงจาก backend (เหลือแค่ 4 ตัว)
+/// metric key ที่ใช้กับค่าจริงจาก backend
+/// DC 3 + AC 5 + OAT
 /// oat = On Air Target (ไม่ใช่อุณหภูมิ)
 enum MetricKey {
-  dcV,
-  dcA,
-  dcW,
+  // DC side
+  dcV, // DC Voltage
+  dcA, // DC Current
+  dcW, // DC Power
+
+  // AC side (5 ตัว)
+  acV, // AC Voltage
+  acA, // AC Current
+  acW, // AC Power
+  acfreq, // AC Frequency
+  acEngy, // AC Energy
+
+  // อื่น ๆ
   oat,
 }
 
@@ -21,6 +32,18 @@ String metricLabel(MetricKey k) {
       return 'DC Current';
     case MetricKey.dcW:
       return 'DC Power';
+
+    case MetricKey.acV:
+      return 'AC Voltage';
+    case MetricKey.acA:
+      return 'AC Current';
+    case MetricKey.acW:
+      return 'AC Power';
+    case MetricKey.acfreq:
+      return 'AC Frequency';
+    case MetricKey.acEngy:
+      return 'AC Energy';
+
     case MetricKey.oat:
       return 'On Air Target';
   }
@@ -34,6 +57,18 @@ String unitOf(MetricKey k) {
       return 'A';
     case MetricKey.dcW:
       return 'W';
+
+    case MetricKey.acV:
+      return 'V';
+    case MetricKey.acA:
+      return 'A';
+    case MetricKey.acW:
+      return 'W';
+    case MetricKey.acfreq:
+      return 'Hz';
+    case MetricKey.acEngy:
+      return 'kWh';
+
     case MetricKey.oat:
       // OAT = On Air Target → ไม่มีหน่วย
       return '';
@@ -48,6 +83,18 @@ Color metricColor(MetricKey k) {
       return const Color(0xFF14B8A6); // เขียวอมฟ้า
     case MetricKey.dcW:
       return const Color(0xFFEF4444); // แดง
+
+    case MetricKey.acV:
+      return const Color(0xFF6366F1); // ม่วงฟ้า
+    case MetricKey.acA:
+      return const Color(0xFFF97316); // ส้ม
+    case MetricKey.acW:
+      return const Color(0xFFEAB308); // เหลือง
+    case MetricKey.acfreq:
+      return const Color(0xFF0EA5E9); // ฟ้า
+    case MetricKey.acEngy:
+      return const Color(0xFF22C55E); // เขียว
+
     case MetricKey.oat:
       return const Color(0xFFFB923C); // OAT โทนส้มอุ่น ๆ
   }
@@ -95,6 +142,9 @@ class MiniStats extends StatelessWidget {
     }
 
     final online = _onlineOf(row);
+    final deviceName = _nameOf(row);
+    final lastUpdate = _timestampOf(row);
+    final onAir = _onAirTarget(row);
 
     return Container(
       decoration: BoxDecoration(
@@ -110,46 +160,81 @@ class MiniStats extends StatelessWidget {
             child: LayoutBuilder(
               builder: (context, constraints) {
                 const spacing = 12.0;
-                final specs = _buildTiles(
+
+                // ===== metrics ด้านล่าง =====
+                final specs = _buildMetricTiles(
                   row,
                   online: online,
                 );
 
+                // 2 คอลัมน์ สำหรับ metric
+                final colW = (constraints.maxWidth - spacing) / 2;
+
+                // 3 คอลัมน์บนสุด (Status / LastUpdate / OnAir)
+                final headerW =
+                    (constraints.maxWidth - spacing * 2) / 3;
+
+                // header tiles (3 ใบบนสุด)
+                final headerRow = Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // สถานะอุปกรณ์
+                    SizedBox(
+                      width: headerW,
+                      child: _StatusTile(
+                        width: headerW,
+                        online: online,
+                        deviceName: deviceName,
+                      ),
+                    ),
+                    const SizedBox(width: spacing),
+                    // อัปเดตล่าสุด (ถ้าไม่มี timestamp ให้ใช้ spacer)
+                    SizedBox(
+                      width: headerW,
+                      child: lastUpdate != null
+                          ? _LastUpdateTile(
+                              width: headerW,
+                              timestamp: lastUpdate,
+                            )
+                          : const _SpacerTile(width: 0),
+                    ),
+                    const SizedBox(width: spacing),
+                    // สถานะ On Air Target
+                    SizedBox(
+                      width: headerW,
+                      child: _OnAirTargetTile(
+                        width: headerW,
+                        value: onAir,
+                      ),
+                    ),
+                  ],
+                );
+
                 if (specs.isEmpty) {
-                  return const Center(
-                    child: Text(
-                      'ไม่มีข้อมูลค่าทางไฟฟ้าสำหรับอุปกรณ์นี้',
-                      style: TextStyle(color: Colors.black45),
+                  // ถ้าไม่มี metric เลย แสดงแต่ header + ข้อความ
+                  return SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        headerRow,
+                        const SizedBox(height: 16),
+                        const Center(
+                          child: Text(
+                            'ไม่มีข้อมูลค่าทางไฟฟ้าสำหรับอุปกรณ์นี้',
+                            style: TextStyle(color: Colors.black45),
+                          ),
+                        ),
+                      ],
                     ),
                   );
                 }
 
-                // 2 คอลัมน์
-                final colW = (constraints.maxWidth - spacing) / 2;
-
-                final children = specs.map<Widget>((t) {
+                // children metric ด้านล่าง
+                final metricChildren =
+                    specs.map<Widget>((t) {
                   switch (t.kind) {
                     case _TileKind.spacer:
                       return _SpacerTile(width: colW);
-
-                    case _TileKind.status:
-                      return _StatusTile(
-                        width: colW,
-                        online: t.boolValue ?? false,
-                        deviceName: t.title ?? '-',
-                      );
-
-                    case _TileKind.onAirTarget:
-                      return _OnAirTargetTile(
-                        width: colW,
-                        value: t.boolValue ?? false,
-                      );
-
-                    case _TileKind.lastUpdate:
-                      return _LastUpdateTile(
-                        width: colW,
-                        timestamp: t.dateTime!,
-                      );
 
                     case _TileKind.metric:
                       final m = t.metric!;
@@ -160,7 +245,9 @@ class MiniStats extends StatelessWidget {
 
                       // ตอนนี้ยังใช้ค่าเดียวทำเส้นตรง
                       final List<double> lineValues =
-                          value.isFinite ? [value, value, value] : const <double>[];
+                          value.isFinite
+                              ? [value, value, value]
+                              : const <double>[];
 
                       return _MetricTile(
                         width: colW,
@@ -172,14 +259,27 @@ class MiniStats extends StatelessWidget {
                         active: isActive,
                         onTap: () => onSelectMetric(m),
                       );
+
+                    case _TileKind.status:
+                    case _TileKind.onAirTarget:
+                    case _TileKind.lastUpdate:
+                      // ไม่ได้ใช้ใน metric grid แล้ว
+                      return const SizedBox.shrink();
                   }
                 }).toList();
 
                 return SingleChildScrollView(
-                  child: Wrap(
-                    spacing: spacing,
-                    runSpacing: spacing,
-                    children: children,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      headerRow,
+                      const SizedBox(height: 16),
+                      Wrap(
+                        spacing: spacing,
+                        runSpacing: spacing,
+                        children: metricChildren,
+                      ),
+                    ],
                   ),
                 );
               },
@@ -190,48 +290,26 @@ class MiniStats extends StatelessWidget {
     );
   }
 
-  // ===================== tile builder =====================
-  List<_TileSpec> _buildTiles(
+  // ===================== metric tile builder =====================
+
+  /// สร้างเฉพาะ tiles ของ metric (AC/DC)
+  List<_TileSpec> _buildMetricTiles(
     Map<String, dynamic> row, {
     required bool online,
   }) {
     final tiles = <_TileSpec>[];
 
-    final deviceName = _nameOf(row);
-    final lastUpdate = _timestampOf(row);
+    // ===== AC Metrics =====
+    _maybeAddMetricTile(row, tiles, 'AC Voltage', MetricKey.acV);
+    _maybeAddMetricTile(row, tiles, 'AC Current', MetricKey.acA);
+    _maybeAddMetricTile(row, tiles, 'AC Power', MetricKey.acW);
+    _maybeAddMetricTile(row, tiles, 'AC Frequency', MetricKey.acfreq);
+    _maybeAddMetricTile(row, tiles, 'AC Energy', MetricKey.acEngy);
 
-    // ======================
-    // 🔥 NEW LAYOUT ORDER
-    // Status | Last Update
-    // ======================
-
-    // 1) Status (ซ้าย)
-    tiles.add(
-      _TileSpec.status(
-        online: online,
-        deviceName: deviceName,
-      ),
-    );
-
-    // 2) Last Update (ขวา)
-    if (lastUpdate != null) {
-      tiles.add(_TileSpec.lastUpdate(timestamp: lastUpdate));
-    } else {
-      tiles.add(_TileSpec.spacer());
-    }
-
-    // 3) DC Voltage
+    // ===== DC Metrics =====
     _maybeAddMetricTile(row, tiles, 'DC Voltage', MetricKey.dcV);
-
-    // 4) DC Current
     _maybeAddMetricTile(row, tiles, 'DC Current', MetricKey.dcA);
-
-    // 5) DC Power
     _maybeAddMetricTile(row, tiles, 'DC Power', MetricKey.dcW);
-
-    // 6) On Air Target
-    final onAir = _onAirTarget(row);
-    tiles.add(_TileSpec.onAirTarget(onAir));
 
     // ให้เป็นจำนวนคู่ (2 คอลัมน์)
     if (tiles.length.isOdd) {
@@ -335,32 +413,56 @@ class MiniStats extends StatelessWidget {
 
   int _decimalPlaces(MetricKey k) {
     switch (k) {
-      case MetricKey.oat:
-        // OAT เป็นค่า target ธรรมดา (ไม่ใช่ °C) แต่ให้แสดงทศนิยม 2 ตำแหน่งเหมือนเดิม
-        return 2;
       case MetricKey.dcV:
       case MetricKey.dcA:
       case MetricKey.dcW:
+      case MetricKey.acV:
+      case MetricKey.acA:
+      case MetricKey.acW:
+      case MetricKey.acfreq:
+      case MetricKey.acEngy:
+      case MetricKey.oat:
+        // ให้ทุก metric แสดง 2 ตำแหน่งเหมือนกัน
         return 2;
     }
   }
 
+  /// ✅ ดึงค่าจาก field ใหม่ของ backend:
+  /// vdc, idc, wdc, vac, iac, wac, acfreq, acenergy, oat
   double? _metricValue(Map<String, dynamic> row, MetricKey k) {
     dynamic raw;
     switch (k) {
+      // DC → ใช้ field ใหม่ vdc / idc / wdc
       case MetricKey.dcV:
-        raw = row['dcV'];
+        raw = row['vdc'];
         break;
       case MetricKey.dcA:
-        raw = row['dcA'];
+        raw = row['idc'];
         break;
       case MetricKey.dcW:
-        raw = row['dcW'];
+        raw = row['wdc'];
         break;
+
+      // AC → ใช้ field ใหม่ vac / iac / wac / acfreq / acenergy
+      case MetricKey.acV:
+        raw = row['vac'];
+        break;
+      case MetricKey.acA:
+        raw = row['iac'];
+        break;
+      case MetricKey.acW:
+        raw = row['wac'];
+        break;
+      case MetricKey.acfreq:
+        raw = row['acfreq'];
+        break;
+      case MetricKey.acEngy:
+        raw = row['acenergy'];
+        break;
+
+      // OAT = target (numeric) + ถ้า offline บังคับเป็น 0
       case MetricKey.oat:
         raw = row['oat'];
-
-        // ถ้า Offline ให้บังคับแสดงเป็น 0 ทันที
         if (!_onlineOf(row)) {
           raw = 0;
         }
@@ -603,8 +705,8 @@ class _SparkPainter extends CustomPainter {
     final path = Path();
     for (int i = 0; i < values.length; i++) {
       final x = (i / (values.length - 1)) * size.width;
-      final y =
-          size.height - ((values[i] - minY) / range) * size.height;
+      final y = size.height -
+          ((values[i] - minY) / range) * size.height;
       if (i == 0) {
         path.moveTo(x, y);
       } else {
@@ -663,7 +765,7 @@ class _StatusTile extends StatelessWidget {
 
     return Container(
       width: width,
-      height: _kTileHeight,
+      height: 94,
       decoration: BoxDecoration(
         color: bgColor,
         borderRadius: BorderRadius.circular(16),
@@ -676,7 +778,7 @@ class _StatusTile extends StatelessWidget {
           ),
         ],
       ),
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
       child: Column(
         mainAxisSize: MainAxisSize.max,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -689,7 +791,7 @@ class _StatusTile extends StatelessWidget {
               color: Colors.black54,
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -708,7 +810,7 @@ class _StatusTile extends StatelessWidget {
                         color: Colors.black,
                       ),
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 2),
                     Text(
                       statusText,
                       style: TextStyle(
@@ -722,8 +824,8 @@ class _StatusTile extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               Container(
-                width: 48,
-                height: 48,
+                width: 44,
+                height: 44,
                 decoration: BoxDecoration(
                   color: circleColor,
                   shape: BoxShape.circle,
@@ -738,7 +840,7 @@ class _StatusTile extends StatelessWidget {
                 child: const Icon(
                   Icons.power_settings_new,
                   color: Colors.white,
-                  size: 25,
+                  size: 24,
                 ),
               ),
             ],
@@ -765,7 +867,7 @@ class _OnAirTargetTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final Color circleColor = value
         ? const Color(0xFF48CAE4) // กำลังประกาศ = ฟ้า
-        : Colors.grey.shade400;   // ไม่ได้ประกาศ = เทา
+        : Colors.grey.shade400; // ไม่ได้ประกาศ = เทา
 
     final String statusText =
         value ? 'กำลังประกาศ' : 'ไม่ได้ประกาศ';
@@ -781,8 +883,8 @@ class _OnAirTargetTile extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         child: Container(
           width: width,
-          height: _kTileHeight,
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+          height: 94,
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
           decoration: BoxDecoration(
             color: bgColor,
             borderRadius: BorderRadius.circular(16),
@@ -807,7 +909,7 @@ class _OnAirTargetTile extends StatelessWidget {
                   color: Colors.black54,
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -820,8 +922,8 @@ class _OnAirTargetTile extends StatelessWidget {
                     ),
                   ),
                   Container(
-                    width: 48,
-                    height: 48,
+                    width: 44,
+                    height: 44,
                     decoration: BoxDecoration(
                       color: circleColor,
                       shape: BoxShape.circle,
@@ -838,7 +940,7 @@ class _OnAirTargetTile extends StatelessWidget {
                     child: const Icon(
                       Icons.volume_up,
                       color: Colors.white,
-                      size: 25,
+                      size: 24,
                     ),
                   ),
                 ],
@@ -874,7 +976,7 @@ class _LastUpdateTile extends StatelessWidget {
 
     return Container(
       width: width,
-      height: _kTileHeight,
+      height: 94,
       decoration: BoxDecoration(
         color: bgColor,
         borderRadius: BorderRadius.circular(16),
@@ -887,7 +989,7 @@ class _LastUpdateTile extends StatelessWidget {
           ),
         ],
       ),
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -899,7 +1001,7 @@ class _LastUpdateTile extends StatelessWidget {
               color: Colors.black54,
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -917,7 +1019,7 @@ class _LastUpdateTile extends StatelessWidget {
                         color: Colors.black,
                       ),
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 2),
                     Text(
                       detailText,
                       maxLines: 1,
@@ -933,8 +1035,8 @@ class _LastUpdateTile extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               Container(
-                width: 42,
-                height: 42,
+                width: 38,
+                height: 38,
                 decoration: BoxDecoration(
                   color: Colors.indigo.shade50,
                   shape: BoxShape.circle,

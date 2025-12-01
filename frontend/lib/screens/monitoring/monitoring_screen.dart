@@ -43,7 +43,7 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
 
   // metric ปัจจุบัน (ส่งให้ MiniStats / กราฟ)
   // เริ่มต้นใช้ DC Voltage เป็น metric หลัก
-  MetricKey _activeMetric = MetricKey.dcV;
+  MetricKey _activeMetric = MetricKey.vdc;
 
   // Map camera states
   final MapController _mapController = MapController();

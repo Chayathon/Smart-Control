@@ -1,6 +1,6 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import 'mini_stats.dart'; // ใช้ MetricKey จากไฟล์นี้
+import 'mini_stats.dart'; // ใช้ MetricKey + metricLabel / unitOf / metricColor
 
 typedef Json = Map<String, dynamic>;
 
@@ -926,21 +926,47 @@ class _MetricLineChartState extends State<MetricLineChart> {
     return null;
   }
 
-  /// แปลง row -> ค่า metric (ตอนนี้รองรับเฉพาะ dcV / dcA / dcW เท่านั้น)
+  /// แปลง row -> ค่า metric
   double? _valueForMetric(Json row, MetricKey metric) {
     dynamic raw;
     switch (metric) {
-      case MetricKey.dcV:
-        raw = row['dcV'];
+      // AC
+      case MetricKey.vac:
+        raw = row['vac'];
         break;
-      case MetricKey.dcA:
-        raw = row['dcA'];
+      case MetricKey.iac:
+        raw = row['iac'];
         break;
-      case MetricKey.dcW:
-        raw = row['dcW'];
+      case MetricKey.wac:
+        raw = row['wac'];
         break;
+      case MetricKey.acfreq:
+        raw = row['acfreq'];
+        break;
+      case MetricKey.acenergy:
+        raw = row['acenergy'];
+        break;
+
+      // DC
+      case MetricKey.vdc:
+        raw = row['vdc'];
+        break;
+      case MetricKey.idc:
+        raw = row['idc'];
+        break;
+      case MetricKey.wdc:
+        raw = row['wdc'];
+        break;
+
+      // OAT → numeric ก็ plot ได้ แต่แล้วแต่ใช้
       case MetricKey.oat:
-        // ไม่ใช้ oat ทำกราฟแล้ว → คืน null
+        raw = row['oat'];
+        break;
+
+      // flag / lat / lng ตอนนี้ยังไม่ใช้ plot → คืน null ไปก่อน
+      case MetricKey.flag:
+      case MetricKey.lat:
+      case MetricKey.lng:
         return null;
     }
 
@@ -986,44 +1012,11 @@ class _MetricLineChartState extends State<MetricLineChart> {
 
   // ===== Helpers label / unit / สี =====
 
-  String _metricLabel(MetricKey m) {
-    switch (m) {
-      case MetricKey.dcV:
-        return 'DC Voltage';
-      case MetricKey.dcA:
-        return 'DC Current';
-      case MetricKey.dcW:
-        return 'DC Power';
-      case MetricKey.oat:
-        return 'Metric';
-    }
-  }
+  String _metricLabel(MetricKey m) => metricLabel(m);
 
-  String _unitOf(MetricKey m) {
-    switch (m) {
-      case MetricKey.dcV:
-        return 'V';
-      case MetricKey.dcA:
-        return 'A';
-      case MetricKey.dcW:
-        return 'W';
-      case MetricKey.oat:
-        return '';
-    }
-  }
+  String _unitOf(MetricKey m) => unitOf(m);
 
-  Color _metricColor(MetricKey m) {
-    switch (m) {
-      case MetricKey.dcV:
-        return const Color(0xFF06B6D4); // ฟ้าอมเขียว
-      case MetricKey.dcA:
-        return const Color(0xFF14B8A6); // เขียวอมฟ้า
-      case MetricKey.dcW:
-        return const Color(0xFFEF4444); // แดง
-      case MetricKey.oat:
-        return const Color(0xFF06B6D4);
-    }
-  }
+  Color _metricColor(MetricKey m) => metricColor(m);
 }
 
 class _Pt {
