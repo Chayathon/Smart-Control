@@ -5,6 +5,7 @@ const stream = require('../services/stream.service');
 const micStream = require('../services/micStream.service');
 const bus = require('../services/bus');
 const Device = require('../models/Device');
+const lineNotifyService = require('../services/line-notify.service');
 
 let wssMic;
 let wssStatus;
@@ -50,7 +51,25 @@ function createWSServer(server) {
                 try { client.send(msg); } catch { }
             }
         }
-        // Status is now broadcasted via WebSocket only, activeMode is the single source of truth
+        
+        // Send LINE notifications for song events
+        try {
+            if (payload.event === 'started' && payload.extra?.title) {
+                const songTitle = payload.extra.title;
+                const mode = payload.activeMode || 'unknown';
+                lineNotifyService.sendSongStarted(songTitle, mode).catch(err => 
+                    console.error('LINE notification (started) error:', err)
+                );
+            } else if (payload.event === 'ended' || payload.event === 'playlist-ended') {
+                const songTitle = payload.extra?.title || payload.currentUrl || '';
+                const mode = payload.activeMode || 'unknown';
+                lineNotifyService.sendSongEnded(songTitle, mode).catch(err => 
+                    console.error('LINE notification (ended) error:', err)
+                );
+            }
+        } catch (err) {
+            console.error('LINE notification error:', err);
+        }
     };
     
     const onScheduleStatus = async (payload) => {
