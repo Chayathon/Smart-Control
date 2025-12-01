@@ -66,7 +66,12 @@ async function sendSongStarted(songTitle, mode = 'unknown') {
             .replace(/{mode}/g, mode)
             .replace(/{timestamp}/g, new Date().toLocaleString('th-TH'));
 
-        return await sendLineNotification(message);
+        console.log('📤 Sending LINE notification (Song Started):', message);
+        const result = await sendLineNotification(message);
+        if (result) {
+            console.log('✅ LINE notify sent: Song Started -', songTitle);
+        }
+        return result;
     } catch (error) {
         console.error('❌ Error sending song started notification:', error.message);
         return false;
@@ -84,7 +89,12 @@ async function sendSongEnded(songTitle = '', mode = 'unknown') {
             .replace(/{mode}/g, mode)
             .replace(/{timestamp}/g, new Date().toLocaleString('th-TH'));
 
-        return await sendLineNotification(message);
+        console.log('📤 Sending LINE notification (Song Ended):', message);
+        const result = await sendLineNotification(message);
+        if (result) {
+            console.log('✅ LINE notify sent: Song Ended -', songTitle || 'Unknown');
+        }
+        return result;
     } catch (error) {
         console.error('❌ Error sending song ended notification:', error.message);
         return false;
