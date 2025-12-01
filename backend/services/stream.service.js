@@ -50,7 +50,6 @@ let starting = false;
 
 let playlistQueue = [];
 let currentIndex = -1;
-let playlistMode = false;
 let playlistLoop = false;
 let playlistStopping = false;
 
@@ -87,18 +86,6 @@ function getIcecastUrl() {
         `@${icecast.host}:${icecast.port}${icecast.mount}`;
 }
 
-// ฟังก์ชันอัพเดตสถานะ is_playing และ playback_mode ผ่าน MQTT
-async function updateAllDevicesIsPlaying(isPlaying, mode = null) {
-    const mqttService = require('./mqtt.service');
-    const playbackMode = mode || activeMode || 'none';
-    
-    // Publish playback status ผ่าน MQTT
-    await mqttService.publishPlaybackStatus(isPlaying, playbackMode);
-    mqttService.setPlaybackMode(playbackMode);
-    
-    console.log(`🎵 Updated playback status: is_playing=${isPlaying}, mode=${playbackMode}`);
-}
-
 function getPreStartDelayMs() {
     const delay = cfg.stream && typeof cfg.stream.preStartDelayMs === 'number' ? cfg.stream.preStartDelayMs : 0;
     return Math.max(0, delay | 0);
@@ -119,7 +106,6 @@ async function getSampleRateFromDb() {
 function emitStatus({ event, extra = {} }) {
     bus.emit('status', {
         event,
-        mode: playlistMode ? 'playlist' : 'single',
         index: currentIndex,
         total: playlistQueue.length,
         loop: playlistLoop,
@@ -192,7 +178,7 @@ async function _playIndex(i, seekMs = 0) {
     if (i < 0 || i >= playlistQueue.length) {
         console.log('📭 คิวว่าง หรือ index เกิน');
         await _quickStop();
-        playlistMode = false;
+        activeMode = 'none';
         return;
     }
 
@@ -215,7 +201,7 @@ async function _playIndex(i, seekMs = 0) {
             return;
         }
 
-        playlistMode = true;
+        activeMode = 'playlist';
 
         const { source, from, name } = playlistQueue[i];
         console.log(`▶️ [${i + 1}/${playlistQueue.length}] ${name}`);
@@ -244,7 +230,7 @@ async function _playIndex(i, seekMs = 0) {
 
         ffmpegProcess.on('close', async (code) => {
             console.log(`🎵 เพลงสิ้นสุด (code ${code})`);
-            const wasPlaylistMode = playlistMode;
+            const wasPlaylist = activeMode === 'playlist';
             ffmpegProcess = null;
             if (!pausePendingResume) {
                 isPaused = false;
@@ -252,7 +238,7 @@ async function _playIndex(i, seekMs = 0) {
             currentStreamUrl = null;
             lastKnownElapsedMs = trackBaseOffsetMs + Math.max(0, nowMs() - trackStartMonotonic);
 
-            if (!wasPlaylistMode || playlistStopping) {
+            if (!wasPlaylist || playlistStopping) {
                 return;
             }
 
@@ -289,17 +275,13 @@ async function _playIndex(i, seekMs = 0) {
                 await _playIndex(currentIndex);
             } else {
                 console.log('✅ เพลย์ลิสต์จบครบทุกเพลง');
-                playlistMode = false;
                 activeMode = 'none';
-                await updateAllDevicesIsPlaying(false);
                 emitStatus({ event: 'playlist-ended' });
             }
         });
 
         isPaused = false;
         currentStreamUrl = source;
-        
-        await updateAllDevicesIsPlaying(true);
         
         console.log(`📡 Emitting status: title="${name}", index=${i}, total=${playlistQueue.length}`);
         emitStatus({
@@ -360,7 +342,6 @@ async function playPlaylist({ loop = false } = {}) {
     }
     
     currentIndex = 0;
-    playlistMode = true;
     activeMode = 'playlist';
     trackBaseOffsetMs = 0;
     trackStartMonotonic = 0;
@@ -373,7 +354,7 @@ async function playPlaylist({ loop = false } = {}) {
 }
 
 async function nextTrack() {
-    if (!playlistMode) return { success: false, message: 'ไม่ได้อยู่ในโหมดเพลย์ลิสต์' };
+    if (activeMode !== 'playlist') return { success: false, message: 'ไม่ได้อยู่ในโหมดเพลย์ลิสต์' };
     
     try {
         const loopFromDb = await settingsService.getSetting('loopPlaylist');
@@ -400,7 +381,6 @@ async function nextTrack() {
     }
 
     currentIndex = nextIdx;
-    playlistMode = true;
     trackBaseOffsetMs = 0; trackStartMonotonic = 0; lastKnownElapsedMs = 0; pausePendingResume = false;
     await _playIndex(currentIndex, 0);
     
@@ -408,7 +388,7 @@ async function nextTrack() {
 }
 
 async function prevTrack() {
-    if (!playlistMode) return { success: false, message: 'ไม่ได้อยู่ในโหมดเพลย์ลิสต์' };
+    if (activeMode !== 'playlist') return { success: false, message: 'ไม่ได้อยู่ในโหมดเพลย์ลิสต์' };
     
     try {
         const loopFromDb = await settingsService.getSetting('loopPlaylist');
@@ -435,7 +415,6 @@ async function prevTrack() {
     }
 
     currentIndex = prevIdx;
-    playlistMode = true;
     trackBaseOffsetMs = 0; trackStartMonotonic = 0; lastKnownElapsedMs = 0; pausePendingResume = false;
     await _playIndex(currentIndex, 0);
     
@@ -444,15 +423,12 @@ async function prevTrack() {
 
 async function stop() {
     playlistStopping = true;
-    playlistMode = false;
     playlistQueue = [];
     currentIndex = -1;
     pausedState = null;
     pausePendingResume = false;
     
     await stopAll();
-    
-    await updateAllDevicesIsPlaying(false);
     
     playlistStopping = false;
     activeMode = 'none';
@@ -503,7 +479,6 @@ async function stopAll() {
         isPaused = false;
         currentStreamUrl = null;
         activeMode = 'none';
-        await updateAllDevicesIsPlaying(false);
         emitStatus({ event: 'stopped' });
         await sleep(250);
         stopping = false;
@@ -641,7 +616,6 @@ async function startYoutubeUrl(url, seekMs = 0, opts = {}) {
         activeMode = 'youtube';
         trackBaseOffsetMs = Math.max(0, seekMs | 0);
         trackStartMonotonic = nowMs();
-        await updateAllDevicesIsPlaying(true);
         bus.emit('status', { event: 'started', url });
     } finally {
         starting = false;
@@ -738,7 +712,6 @@ async function startLocalFile(filePath, seekMs = 0, opts = {}) {
         activeMode = isSchedule ? 'schedule' : 'file';
         trackBaseOffsetMs = Math.max(0, seekMs | 0);
         trackStartMonotonic = nowMs();
-        await updateAllDevicesIsPlaying(true);
         bus.emit('status', { event: 'started', url: absPath, name: currentDisplayName });
     } finally {
         starting = false;
@@ -815,7 +788,6 @@ function resume() {
             await _quickStop();
         } finally {
             if (kind === 'playlist') {
-                playlistMode = true;
                 currentIndex = typeof toResume.index === 'number' ? toResume.index : currentIndex;
                 activeMode = 'playlist';
                 _playIndex(currentIndex, seekMs).catch(e => console.error('resume playlist failed:', e));
@@ -838,15 +810,10 @@ function getStatus() {
     const status = {
         isPlaying: isAlive(ffmpegProcess) && currentStreamUrl !== 'flutter-mic',
         isPaused,
-        currentUrl: currentStreamUrl,
-        mode: playlistMode ? 'playlist' : 'single',
-        playlistMode,
-        currentIndex,
-        totalSongs: playlistQueue.length,
-        loop: playlistLoop,
         resumeMs: lastKnownElapsedMs,
         activeMode,
-        name: currentDisplayName,
+        loop: playlistLoop,
+        currentSong: null,
         schedule: scheduleStatus,
         icecast: {
             port: cfg.icecast.port,
@@ -854,12 +821,27 @@ function getStatus() {
         },
     };
     
-    if (playlistMode && currentIndex >= 0 && currentIndex < playlistQueue.length) {
-        const currentSong = playlistQueue[currentIndex];
+    if (activeMode === 'playlist' && currentIndex >= 0 && currentIndex < playlistQueue.length) {
+        const song = playlistQueue[currentIndex];
         status.currentSong = {
-            title: currentSong.name,
+            title: song.name,
+            url: currentStreamUrl,
             index: currentIndex,
             total: playlistQueue.length,
+        };
+    } else if (activeMode === 'file' || activeMode === 'schedule') {
+        status.currentSong = {
+            title: currentDisplayName,
+            url: currentStreamUrl,
+            index: 0,
+            total: 1,
+        };
+    } else if (activeMode === 'youtube') {
+        status.currentSong = {
+            title: currentDisplayName || 'YouTube',
+            url: currentStreamUrl,
+            index: 0,
+            total: 1,
         };
     }
     
@@ -1060,19 +1042,9 @@ async function enableStream() {
     if (lastEnabledZones.length > 0) {
         console.log(`Restoring previously enabled zones: [${lastEnabledZones.join(', ')}]`);
         mqttService.publish('mass-radio/select/command', { zone: lastEnabledZones, set_stream: true });
-        
-        // รอ 2 วินาทีแล้ว get_status เพื่ออัพเดต stream_enabled จาก response
-        setTimeout(() => {
-            mqttService.requestGetStatus(lastEnabledZones);
-        }, 2000);
     } else {
         console.log('📡 No previously enabled zones found, enabling all zones');
         mqttService.publish('mass-radio/all/command', { set_stream: true });
-        
-        // รอ 2 วินาทีแล้ว get_status เพื่ออัพเดต stream_enabled จาก response
-        setTimeout(() => {
-            mqttService.requestGetStatus();
-        }, 2000);
     }
     return { success: true, message: 'Enabled stream for zones' };
 }
@@ -1097,12 +1069,6 @@ async function disableStream() {
     }
     
     mqttService.publish('mass-radio/all/command', { set_stream: false });
-    
-    // รอ 2 วินาทีแล้ว get_status เพื่ออัพเดต stream_enabled จาก response
-    setTimeout(() => {
-        mqttService.requestGetStatus();
-    }, 2000);
-    
     return { success: true, message: 'Disabled stream for all zones' };
 }
 

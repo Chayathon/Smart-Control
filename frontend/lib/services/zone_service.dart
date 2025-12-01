@@ -51,15 +51,16 @@ class ZoneService {
 
   Future<void> setAllStreamsBasedOnStatus() async {
     final statuses = await getDevicesStatus();
-    final anyPlaying = statuses.any(
-      (z) => z['data'] != null && z['data']['is_playing'] == true,
+    // Check if any zone has stream_enabled = true
+    final anyEnabled = statuses.any(
+      (z) => z['data'] != null && z['data']['stream_enabled'] == true,
     );
     final api = await ApiService.private();
     await api.post(
       '/mqtt/publish',
       data: {
         'topic': 'mass-radio/all/command',
-        'payload': {'set_stream': !anyPlaying},
+        'payload': {'set_stream': !anyEnabled},
       },
     );
   }

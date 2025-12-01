@@ -50,14 +50,7 @@ function createWSServer(server) {
                 try { client.send(msg); } catch { }
             }
         }
-
-        try {
-            const s = stream.getStatus();
-            const mode = s.activeMode || 'none';
-            await Device.updateMany({}, { $set: { 'status.playback_mode': mode } });
-        } catch (e) {
-            console.error('⚠️ Failed to update devices playback_mode:', e.message || e);
-        }
+        // Status is now broadcasted via WebSocket only, activeMode is the single source of truth
     };
     
     const onScheduleStatus = async (payload) => {
