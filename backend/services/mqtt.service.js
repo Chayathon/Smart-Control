@@ -207,15 +207,15 @@ async function processBatch() {
         }
     }
 
-    if (wsBuffer.length > 0) {
-        const batch = [...wsBuffer];
-        wsBuffer = [];
+    // if (wsBuffer.length > 0) {
+    //     const batch = [...wsBuffer];
+    //     wsBuffer = [];
 
-        broadcast({
-            type: 'MONITOR_UPDATE_BULK', 
-            data: batch
-        });
-    }
+    //     broadcast({
+    //         type: 'MONITOR_UPDATE_BULK', 
+    //         data: batch
+    //     });
+    // }
 }
 
 //1. จัดการข้อมูล DeviceData ที่เข้ามา
@@ -269,7 +269,13 @@ async function handleDeviceData(topic, payloadStr, packet) {
         type: json.type
     };
 
-
+    if (mongoose.connection.readyState === 1) {
+        deviceDataService.ingestOne(payloadForIngest)
+            .catch(err => {
+                console.error(`[Data] Save Error zone ${no}:`, err.message);
+            }
+        );
+    }
 
     dbBuffer.push(payloadForIngest); // รอรถเมล์รอบ DB
     
