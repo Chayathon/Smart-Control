@@ -513,7 +513,10 @@ async function sendVolUartCommand(zone, set_volume) {
 //7. จัดการสถานะ Bulk (เช่น "YNNYYN...")
 async function handleRawBulkStatus(rawString) {
     const totalZones = rawString.length;
-    if (rawString === lastBulkString) return; 
+    if (rawString === lastBulkString) {
+        console.log('[Bulk] skip duplicate bulk string');
+        return;
+    }
     lastBulkString = rawString;
     console.log(`[Bulk] Processing status for ${totalZones} zones...`);
     const bulkOps = [];
