@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:smart_control/core/alert/app_snackbar.dart';
 import 'package:smart_control/services/system_service.dart';
-import 'package:smart_control/widgets/inputs/text_field_box.dart';
 import 'package:smart_control/widgets/loading_overlay.dart';
 
 class SystemScreen extends StatefulWidget {
@@ -25,16 +24,7 @@ class _SystemScreenState extends State<SystemScreen> {
   // ค่าการตั้งค่าปัจจุบัน
   int _selectedSampleRate = 44100;
   bool _loopPlaylist = false;
-
-  // สถานะการโหลด
-  bool _isLoading = false;
   bool _hasChanges = false;
-
-  final TextEditingController _channelSecretCtrl = TextEditingController();
-  final TextEditingController _channelPublicCtrl = TextEditingController();
-
-  bool _obsecureChannelSecret = true;
-  bool _obsecureChannelPublic = true;
 
   @override
   void initState() {
@@ -50,8 +40,6 @@ class _SystemScreenState extends State<SystemScreen> {
       setState(() {
         _selectedSampleRate = data['sampleRate'] ?? 44100;
         _loopPlaylist = data['loopPlaylist'] ?? false;
-        // _channelSecretCtrl.text = data['channelSecret'] ?? '';
-        // _channelPublicCtrl.text = data['channelPublic'] ?? '';
         _hasChanges = false;
       });
     } catch (error) {
@@ -192,66 +180,6 @@ class _SystemScreenState extends State<SystemScreen> {
             icon: Icons.repeat,
             child: _buildLoopSwitch(),
           ),
-          const SizedBox(height: 12),
-
-          _buildSettingCard(
-            title: 'channelSecret',
-            subtitle: 'channelSecret',
-            icon: Icons.key_rounded,
-            child: TextFieldBox(
-              hint: 'channelSecret',
-              controller: _channelSecretCtrl,
-              obscureText: _obsecureChannelSecret,
-              suffixIcon: IconButton(
-                onPressed: () {
-                  setState(
-                    () => _obsecureChannelSecret = !_obsecureChannelSecret,
-                  );
-                },
-                icon: Icon(
-                  _obsecureChannelSecret
-                      ? Icons.visibility_off
-                      : Icons.visibility,
-                ),
-              ),
-              onChanged: (value) {
-                setState(() {
-                  _hasChanges = true;
-                });
-              },
-            ),
-          ),
-          const SizedBox(height: 12),
-
-          _buildSettingCard(
-            title: 'channelPublic',
-            subtitle: 'channelPublic',
-            icon: Icons.key_rounded,
-            child: TextFieldBox(
-              hint: 'channelPublic',
-              controller: _channelPublicCtrl,
-              obscureText: _obsecureChannelPublic,
-              suffixIcon: IconButton(
-                onPressed: () {
-                  setState(
-                    () => _obsecureChannelPublic = !_obsecureChannelPublic,
-                  );
-                },
-                icon: Icon(
-                  _obsecureChannelPublic
-                      ? Icons.visibility_off
-                      : Icons.visibility,
-                ),
-              ),
-              onChanged: (value) {
-                setState(() {
-                  _hasChanges = true;
-                });
-              },
-            ),
-          ),
-
-          // const SizedBox(height: 24),
 
           // _buildResetButton(),
           // const SizedBox(height: 16),
@@ -269,68 +197,6 @@ class _SystemScreenState extends State<SystemScreen> {
               ),
             )
           : null,
-    );
-  }
-
-  /// ส่วนหัวของหมวดหมู่
-  Widget _buildSectionHeader({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Colors.blue[700]!, Colors.blue[500]!],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.blue.withOpacity(0.3),
-            blurRadius: 8,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(icon, color: Colors.white, size: 32),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.9),
-                    fontSize: 14,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
     );
   }
 

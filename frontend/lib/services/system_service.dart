@@ -16,13 +16,32 @@ class SystemService {
   static Future<bool> saveSettings({
     required int sampleRate,
     required bool loopPlaylist,
+    String? channelSecret,
+    String? channelPublic,
+    String? lineChannelAccessToken,
+    String? lineChannelSecret,
+    String? lineUserId,
+    bool? lineNotifyEnabled,
+    String? lineMessageStart,
+    String? lineMessageEnd,
   }) async {
     try {
       final api = await ApiService.private();
-      final response = await api.post(
-        '/settings/bulk',
-        data: {'sampleRate': sampleRate, 'loopPlaylist': loopPlaylist},
-      );
+
+      final data = {'sampleRate': sampleRate, 'loopPlaylist': loopPlaylist};
+
+      // Add LINE settings if provided
+      if (lineChannelAccessToken != null)
+        data['lineChannelAccessToken'] = lineChannelAccessToken;
+      if (lineChannelSecret != null)
+        data['lineChannelSecret'] = lineChannelSecret;
+      if (lineUserId != null) data['lineUserId'] = lineUserId;
+      if (lineNotifyEnabled != null)
+        data['lineNotifyEnabled'] = lineNotifyEnabled;
+      if (lineMessageStart != null) data['lineMessageStart'] = lineMessageStart;
+      if (lineMessageEnd != null) data['lineMessageEnd'] = lineMessageEnd;
+
+      final response = await api.post('/settings/bulk', data: data);
 
       return response['ok'] == true;
     } catch (e) {
