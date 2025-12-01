@@ -52,15 +52,31 @@ function createWSServer(server) {
             }
         }
         
+        // Log all status events
+        const event = payload.event || 'unknown';
+        const mode = payload.activeMode || 'unknown';
+        console.log(`🎵 [status event] ${event} | mode: ${mode} | playing: ${payload.isPlaying} | paused: ${payload.isPaused}`);
+        
         // Send LINE notifications for song events
         try {
+            // Song Started events
             if (payload.event === 'started' && payload.extra?.title) {
                 const songTitle = payload.extra.title;
                 const mode = payload.activeMode || 'unknown';
                 lineNotifyService.sendSongStarted(songTitle, mode).catch(err => 
                     console.error('LINE notification (started) error:', err)
                 );
-            } else if (payload.event === 'ended' || payload.event === 'playlist-ended') {
+            }
+            // Playlist Started event
+            else if (payload.event === 'playlist-started') {
+                const songTitle = payload.extra?.title || 'Playlist';
+                const mode = payload.activeMode || 'playlist';
+                lineNotifyService.sendSongStarted(songTitle, mode).catch(err => 
+                    console.error('LINE notification (playlist-started) error:', err)
+                );
+            }
+            // Song Ended events
+            else if (payload.event === 'ended' || payload.event === 'playlist-ended' || payload.event === 'stopped' || payload.event === 'stopped-all') {
                 const songTitle = payload.extra?.title || payload.currentUrl || '';
                 const mode = payload.activeMode || 'unknown';
                 lineNotifyService.sendSongEnded(songTitle, mode).catch(err => 
