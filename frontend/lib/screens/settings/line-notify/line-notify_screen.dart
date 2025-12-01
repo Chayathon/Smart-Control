@@ -158,7 +158,7 @@ class _LineNotifyScreenState extends State<LineNotifyScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'LINE Message Notify',
+                        'LINE Broadcast Notify',
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
@@ -166,7 +166,7 @@ class _LineNotifyScreenState extends State<LineNotifyScreen> {
                         ),
                       ),
                       Text(
-                        'รับการแจ้งเตือนเมื่อเริ่มและจบการเล่นเพลง ในทุกโหมดการเล่น',
+                        'ส่งแจ้งเตือนไปยังทุกคนที่เป็นเพื่อนกับบอท เมื่อเริ่มและจบการเล่นเพลง',
                         style: TextStyle(
                           fontSize: 14,
                           color: Colors.white70,
@@ -241,24 +241,6 @@ class _LineNotifyScreenState extends State<LineNotifyScreen> {
                   _obscureLineSecret ? Icons.visibility_off : Icons.visibility,
                 ),
               ),
-              onChanged: (value) {
-                setState(() {
-                  _hasChanges = true;
-                });
-              },
-            ),
-          ),
-          const SizedBox(height: 8),
-
-          // User ID
-          _buildSettingCard(
-            title: 'LINE User ID หรือ Group ID',
-            subtitle: 'ID ของผู้ใช้หรือกลุ่มที่จะรับการแจ้งเตือน',
-            icon: Icons.person_outline,
-            iconColor: Colors.purple,
-            child: TextFieldBox(
-              hint: 'U1234567890abcdef... หรือ C1234567890abcdef...',
-              controller: _lineUserIdCtrl,
               onChanged: (value) {
                 setState(() {
                   _hasChanges = true;
@@ -371,9 +353,9 @@ class _LineNotifyScreenState extends State<LineNotifyScreen> {
                       Text(
                         '1. ไปที่ developers.line.biz\n'
                         '2. สร้าง Messaging API channel\n'
-                        '3. คัดลอก Channel Access Token และ Channel Secret\n'
-                        '4. เพิ่มบอทเข้ากลุ่ม/บัญชีของคุณ\n'
-                        '5. รับ User ID หรือ Group ID',
+                        '3. คัดลอก Channel Access Token\n'
+                        '4. เพิ่มบอทเป็นเพื่อนกับบัญชี LINE ของคุณ\n'
+                        '5. ระบบจะส่งแจ้งเตือนไปยังทุกคนที่เป็นเพื่อนกับบอท',
                         style: TextStyle(
                           fontSize: 13,
                           color: Colors.blue[800],

@@ -1,7 +1,7 @@
 const axios = require('axios');
 const settingsService = require('./settings.service');
 
-const LINE_MESSAGING_API_URL = 'https://api.line.me/v2/bot/message/push';
+const LINE_BROADCAST_API_URL = 'https://api.line.me/v2/bot/message/broadcast';
 
 async function sendLineNotification(message) {
     try {
@@ -9,20 +9,18 @@ async function sendLineNotification(message) {
         
         const lineEnabled = settings.lineNotifyEnabled ?? false;
         const channelAccessToken = settings.lineChannelAccessToken;
-        const userId = settings.lineUserId;
 
         if (!lineEnabled) {
             console.log('📴 LINE notification disabled');
             return false;
         }
 
-        if (!channelAccessToken || !userId) {
-            console.warn('⚠️ LINE notification enabled but missing credentials (channelAccessToken or userId)');
+        if (!channelAccessToken) {
+            console.warn('⚠️ LINE notification enabled but missing Channel Access Token');
             return false;
         }
 
         const payload = {
-            to: userId,
             messages: [
                 {
                     type: 'text',
@@ -31,7 +29,7 @@ async function sendLineNotification(message) {
             ]
         };
 
-        const response = await axios.post(LINE_MESSAGING_API_URL, payload, {
+        const response = await axios.post(LINE_BROADCAST_API_URL, payload, {
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${channelAccessToken}`
@@ -101,8 +99,8 @@ async function testNotification() {
             return { success: false, message: 'LINE notification is disabled' };
         }
 
-        if (!settings.lineChannelAccessToken || !settings.lineUserId) {
-            return { success: false, message: 'Missing LINE credentials' };
+        if (!settings.lineChannelAccessToken) {
+            return { success: false, message: 'Missing Channel Access Token' };
         }
 
         const testMessage = `🔔 ทดสอบการแจ้งเตือน LINE\n⏰ เวลา: ${new Date().toLocaleString('th-TH')}`;
