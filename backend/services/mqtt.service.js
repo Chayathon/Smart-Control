@@ -16,6 +16,10 @@ let lastUartTs = 0;
 let blockSyncUntil = 0;
 let lastBulkString = "";
 
+let dbBuffer = [];
+let wsBuffer = []; 
+const BATCH_INTERVAL = 500;
+
 const deviceIdCache = new Map(); 
 const lastHeartbeatUpdate = new Map();
 const pendingRequestsByZone = {};
@@ -191,17 +195,41 @@ async function updateDeviceInDB(no, data) {
 
 /** System Control Functions */
 
+async function processBatch() {
+    if (dbBuffer.length > 0) {
+        const batch = [...dbBuffer];
+        dbBuffer = []; 
+
+        if (mongoose.connection.readyState === 1) {
+            DeviceData.insertMany(batch)
+                .catch(err => console.error('[Batch-DB] Error:', err.message));
+        }
+    }
+
+    if (wsBuffer.length > 0) {
+        const batch = [...wsBuffer];
+        wsBuffer = [];
+
+        broadcast({
+            type: 'MONITOR_UPDATE_BULK', 
+            data: batch
+        });
+    }
+}
+
 //1. จัดการข้อมูล DeviceData ที่เข้ามา
 async function handleDeviceData(topic, payloadStr, packet) {
+    // 1. กันของเก่า
     if (packet && packet.retain) return true;
+    
     const m = topic.match(/^mass-radio\/(zone\d+)\/monitoring$/);    
     if (!m) return false;
 
     const nodeKey = m[1]; 
     const noFromTopic = parseInt(nodeKey.replace(/^zone/, ''), 10); 
 
+    // console.log('[MQTT] 📥 incoming deviceData from', nodeKey); // เปิด log ถ้าน้อย, ปิดถ้าเยอะ
 
-    console.log('[MQTT] 📥 incoming deviceData from', nodeKey, 'payload =', payloadStr);
     let json;
     try {
         json = JSON.parse(payloadStr);
@@ -212,72 +240,155 @@ async function handleDeviceData(topic, payloadStr, packet) {
 
     const no = typeof json.no === 'number' && Number.isFinite(json.no) ? json.no : noFromTopic;
 
+    // --- Cache Handling ---
     let deviceId = deviceIdCache.get(no);
-
     if (!deviceId && mongoose.connection.readyState === 1) {
         try {
             const device = await Device.findOne({ no });
             if (device) {
                 deviceId = device._id;
                 deviceIdCache.set(no, device._id);
-            } else {
-                console.warn(`[MQTT] Device no ${no} not registered in DB`);
             }
-        } catch(e) {
-            console.error(`[MQTT] Error fetching device no ${no}:`, e.message);
-        }
+        } catch(e) {}
     }
 
     const timestamp = json.timestamp ? new Date(json.timestamp) : new Date();
 
+    // ข้อมูลสำหรับลง DB
     const payloadForIngest = {
         timestamp,
         meta: {
             no,
             ...(deviceId ? { deviceId } : {}),
         },
-        vac: json.vac,
-        iac: json.iac,
-        wac: json.wac,
-        acfreq: json.acfreq,
-        acenergy: json.acenergy,
-        vdc: json.vdc,
-        idc: json.idc,
-        wdc: json.wdc,
-        flag: json.flag,
-        oat: json.oat,
-        lat: json.lat,
-        lng: json.lng,
+        vac: json.vac, iac: json.iac, wac: json.wac,
+        acfreq: json.acfreq, acenergy: json.acenergy,
+        vdc: json.vdc, idc: json.idc, wdc: json.wdc,
+        flag: json.flag, oat: json.oat, lat: json.lat, lng: json.lng,
         type: json.type
     };
 
+    // ข้อมูลสำหรับส่งหน้าเว็บ (ตัดบางส่วนที่ไม่จำเป็นออกได้เพื่อลด bandwidth)
+    const payloadForUI = {
+        zone: no,
+        ...json, // หรือเลือกส่งเฉพาะค่าที่จะโชว์
+        // online: true // (Optional)
+    };
 
-    if (mongoose.connection.readyState === 1) {
-        deviceDataService.ingestOne(payloadForIngest)
-            .catch(err => {
-                console.error(`[Data] Save Error zone ${no}:`, err.message);
-            });
-    }
+    // ---------------------------------------------------------
+    // 🔥 แก้ตรงนี้: ยัดใส่ Buffer แทนการยิงสด (Fire & Forget)
+    // ---------------------------------------------------------
+    dbBuffer.push(payloadForIngest); // รอรถเมล์รอบ DB
+    wsBuffer.push(payloadForUI);     // รอรถเมล์รอบ UI
+
+    
+    // --- Heartbeat Logic (LastSeen) ยังคงไว้เหมือนเดิม ---
+    // (เพราะอันนี้เรา Throttle 60s อยู่แล้ว ไม่ต้องเข้า Buffer ก็ได้ หรือจะเข้าก็ได้แต่นี่ง่ายกว่า)
+    
     const now = Date.now();
-
-    // A. อัปเดตใน RAM ทันที (เพื่อให้ checkOfflineZones เห็นว่ายังอยู่)
-    const item = deviceStatus.find(d => d.zone === no);
-    if (item) {
-        item.lastSeen = now;
-    } else {
-        // ถ้าไม่มีใน List ก็สร้างใหม่ (Optional)
-        // upsertDeviceStatus(no, { online: true }); 
-    }
-
     const lastUpdate = lastHeartbeatUpdate.get(no) || 0;
     
+    // อัปเดต DB แค่นาทีละครั้ง
     if (now - lastUpdate > 60000 && deviceId && mongoose.connection.readyState === 1) {
         Device.updateOne({ _id: deviceId }, { lastSeen: timestamp }).catch(()=>{});
         lastHeartbeatUpdate.set(no, now);
     }
 
+    // อัปเดต RAM ทันที (เพื่อ Watchdog)
+    const item = deviceStatus.find(d => d.zone === no);
+    if (item) {
+        item.lastSeen = now;
+    }
+
     return true; 
 }
+
+// async function handleDeviceData(topic, payloadStr, packet) {
+//     if (packet && packet.retain) return true;
+//     const m = topic.match(/^mass-radio\/(zone\d+)\/monitoring$/);    
+//     if (!m) return false;
+
+//     const nodeKey = m[1]; 
+//     const noFromTopic = parseInt(nodeKey.replace(/^zone/, ''), 10); 
+
+
+//     console.log('[MQTT] 📥 incoming deviceData from', nodeKey, 'payload =', payloadStr);
+//     let json;
+//     try {
+//         json = JSON.parse(payloadStr);
+//     } catch (e) {
+//         console.error('[MQTT] Invalid JSON for deviceData:', e.message);
+//         return true;
+//     }
+
+//     const no = typeof json.no === 'number' && Number.isFinite(json.no) ? json.no : noFromTopic;
+
+//     let deviceId = deviceIdCache.get(no);
+
+//     if (!deviceId && mongoose.connection.readyState === 1) {
+//         try {
+//             const device = await Device.findOne({ no });
+//             if (device) {
+//                 deviceId = device._id;
+//                 deviceIdCache.set(no, device._id);
+//             } else {
+//                 console.warn(`[MQTT] Device no ${no} not registered in DB`);
+//             }
+//         } catch(e) {
+//             console.error(`[MQTT] Error fetching device no ${no}:`, e.message);
+//         }
+//     }
+
+//     const timestamp = json.timestamp ? new Date(json.timestamp) : new Date();
+
+//     const payloadForIngest = {
+//         timestamp,
+//         meta: {
+//             no,
+//             ...(deviceId ? { deviceId } : {}),
+//         },
+//         vac: json.vac,
+//         iac: json.iac,
+//         wac: json.wac,
+//         acfreq: json.acfreq,
+//         acenergy: json.acenergy,
+//         vdc: json.vdc,
+//         idc: json.idc,
+//         wdc: json.wdc,
+//         flag: json.flag,
+//         oat: json.oat,
+//         lat: json.lat,
+//         lng: json.lng,
+//         type: json.type
+//     };
+
+
+//     if (mongoose.connection.readyState === 1) {
+//         deviceDataService.ingestOne(payloadForIngest)
+//             .catch(err => {
+//                 console.error(`[Data] Save Error zone ${no}:`, err.message);
+//             });
+//     }
+//     const now = Date.now();
+
+//     // A. อัปเดตใน RAM ทันที (เพื่อให้ checkOfflineZones เห็นว่ายังอยู่)
+//     const item = deviceStatus.find(d => d.zone === no);
+//     if (item) {
+//         item.lastSeen = now;
+//     } else {
+//         // ถ้าไม่มีใน List ก็สร้างใหม่ (Optional)
+//         // upsertDeviceStatus(no, { online: true }); 
+//     }
+
+//     const lastUpdate = lastHeartbeatUpdate.get(no) || 0;
+    
+//     if (now - lastUpdate > 60000 && deviceId && mongoose.connection.readyState === 1) {
+//         Device.updateOne({ _id: deviceId }, { lastSeen: timestamp }).catch(()=>{});
+//         lastHeartbeatUpdate.set(no, now);
+//     }
+
+//     return true; 
+// }
 
 //2. จัดการ LWT (Last Will and Testament)
 async function handleLWT(topic, payloadStr) {
