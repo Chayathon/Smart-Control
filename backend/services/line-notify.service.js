@@ -29,6 +29,9 @@ async function sendLineNotification(message) {
             ]
         };
 
+        console.log('📡 Sending to LINE API:', LINE_BROADCAST_API_URL);
+        console.log('📝 Payload:', JSON.stringify(payload, null, 2));
+
         const response = await axios.post(LINE_BROADCAST_API_URL, payload, {
             headers: {
                 'Content-Type': 'application/json',
@@ -59,7 +62,7 @@ async function sendLineNotification(message) {
 async function sendSongStarted(songTitle, mode = 'unknown') {
     try {
         const settings = await settingsService.getAllSettings();
-        const template = settings.lineMessageStart || '🎵 กำลังเล่น: {songTitle}';
+        const template = settings.lineMessageStart || '🟢 เริ่มถ่ายทอดสดเพลง! {timestamp} 🎵';
         
         const message = template
             .replace(/{songTitle}/g, songTitle)
@@ -81,7 +84,7 @@ async function sendSongStarted(songTitle, mode = 'unknown') {
 async function sendSongEnded(songTitle = '', mode = 'unknown') {
     try {
         const settings = await settingsService.getAllSettings();
-        const template = settings.lineMessageEnd || '⏹️ เพลงจบแล้ว{songTitle}';
+        const template = settings.lineMessageEnd || '🔴 หยุดการถ่ายทอดสด {timestamp}';
         
         const songPart = songTitle ? `: ${songTitle}` : '';
         const message = template
