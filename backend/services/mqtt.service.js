@@ -576,6 +576,50 @@ async function sendZoneUartCommand(zone, set_stream) {
         console.error('[RadioZone] UART write error for zone command:', err.message);
     }
 }
+//5.1 ส่งคำสั่ง Bulk เปิด/ปิดโซนไปยัง UART
+async function sendZoneUartBulkCommand(zone, set_stream) {
+    const TOTAL_ZONES = 200;
+    let bulkString = '';
+    if (zone === 1111) {
+        bulkString = (set_stream ? 'Y' : 'N').repeat(TOTAL_ZONES);
+    } 
+    
+    else {
+        for (let i = 1; i <= TOTAL_ZONES; i++) {
+            let isZoneOn = false;
+
+            if (i === zone) {
+                isZoneOn = set_stream;
+            } 
+            else {
+                const item = deviceStatus.find(d => d.zone === i);
+                isZoneOn = item && item.data ? item.data.stream_enabled : false;
+            }
+
+            bulkString += (isZoneOn ? 'Y' : 'N');
+        }
+    }
+
+    const finalCmd = `${bulkString}`;
+    
+    // console.log(`[RadioZone] Bulk String Length: ${finalCmd.length}`);
+
+    const now = Date.now();
+    if (lastUartCmd === finalCmd && (now - lastUartTs) < 300) {
+        console.log('[RadioZone] Skip duplicate UART bulk cmd');
+        return;
+    }
+    lastUartCmd = finalCmd;
+    lastUartTs = now;
+
+    console.log(`[RadioZone] 📤 UART Syncing ${TOTAL_ZONES} zones (Target: ${zone}, Val: ${set_stream})`);
+    
+    try {
+        await uart.writeString(finalCmd, 'ascii');
+    } catch (err) {
+        console.error('[RadioZone] ❌ UART Write Error:', err.message);
+    }
+}
 
 //6. ส่งคำสั่งปรับระดับเสียงโซนไปยัง UART
 async function sendVolUartCommand(zone, set_volume) {
