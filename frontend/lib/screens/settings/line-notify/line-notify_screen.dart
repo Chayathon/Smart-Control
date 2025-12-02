@@ -248,42 +248,6 @@ class _LineNotifyScreenState extends State<LineNotifyScreen> {
               },
             ),
           ),
-          const SizedBox(height: 20),
-
-          // Message Templates Section
-          Text(
-            'เทมเพลตข้อความ',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Colors.grey[800],
-            ),
-          ),
-          const SizedBox(height: 8),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.amber[50],
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.amber[200]!, width: 1),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.lightbulb_outline,
-                  color: Colors.amber[700],
-                  size: 20,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'ใช้ {songTitle}, {mode}, {timestamp} สำหรับข้อมูลแบบไดนามิก',
-                    style: TextStyle(fontSize: 13, color: Colors.amber[900]),
-                  ),
-                ),
-              ],
-            ),
-          ),
           const SizedBox(height: 8),
 
           // Message Start Template
@@ -292,8 +256,9 @@ class _LineNotifyScreenState extends State<LineNotifyScreen> {
             subtitle: 'แจ้งเตือนเมื่อเริ่มเล่นเพลง',
             icon: Icons.play_circle_outline,
             iconColor: Colors.green,
+            trailing: _buildVariableHelpTooltip(),
             child: TextFieldBox(
-              hint: '🎵 กำลังเล่น: {songTitle}',
+              hint: '🟢 เริ่มถ่ายทอดสดเพลง! {date} 🎵',
               controller: _lineMessageStartCtrl,
               maxLines: 3,
               onChanged: (value) {
@@ -311,8 +276,9 @@ class _LineNotifyScreenState extends State<LineNotifyScreen> {
             subtitle: 'แจ้งเตือนเมื่อเพลงเล่นจบ',
             icon: Icons.stop_circle_outlined,
             iconColor: Colors.red,
+            trailing: _buildVariableHelpTooltip(),
             child: TextFieldBox(
-              hint: '⏹️ เพลงจบแล้ว{songTitle}',
+              hint: '🔴 หยุดการถ่ายทอดสด {date}',
               controller: _lineMessageEndCtrl,
               maxLines: 3,
               onChanged: (value) {
@@ -391,6 +357,7 @@ class _LineNotifyScreenState extends State<LineNotifyScreen> {
     required IconData icon,
     required Color iconColor,
     required Widget child,
+    Widget? trailing,
   }) {
     return Card(
       elevation: 2,
@@ -431,6 +398,7 @@ class _LineNotifyScreenState extends State<LineNotifyScreen> {
                     ],
                   ),
                 ),
+                if (trailing != null) trailing,
               ],
             ),
             const SizedBox(height: 16),
@@ -484,6 +452,43 @@ class _LineNotifyScreenState extends State<LineNotifyScreen> {
             },
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildVariableHelpTooltip() {
+    return Tooltip(
+      richMessage: TextSpan(
+        children: [
+          const TextSpan(
+            text: 'ตัวแปรที่ใช้ได้:\n',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          const TextSpan(text: '{song} - ชื่อเพลง\n'),
+          const TextSpan(text: '{mode} - โหมดการเล่น\n'),
+          const TextSpan(text: '{date} - วันที่\n'),
+          const TextSpan(text: '{time} - เวลา\n'),
+          const TextSpan(text: '{timestamp} - วันที่และเวลา'),
+        ],
+      ),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.grey[800],
+        borderRadius: BorderRadius.circular(8),
+      ),
+      triggerMode: TooltipTriggerMode.tap,
+      showDuration: const Duration(seconds: 5),
+      child: Container(
+        padding: const EdgeInsets.all(4),
+        decoration: BoxDecoration(
+          color: Colors.blue[50],
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Icon(
+          Icons.help_outline_rounded,
+          color: Colors.blue[700],
+          size: 20,
+        ),
       ),
     );
   }
