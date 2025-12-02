@@ -13,7 +13,7 @@ async function publish(req, res) {
 
   const isDeviceData = /^mass-radio\/zone\d+\/monitoring$/.test(topic);
 
-  const isDeviceLtw = /^mass-radio\/zone\d+\/ltw$/.test(topic);
+  const isDeviceLtw = /^mass-radio\/zone\d+\/lwt$/.test(topic);
 
   const isSpecialCmd = ['mass-radio/select/command', 'mass-radio/all/command'].includes(topic);
 
