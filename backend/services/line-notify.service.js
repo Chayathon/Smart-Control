@@ -10,6 +10,11 @@ async function sendLineNotification(message) {
         const lineEnabled = settings.lineNotifyEnabled ?? false;
         const channelAccessToken = settings.lineChannelAccessToken;
 
+        console.log('🔍 LINE Settings Check:');
+        console.log('  - lineEnabled:', lineEnabled);
+        console.log('  - channelAccessToken exists:', !!channelAccessToken);
+        console.log('  - channelAccessToken length:', channelAccessToken?.length || 0);
+
         if (!lineEnabled) {
             console.log('📴 LINE notification disabled');
             return false;
@@ -28,6 +33,9 @@ async function sendLineNotification(message) {
                 }
             ]
         };
+
+        console.log('📡 Sending to LINE API:', LINE_BROADCAST_API_URL);
+        console.log('📝 Payload:', JSON.stringify(payload, null, 2));
 
         const response = await axios.post(LINE_BROADCAST_API_URL, payload, {
             headers: {
