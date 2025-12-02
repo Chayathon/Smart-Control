@@ -1,5 +1,5 @@
 const mqtt = require('mqtt');
-const { broadcast } = require('../ws/wsServer');
+const { broadcast, broadcastDeviceData } = require('../ws/wsServer');
 const Device = require('../models/Device');
 const DeviceData = require('../models/DeviceData');
 const uart = require('./uart.handle');
@@ -17,7 +17,7 @@ let blockSyncUntil = 0;
 let lastBulkString = "";
 
 let dbBuffer = [];
-// let wsBuffer = []; 
+let wsBuffer = []; 
 const BATCH_INTERVAL = 500;
 const TOTAL_ZONES = 200;
 
@@ -203,20 +203,21 @@ async function processBatch() {
         dbBuffer = []; 
 
         if (mongoose.connection.readyState === 1) {
-            DeviceData.insertMany(batch)
+            DeviceData.insertMany(batch, { ordered: false })
                 .catch(err => console.error('[Batch-DB] Error:', err.message));
         }
     }
 
-    // if (wsBuffer.length > 0) {
-    //     const batch = [...wsBuffer];
-    //     wsBuffer = [];
+    if (wsBuffer.length > 0) {
+        const batch = [...wsBuffer];
+        wsBuffer = [];
 
-    //     broadcast({
-    //         type: 'MONITOR_UPDATE_BULK', 
-    //         data: batch
-    //     });
-    // }
+        broadcastDeviceData({
+            type: 'MONITOR_UPDATE_BULK', 
+            data: batch
+        });
+
+    }
 }
 
 //1. จัดการข้อมูล DeviceData ที่เข้ามา
@@ -274,7 +275,17 @@ async function handleDeviceData(topic, payloadStr, packet) {
         lng: json.lng,
     };
 
-    dbBuffer.push(payloadForIngest); // รอรถเมล์รอบ DB
+    let payloadForUI = payloadForIngest;
+    try {
+        payloadForUI = deviceDataService.toFrontendRow(payloadForIngest);
+        // console.log('[Data] Formatted for UI:', payloadForUI);   
+    } catch (e) {
+        console.warn('[Data] Formatting error, sending raw:', e.message);
+    }
+
+    wsBuffer.push(payloadForUI);
+
+    dbBuffer.push(payloadForIngest);
     
     const now = Date.now();
     const lastUpdate = lastHeartbeatUpdate.get(no) || 0;
