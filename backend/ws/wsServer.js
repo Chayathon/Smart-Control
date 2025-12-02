@@ -89,7 +89,7 @@ function createWSServer(server) {
                     .catch(err => console.error(`LINE notification (${event}) error:`, err));
             }
             // Song/Stream Ended events
-            else if (event === 'ended' || event === 'stopped' || event === 'stopped-all' || event === 'mic-stopped') {
+            else if (event === 'ended' || event === 'stopped-all' || event === 'mic-stopped') {
                 // ตรวจสอบว่าสามารถแจ้งเตือน end ได้หรือไม่
                 // ถ้ายังไม่มีการแจ้ง start ก่อนหน้า จะไม่แจ้ง end
                 if (!lineNotifyService.canNotifyEnd()) {
