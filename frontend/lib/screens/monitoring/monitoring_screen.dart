@@ -6,6 +6,7 @@ import 'package:latlong2/latlong.dart' as latlng;
 
 import 'package:smart_control/core/config/app_config.dart';
 import 'package:smart_control/services/device_data_service.dart';
+import 'package:smart_control/services/zone_service.dart'; // ✅ NEW
 
 import 'parts/map_card.dart';
 import 'parts/list_card.dart'; // MonitoringKind, TypeFilter, StatusFilter
@@ -30,6 +31,12 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
 
   /// history ตาม nodeId (ใช้กับกราฟ)
   final Map<String, List<Json>> _historyById = {};
+
+  // ✅ NEW: เก็บสถานะออนไลน์จาก ZoneService (zone no → online?)
+  Map<int, bool> _onlineByZone = {};
+
+  // ✅ NEW: subscription กับ onlineStream ของ ZoneService
+  StreamSubscription<Map<int, bool>>? _onlineSub;
 
   // UI states
   bool _loading = true;
@@ -71,6 +78,15 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
     _init();
     _tick = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() {});
+    });
+
+    // ✅ NEW: ต่อ WebSocket /ws/status ผ่าน ZoneService + subscribe online map
+    ZoneService.instance.ensureStatusWsConnected();
+    _onlineSub = ZoneService.instance.onlineStream.listen((map) {
+      if (!mounted) return;
+      setState(() {
+        _onlineByZone = map;
+      });
     });
   }
 
@@ -399,10 +415,26 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
     return _idOf(row) ?? '-';
   }
 
-  /// ตัดสิน online/offline จาก timestamp ล่าสุดของ record
-  /// - ถ้า timestamp ภายใน 5 วินาทีล่าสุด → online
-  /// - ถ้าเกิน 5 วินาที → offline
+  /// ✅ NEW: ใช้ LWT + watchdog จาก ZoneService เป็นหลัก
+  /// ถ้ายังไม่เคยรู้สถานะของ zone นี้ → fallback ไปใช้ timestamp 5 วินาทีแบบเดิม
   bool _onlineOf(Json row) {
+    int? no;
+
+    // ดึงหมายเลข zone จาก meta.no ก่อน
+    final meta = row['meta'];
+    if (meta is Map && meta['no'] is int) {
+      no = meta['no'] as int;
+    } else if (row['no'] is int) {
+      // เผื่อกรณี backend ส่ง no ไว้บน root
+      no = row['no'] as int;
+    }
+
+    // ถ้า ZoneService เคยรับ status ของ zone นี้แล้ว → ใช้ค่านั้นเลย
+    if (no != null && _onlineByZone.containsKey(no)) {
+      return _onlineByZone[no] == true;
+    }
+
+    // ถ้ายังไม่เคยเห็น zone นี้ใน LWT / watchdog เลย → เดาจาก timestamp
     final ts = _toDate(row['timestamp']);
     if (ts == null) return false;
 
@@ -545,6 +577,8 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
   @override
   void dispose() {
     _tick?.cancel();
+    _onlineSub?.cancel(); // ✅ NEW: ยกเลิกฟัง online stream
+    _onlineSub = null;
     _svc.dispose();
     super.dispose();
   }
