@@ -10,11 +10,6 @@ async function sendLineNotification(message) {
         const lineEnabled = settings.lineNotifyEnabled ?? false;
         const channelAccessToken = settings.lineChannelAccessToken;
 
-        console.log('🔍 LINE Settings Check:');
-        console.log('  - lineEnabled:', lineEnabled);
-        console.log('  - channelAccessToken exists:', !!channelAccessToken);
-        console.log('  - channelAccessToken length:', channelAccessToken?.length || 0);
-
         if (!lineEnabled) {
             console.log('📴 LINE notification disabled');
             return false;
@@ -67,7 +62,7 @@ async function sendLineNotification(message) {
 async function sendSongStarted(songTitle, mode = 'unknown') {
     try {
         const settings = await settingsService.getAllSettings();
-        const template = settings.lineMessageStart || '🎵 กำลังเล่น: {songTitle}';
+        const template = settings.lineMessageStart || '🟢 เริ่มถ่ายทอดสดเพลง! {timestamp} 🎵';
         
         const message = template
             .replace(/{songTitle}/g, songTitle)
@@ -89,7 +84,7 @@ async function sendSongStarted(songTitle, mode = 'unknown') {
 async function sendSongEnded(songTitle = '', mode = 'unknown') {
     try {
         const settings = await settingsService.getAllSettings();
-        const template = settings.lineMessageEnd || '⏹️ เพลงจบแล้ว{songTitle}';
+        const template = settings.lineMessageEnd || '🔴 หยุดการถ่ายทอดสด {timestamp}';
         
         const songPart = songTitle ? `: ${songTitle}` : '';
         const message = template
