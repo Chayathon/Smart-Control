@@ -3,6 +3,45 @@ const settingsService = require('./settings.service');
 
 const LINE_BROADCAST_API_URL = 'https://api.line.me/v2/bot/message/broadcast';
 
+let hasNotifiedStart = false;
+let lastActiveMode = 'unknown';
+
+function canNotifyStart() {
+    return !hasNotifiedStart;
+}
+
+function canNotifyEnd() {
+    return hasNotifiedStart;
+}
+
+function markStartNotified(mode = 'unknown') {
+    hasNotifiedStart = true;
+    lastActiveMode = mode;
+}
+
+function markEndNotified() {
+    hasNotifiedStart = false;
+}
+
+function getLastActiveMode() {
+    return lastActiveMode;
+}
+
+function getMode(mode) {
+    const modeMap = {
+        'playlist': 'รายการเพลง',
+        'file': 'ไฟล์เพลง',
+        'youtube': 'YouTube',
+        'schedule': 'เพลงตั้งเวลา',
+        'mic': 'ไมโครโฟน'
+    };
+    return modeMap[mode] || mode;
+}
+
+function getNotificationState() {
+    return { hasNotifiedStart, lastActiveMode };
+}
+
 async function sendLineNotification(message) {
     try {
         const settings = await settingsService.getAllSettings();
@@ -28,9 +67,6 @@ async function sendLineNotification(message) {
                 }
             ]
         };
-
-        console.log('📡 Sending to LINE API:', LINE_BROADCAST_API_URL);
-        console.log('📝 Payload:', JSON.stringify(payload, null, 2));
 
         const response = await axios.post(LINE_BROADCAST_API_URL, payload, {
             headers: {
@@ -68,9 +104,10 @@ async function sendSongStarted(song, mode = 'unknown') {
         const dateStr = now.toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
         const timeStr = now.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
         
+        const modeThai = getMode(mode);
         const message = template
             .replace(/{song}/g, song)
-            .replace(/{mode}/g, mode)
+            .replace(/{mode}/g, modeThai)
             .replace(/{date}/g, dateStr)
             .replace(/{time}/g, timeStr)
             .replace(/{timestamp}/g, now.toLocaleString('th-TH'));
@@ -78,7 +115,7 @@ async function sendSongStarted(song, mode = 'unknown') {
         console.log('📤 Sending LINE notification (Song Started):', message);
         const result = await sendLineNotification(message);
         if (result) {
-            console.log('✅ LINE notify sent: Song Started -', song);
+            console.log('✅ LINE notify sent: Song Started');
         }
         return result;
     } catch (error) {
@@ -96,10 +133,14 @@ async function sendSongEnded(song = '', mode = 'unknown') {
         const dateStr = now.toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
         const timeStr = now.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
         
+        // ใช้โหมดที่เก็บไว้ตอน start ถ้าโหมดที่ส่งมาเป็น none หรือ unknown
+        const actualMode = (mode === 'none' || mode === 'unknown') ? lastActiveMode : mode;
+        const modeThai = getMode(actualMode);
+        
         const songPart = song ? `: ${song}` : '';
         const message = template
             .replace(/{song}/g, songPart)
-            .replace(/{mode}/g, mode)
+            .replace(/{mode}/g, modeThai)
             .replace(/{date}/g, dateStr)
             .replace(/{time}/g, timeStr)
             .replace(/{timestamp}/g, now.toLocaleString('th-TH'));
@@ -107,7 +148,7 @@ async function sendSongEnded(song = '', mode = 'unknown') {
         console.log('📤 Sending LINE notification (Song Ended):', message);
         const result = await sendLineNotification(message);
         if (result) {
-            console.log('✅ LINE notify sent: Song Ended -', song || 'Unknown');
+            console.log('✅ LINE notify sent: Song Ended');
         }
         return result;
     } catch (error) {
@@ -145,4 +186,10 @@ module.exports = {
     sendSongStarted,
     sendSongEnded,
     testNotification,
+    canNotifyStart,
+    canNotifyEnd,
+    markStartNotified,
+    markEndNotified,
+    getLastActiveMode,
+    getNotificationState,
 };

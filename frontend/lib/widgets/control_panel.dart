@@ -19,7 +19,7 @@ class _ControlPanelConstants {
   static const Duration controlsCooldown = Duration(seconds: 8);
   static const Duration refreshDebounce = Duration(milliseconds: 300);
   static const Duration minRefreshInterval = Duration(milliseconds: 150);
-  static const double defaultMicVolume = 1.5;
+  static const double defaultMicVolume = 5.5;
 }
 
 class ControlPanel extends StatefulWidget {
