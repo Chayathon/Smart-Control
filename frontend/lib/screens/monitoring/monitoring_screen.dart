@@ -194,9 +194,18 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
     final newTs = _toDate(row['timestamp']) ??
         DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
 
-    if (newTs.isBefore(existingTs)) {
-      // แถวนี้เก่ากว่า → ไม่แตะการ์ด/แจ้งเตือน
+    // ถ้าไม่ใช่ realtime และแถวนี้เก่ากว่า → ข้าม
+    // แต่ถ้าเป็น realtime ให้บังคับอัปเดตได้ (กันกรณี clock เพี้ยน / timestamp ถอยหลัง)
+    if (!fromRealtime && newTs.isBefore(existingTs)) {
+      // แถวนี้เก่ากว่า (และไม่ใช่ realtime) → ไม่แตะการ์ด/แจ้งเตือน
       return;
+    }
+
+    if (fromRealtime && newTs.isBefore(existingTs)) {
+      debugPrint(
+        '⏩ [Monitoring] force update by realtime nodeId=$id '
+        'oldTs=$existingTs newTs=$newTs',
+      );
     }
 
     // row ใหม่นี้คือค่าล่าสุดของโหนด → override ค่าเดิม
