@@ -3,6 +3,28 @@ const settingsService = require('./settings.service');
 
 const LINE_BROADCAST_API_URL = 'https://api.line.me/v2/bot/message/broadcast';
 
+let hasNotifiedStart = false;
+
+function canNotifyStart() {
+    return !hasNotifiedStart;
+}
+
+function canNotifyEnd() {
+    return hasNotifiedStart;
+}
+
+function markStartNotified() {
+    hasNotifiedStart = true;
+}
+
+function markEndNotified() {
+    hasNotifiedStart = false;
+}
+
+function getNotificationState() {
+    return { hasNotifiedStart };
+}
+
 async function sendLineNotification(message) {
     try {
         const settings = await settingsService.getAllSettings();
@@ -145,4 +167,9 @@ module.exports = {
     sendSongStarted,
     sendSongEnded,
     testNotification,
+    canNotifyStart,
+    canNotifyEnd,
+    markStartNotified,
+    markEndNotified,
+    getNotificationState,
 };
