@@ -1,3 +1,4 @@
+// lib/screens/monitoring/parts/mini_stats.dart
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
@@ -8,40 +9,37 @@ const double _kTileHeight = 90;
 /// DC 3 + AC 5 + OAT
 /// oat = On Air Target (ไม่ใช่อุณหภูมิ)
 enum MetricKey {
-  // DC side
-  dcV, // DC Voltage
-  dcA, // DC Current
-  dcW, // DC Power
+  vdc, // DC Voltage
+  idc, // DC Current
+  wdc, // DC Power
 
-  // AC side (5 ตัว)
-  acV, // AC Voltage
-  acA, // AC Current
-  acW, // AC Power
+  vac, // AC Voltage
+  iac, // AC Current
+  wac, // AC Power
   acfreq, // AC Frequency
-  acEngy, // AC Energy
+  acenergy, // AC Energy
 
-  // อื่น ๆ
-  oat,
+  oat, // On Air Target
 }
 
 String metricLabel(MetricKey k) {
   switch (k) {
-    case MetricKey.dcV:
+    case MetricKey.vdc:
       return 'DC Voltage';
-    case MetricKey.dcA:
+    case MetricKey.idc:
       return 'DC Current';
-    case MetricKey.dcW:
+    case MetricKey.wdc:
       return 'DC Power';
 
-    case MetricKey.acV:
+    case MetricKey.vac:
       return 'AC Voltage';
-    case MetricKey.acA:
+    case MetricKey.iac:
       return 'AC Current';
-    case MetricKey.acW:
+    case MetricKey.wac:
       return 'AC Power';
     case MetricKey.acfreq:
       return 'AC Frequency';
-    case MetricKey.acEngy:
+    case MetricKey.acenergy:
       return 'AC Energy';
 
     case MetricKey.oat:
@@ -51,22 +49,22 @@ String metricLabel(MetricKey k) {
 
 String unitOf(MetricKey k) {
   switch (k) {
-    case MetricKey.dcV:
+    case MetricKey.vdc:
       return 'V';
-    case MetricKey.dcA:
+    case MetricKey.idc:
       return 'A';
-    case MetricKey.dcW:
+    case MetricKey.wdc:
       return 'W';
 
-    case MetricKey.acV:
+    case MetricKey.vac:
       return 'V';
-    case MetricKey.acA:
+    case MetricKey.iac:
       return 'A';
-    case MetricKey.acW:
+    case MetricKey.wac:
       return 'W';
     case MetricKey.acfreq:
       return 'Hz';
-    case MetricKey.acEngy:
+    case MetricKey.acenergy:
       return 'kWh';
 
     case MetricKey.oat:
@@ -77,22 +75,22 @@ String unitOf(MetricKey k) {
 
 Color metricColor(MetricKey k) {
   switch (k) {
-    case MetricKey.dcV:
+    case MetricKey.vdc:
       return const Color(0xFF06B6D4); // ฟ้าอมเขียว
-    case MetricKey.dcA:
+    case MetricKey.idc:
       return const Color(0xFF14B8A6); // เขียวอมฟ้า
-    case MetricKey.dcW:
+    case MetricKey.wdc:
       return const Color(0xFFEF4444); // แดง
 
-    case MetricKey.acV:
+    case MetricKey.vac:
       return const Color(0xFF6366F1); // ม่วงฟ้า
-    case MetricKey.acA:
+    case MetricKey.iac:
       return const Color(0xFFF97316); // ส้ม
-    case MetricKey.acW:
+    case MetricKey.wac:
       return const Color(0xFFEAB308); // เหลือง
     case MetricKey.acfreq:
       return const Color(0xFF0EA5E9); // ฟ้า
-    case MetricKey.acEngy:
+    case MetricKey.acenergy:
       return const Color(0xFF22C55E); // เขียว
 
     case MetricKey.oat:
@@ -143,7 +141,6 @@ class MiniStats extends StatelessWidget {
 
     final online = _onlineOf(row);
     final deviceName = _nameOf(row);
-    final lastUpdate = _timestampOf(row);
     final onAir = _onAirTarget(row);
 
     return Container(
@@ -161,6 +158,9 @@ class MiniStats extends StatelessWidget {
               builder: (context, constraints) {
                 const spacing = 12.0;
 
+                // timestamp สำหรับ "อัปเดตล่าสุด"
+                final ts = _timestampOf(row);
+
                 // ===== metrics ด้านล่าง =====
                 final specs = _buildMetricTiles(
                   row,
@@ -170,11 +170,10 @@ class MiniStats extends StatelessWidget {
                 // 2 คอลัมน์ สำหรับ metric
                 final colW = (constraints.maxWidth - spacing) / 2;
 
-                // 3 คอลัมน์บนสุด (Status / LastUpdate / OnAir)
-                final headerW =
-                    (constraints.maxWidth - spacing * 2) / 3;
+                // 2 คอลัมน์บนสุด (Status / OnAir)
+                final headerW = (constraints.maxWidth - spacing) / 2;
 
-                // header tiles (3 ใบบนสุด)
+                // header tiles (2 ใบบนสุด: สถานะ + On Air Target)
                 final headerRow = Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -186,17 +185,6 @@ class MiniStats extends StatelessWidget {
                         online: online,
                         deviceName: deviceName,
                       ),
-                    ),
-                    const SizedBox(width: spacing),
-                    // อัปเดตล่าสุด (ถ้าไม่มี timestamp ให้ใช้ spacer)
-                    SizedBox(
-                      width: headerW,
-                      child: lastUpdate != null
-                          ? _LastUpdateTile(
-                              width: headerW,
-                              timestamp: lastUpdate,
-                            )
-                          : const _SpacerTile(width: 0),
                     ),
                     const SizedBox(width: spacing),
                     // สถานะ On Air Target
@@ -217,21 +205,27 @@ class MiniStats extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         headerRow,
-                        const SizedBox(height: 16),
+                        const SizedBox(height: spacing),
                         const Center(
                           child: Text(
                             'ไม่มีข้อมูลค่าทางไฟฟ้าสำหรับอุปกรณ์นี้',
                             style: TextStyle(color: Colors.black45),
                           ),
                         ),
+                        if (ts != null) ...[
+                          const SizedBox(height: spacing),
+                          _LastUpdateTile(
+                            width: constraints.maxWidth,
+                            timestamp: ts,
+                          ),
+                        ],
                       ],
                     ),
                   );
                 }
 
                 // children metric ด้านล่าง
-                final metricChildren =
-                    specs.map<Widget>((t) {
+                final metricChildren = specs.map<Widget>((t) {
                   switch (t.kind) {
                     case _TileKind.spacer:
                       return _SpacerTile(width: colW);
@@ -243,11 +237,9 @@ class MiniStats extends StatelessWidget {
                       final color = metricColor(m);
                       final isActive = (m == activeMetric);
 
-                      // ตอนนี้ยังใช้ค่าเดียวทำเส้นตรง
+                      // ตอนนี้ยังใช้ค่าเดียว ทำให้แท่งสีเป็นของ metric นี้
                       final List<double> lineValues =
-                          value.isFinite
-                              ? [value, value, value]
-                              : const <double>[];
+                          value.isFinite ? [value, value, value] : const <double>[];
 
                       return _MetricTile(
                         width: colW,
@@ -273,12 +265,19 @@ class MiniStats extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       headerRow,
-                      const SizedBox(height: 16),
+                      const SizedBox(height: spacing), // ระยะเท่ากับ runSpacing
                       Wrap(
                         spacing: spacing,
                         runSpacing: spacing,
                         children: metricChildren,
                       ),
+                      if (ts != null) ...[
+                        const SizedBox(height: spacing),
+                        _LastUpdateTile(
+                          width: constraints.maxWidth,
+                          timestamp: ts,
+                        ),
+                      ],
                     ],
                   ),
                 );
@@ -300,16 +299,16 @@ class MiniStats extends StatelessWidget {
     final tiles = <_TileSpec>[];
 
     // ===== AC Metrics =====
-    _maybeAddMetricTile(row, tiles, 'AC Voltage', MetricKey.acV);
-    _maybeAddMetricTile(row, tiles, 'AC Current', MetricKey.acA);
-    _maybeAddMetricTile(row, tiles, 'AC Power', MetricKey.acW);
+    _maybeAddMetricTile(row, tiles, 'AC Voltage', MetricKey.vac);
+    _maybeAddMetricTile(row, tiles, 'AC Current', MetricKey.iac);
+    _maybeAddMetricTile(row, tiles, 'AC Power', MetricKey.wac);
     _maybeAddMetricTile(row, tiles, 'AC Frequency', MetricKey.acfreq);
-    _maybeAddMetricTile(row, tiles, 'AC Energy', MetricKey.acEngy);
+    _maybeAddMetricTile(row, tiles, 'AC Energy', MetricKey.acenergy);
 
     // ===== DC Metrics =====
-    _maybeAddMetricTile(row, tiles, 'DC Voltage', MetricKey.dcV);
-    _maybeAddMetricTile(row, tiles, 'DC Current', MetricKey.dcA);
-    _maybeAddMetricTile(row, tiles, 'DC Power', MetricKey.dcW);
+    _maybeAddMetricTile(row, tiles, 'DC Voltage', MetricKey.vdc);
+    _maybeAddMetricTile(row, tiles, 'DC Current', MetricKey.idc);
+    _maybeAddMetricTile(row, tiles, 'DC Power', MetricKey.wdc);
 
     // ให้เป็นจำนวนคู่ (2 คอลัมน์)
     if (tiles.length.isOdd) {
@@ -413,14 +412,14 @@ class MiniStats extends StatelessWidget {
 
   int _decimalPlaces(MetricKey k) {
     switch (k) {
-      case MetricKey.dcV:
-      case MetricKey.dcA:
-      case MetricKey.dcW:
-      case MetricKey.acV:
-      case MetricKey.acA:
-      case MetricKey.acW:
+      case MetricKey.vdc:
+      case MetricKey.idc:
+      case MetricKey.wdc:
+      case MetricKey.vac:
+      case MetricKey.iac:
+      case MetricKey.wac:
       case MetricKey.acfreq:
-      case MetricKey.acEngy:
+      case MetricKey.acenergy:
       case MetricKey.oat:
         // ให้ทุก metric แสดง 2 ตำแหน่งเหมือนกัน
         return 2;
@@ -433,30 +432,30 @@ class MiniStats extends StatelessWidget {
     dynamic raw;
     switch (k) {
       // DC → ใช้ field ใหม่ vdc / idc / wdc
-      case MetricKey.dcV:
+      case MetricKey.vdc:
         raw = row['vdc'];
         break;
-      case MetricKey.dcA:
+      case MetricKey.idc:
         raw = row['idc'];
         break;
-      case MetricKey.dcW:
+      case MetricKey.wdc:
         raw = row['wdc'];
         break;
 
       // AC → ใช้ field ใหม่ vac / iac / wac / acfreq / acenergy
-      case MetricKey.acV:
+      case MetricKey.vac:
         raw = row['vac'];
         break;
-      case MetricKey.acA:
+      case MetricKey.iac:
         raw = row['iac'];
         break;
-      case MetricKey.acW:
+      case MetricKey.wac:
         raw = row['wac'];
         break;
       case MetricKey.acfreq:
         raw = row['acfreq'];
         break;
-      case MetricKey.acEngy:
+      case MetricKey.acenergy:
         raw = row['acenergy'];
         break;
 
@@ -569,7 +568,7 @@ class _MetricTile extends StatelessWidget {
   final String title;
   final double value;
   final String unit;
-  final List<double> pathValues;
+  final List<double> pathValues; // ยังเก็บไว้เผื่ออนาคต ถึงตอนนี้ไม่ใช้
   final bool active;
   final VoidCallback? onTap;
   final Color color;
@@ -597,7 +596,6 @@ class _MetricTile extends StatelessWidget {
       borderRadius: BorderRadius.circular(16),
       child: Container(
         width: width,
-        height: _kTileHeight,
         decoration: BoxDecoration(
           color: bgColor,
           borderRadius: BorderRadius.circular(16),
@@ -610,66 +608,69 @@ class _MetricTile extends StatelessWidget {
             ),
           ],
         ),
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-        child: Column(
-          mainAxisSize: MainAxisSize.max,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        // ให้แทบสีแนวตั้งสูงคงที่ และโค้งตามมุมการ์ด
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: SizedBox(
+            height:60, // 🔼 เพิ่มความสูงการ์ด metric
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.black54,
-                  ),
+                // แทบสีแนวตั้งชิดขอบซ้าย สูงเต็มการ์ด
+                Container(
+                  width: 6,
+                  color: color,
                 ),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      _fmt(value),
-                      style: const TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.black,
-                      ),
-                    ),
-                    if (unit.isNotEmpty) ...[
-                      const SizedBox(width: 6),
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 3.0),
-                        child: Text(
-                          unit,
+                // เนื้อหา (title / value / unit)
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 10, 16, 10),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Text(
+                          title,
                           style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
                             color: Colors.black54,
                           ),
                         ),
-                      ),
-                    ],
-                  ],
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              _fmt(value),
+                              style: const TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.black,
+                              ),
+                            ),
+                            if (unit.isNotEmpty) ...[
+                              const SizedBox(width: 6),
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 2.0),
+                                child: Text(
+                                  unit,
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.black54,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ],
             ),
-            const SizedBox(height: 12),
-            SizedBox(
-              height: 34,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4.0),
-                child: CustomPaint(
-                  painter: _SparkPainter(
-                    pathValues,
-                    lineColor: color,
-                    isActive: active,
-                  ),
-                ),
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -683,6 +684,7 @@ class _MetricTile extends StatelessWidget {
   }
 }
 
+// (ยังเก็บ _SparkPainter ไว้เผื่ออนาคต ถึงตอนนี้ไม่ได้เรียกใช้แล้ว)
 class _SparkPainter extends CustomPainter {
   final List<double> values;
   final Color lineColor;
@@ -705,8 +707,8 @@ class _SparkPainter extends CustomPainter {
     final path = Path();
     for (int i = 0; i < values.length; i++) {
       final x = (i / (values.length - 1)) * size.width;
-      final y = size.height -
-          ((values[i] - minY) / range) * size.height;
+      final y =
+          size.height - ((values[i] - minY) / range) * size.height;
       if (i == 0) {
         path.moveTo(x, y);
       } else {
@@ -765,7 +767,9 @@ class _StatusTile extends StatelessWidget {
 
     return Container(
       width: width,
-      height: 94,
+      constraints: const BoxConstraints(
+        minHeight: 94,
+      ),
       decoration: BoxDecoration(
         color: bgColor,
         borderRadius: BorderRadius.circular(16),
@@ -883,7 +887,9 @@ class _OnAirTargetTile extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         child: Container(
           width: width,
-          height: 94,
+          constraints: const BoxConstraints(
+            minHeight: 94,
+          ),
           padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
           decoration: BoxDecoration(
             color: bgColor,
@@ -954,8 +960,7 @@ class _OnAirTargetTile extends StatelessWidget {
 }
 
 // ------------------- _LastUpdateTile -------------------
-
-class _LastUpdateTile extends StatelessWidget {
+class _LastUpdateTile extends StatefulWidget {
   final double width;
   final DateTime timestamp;
 
@@ -966,17 +971,44 @@ class _LastUpdateTile extends StatelessWidget {
   });
 
   @override
+  State<_LastUpdateTile> createState() => _LastUpdateTileState();
+}
+
+class _LastUpdateTileState extends State<_LastUpdateTile>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    // นาฬิกาเดินหมุนช้า ๆ 1 รอบ / 8 วิ
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 8),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    // พื้นหลัง + ขอบแบบการ์ดทั่วไป
     const borderColor = MiniStats.kBorderNormal;
     const bgColor = Colors.white;
 
-    final localTs = timestamp.toLocal();
-    final agoText = _formatTimeAgo(timestamp);
+    final localTs = widget.timestamp.toLocal();
+    final agoText = _formatTimeAgo(widget.timestamp);
     final detailText = _formatDateTime(localTs);
 
     return Container(
-      width: width,
-      height: 94,
+      width: widget.width,
+      constraints: const BoxConstraints(
+        minHeight: 72,
+      ),
       decoration: BoxDecoration(
         color: bgColor,
         borderRadius: BorderRadius.circular(16),
@@ -989,65 +1021,76 @@ class _LastUpdateTile extends StatelessWidget {
           ),
         ],
       ),
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          const Text(
-            'อัปเดตล่าสุด',
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: Colors.black54,
-            ),
-          ),
-          const SizedBox(height: 6),
+          // ฝั่งซ้าย: ไอคอน + (อัปเดตล่าสุด + วันเวลา) ใน Column
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      agoText,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.black,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      detailText,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                        color: Colors.black54,
-                      ),
+              Container(
+                width: 26, // ✅ ใหญ่ขึ้นจากเดิม 22
+                height: 26,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade100,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.06),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
                     ),
                   ],
                 ),
+                child: RotationTransition(
+                  turns: _controller,
+                  child: Icon(
+                    Icons.schedule_rounded,
+                    size: 24, // ✅ ขยายนาฬิกาให้เด่นขึ้น
+                    color: Colors.indigo.shade500,
+                  ),
+                ),
               ),
               const SizedBox(width: 8),
-              Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: Colors.indigo.shade50,
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  Icons.schedule_rounded,
-                  color: Colors.indigo.shade400,
-                  size: 22,
-                ),
+              // label + detailText เรียงในแนวตั้ง และ "เริ่มตรงกับคำว่าอัปเดตล่าสุด"
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'อัปเดตล่าสุด',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black87,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    detailText,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.black54,
+                    ),
+                  ),
+                ],
               ),
             ],
+          ),
+
+          // ฝั่งขวา: ข้อความ "xx วินาทีที่แล้ว / xx นาทีที่แล้ว ..."
+          Text(
+            agoText,
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF1F2937),
+            ),
           ),
         ],
       ),
@@ -1058,11 +1101,19 @@ class _LastUpdateTile extends StatelessWidget {
     final now = DateTime.now().toUtc();
     final diff = now.difference(tsUtc);
 
-    if (diff.inSeconds < 5) return 'เมื่อสักครู่';
-    if (diff.inSeconds < 60) return '${diff.inSeconds} วินาทีที่แล้ว';
-    if (diff.inMinutes < 60) return '${diff.inMinutes} นาทีที่แล้ว';
-    if (diff.inHours < 24) return '${diff.inHours} ชั่วโมงที่แล้ว';
-    if (diff.inDays < 30) return '${diff.inDays} วันที่แล้ว';
+    // 🔹 นับทุกวินาทีเหมือนเดิม
+    if (diff.inSeconds < 60) {
+      return '${diff.inSeconds} วินาทีที่แล้ว';
+    }
+    if (diff.inMinutes < 60) {
+      return '${diff.inMinutes} นาทีที่แล้ว';
+    }
+    if (diff.inHours < 24) {
+      return '${diff.inHours} ชั่วโมงที่แล้ว';
+    }
+    if (diff.inDays < 30) {
+      return '${diff.inDays} วันที่แล้ว';
+    }
     return 'มากกว่า 30 วันที่แล้ว';
   }
 

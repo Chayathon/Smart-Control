@@ -41,8 +41,6 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
   TypeFilter _typeFilter = TypeFilter.all;
   StatusFilter _statusFilter = StatusFilter.all;
 
-  // metric ปัจจุบัน (ส่งให้ MiniStats / กราฟ)
-  // เริ่มต้นใช้ DC Voltage เป็น metric หลัก
   MetricKey _activeMetric = MetricKey.vdc;
 
   // Map camera states
@@ -235,15 +233,6 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
   }
 
   /// อัปเดต summary alarm ระดับ "โหนด" (1 การ์ดต่อโหนดใน NotificationCenter)
-  ///
-  /// ใช้ "ข้อมูลล่าสุดของแต่ละโหนด" เป็นตัวตัดสิน:
-  /// - ถ้าแถวนี้เก่ากว่า timestamp ที่เคยจำไว้ของโหนดนั้น → ข้าม
-  /// - ถ้าแถวนี้ใหม่สุดและไม่มี alarm / สถานะให้แสดง → ลบโหนดนี้ออกจาก _nodeAlarms
-  /// - ถ้าแถวนี้ใหม่สุดและมีอย่างน้อย 1 field → เก็บเป็น NodeAlarmSummary
-  ///
-  /// ✅ พิเศษ:
-  /// - field `online` & `oat` ให้เก็บทั้งค่า 0 และ 1 (สถานะ)
-  /// - field อื่น (acSensor/acVoltage/.../dcCurrent) เก็บเฉพาะค่าที่ != 0
   void _updateNodeAlarmFromRow(Json row, {required bool fromRealtime}) {
     final id = _idOf(row);
     if (id == null) return;
@@ -285,7 +274,6 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
 
     if (abnormal.isEmpty) {
       // ✅ ไม่มีอะไรให้แสดง (ไม่มี alarm และไม่มีสถานะ online/oat)
-      //    → ลบโหนดนี้ออกจากแผงแจ้งเตือน
       debugPrint(
           '✅ [Monitoring] clear alarm nodeId=$id (no alarms & no online/oat field)');
       _nodeAlarms.remove(id);
