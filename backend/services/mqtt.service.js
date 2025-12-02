@@ -17,8 +17,9 @@ let blockSyncUntil = 0;
 let lastBulkString = "";
 
 let dbBuffer = [];
-let wsBuffer = []; 
+// let wsBuffer = []; 
 const BATCH_INTERVAL = 500;
+const TOTAL_ZONES = 200;
 
 const deviceIdCache = new Map(); 
 const lastHeartbeatUpdate = new Map();
@@ -220,7 +221,6 @@ async function processBatch() {
 
 //1. จัดการข้อมูล DeviceData ที่เข้ามา
 async function handleDeviceData(topic, payloadStr, packet) {
-    // 1. กันของเก่า
     if (packet && packet.retain) return true;
     
     const m = topic.match(/^mass-radio\/(zone\d+)\/monitoring$/);    
@@ -229,7 +229,7 @@ async function handleDeviceData(topic, payloadStr, packet) {
     const nodeKey = m[1]; 
     const noFromTopic = parseInt(nodeKey.replace(/^zone/, ''), 10); 
 
-    // console.log('[MQTT] 📥 incoming deviceData from', nodeKey); // เปิด log ถ้าน้อย, ปิดถ้าเยอะ
+    console.log('[MQTT] 📥 incoming deviceData from', nodeKey); // เปิด log ถ้าน้อย, ปิดถ้าเยอะ
 
     let json;
     try {
@@ -297,93 +297,6 @@ async function handleDeviceData(topic, payloadStr, packet) {
     return true; 
 }
 
-// async function handleDeviceData(topic, payloadStr, packet) {
-//     if (packet && packet.retain) return true;
-//     const m = topic.match(/^mass-radio\/(zone\d+)\/monitoring$/);    
-//     if (!m) return false;
-
-//     const nodeKey = m[1]; 
-//     const noFromTopic = parseInt(nodeKey.replace(/^zone/, ''), 10); 
-
-
-//     console.log('[MQTT] 📥 incoming deviceData from', nodeKey, 'payload =', payloadStr);
-//     let json;
-//     try {
-//         json = JSON.parse(payloadStr);
-//     } catch (e) {
-//         console.error('[MQTT] Invalid JSON for deviceData:', e.message);
-//         return true;
-//     }
-
-//     const no = typeof json.no === 'number' && Number.isFinite(json.no) ? json.no : noFromTopic;
-
-//     let deviceId = deviceIdCache.get(no);
-
-//     if (!deviceId && mongoose.connection.readyState === 1) {
-//         try {
-//             const device = await Device.findOne({ no });
-//             if (device) {
-//                 deviceId = device._id;
-//                 deviceIdCache.set(no, device._id);
-//             } else {
-//                 console.warn(`[MQTT] Device no ${no} not registered in DB`);
-//             }
-//         } catch(e) {
-//             console.error(`[MQTT] Error fetching device no ${no}:`, e.message);
-//         }
-//     }
-
-//     const timestamp = json.timestamp ? new Date(json.timestamp) : new Date();
-
-//     const payloadForIngest = {
-//         timestamp,
-//         meta: {
-//             no,
-//             ...(deviceId ? { deviceId } : {}),
-//         },
-//         vac: json.vac,
-//         iac: json.iac,
-//         wac: json.wac,
-//         acfreq: json.acfreq,
-//         acenergy: json.acenergy,
-//         vdc: json.vdc,
-//         idc: json.idc,
-//         wdc: json.wdc,
-//         flag: json.flag,
-//         oat: json.oat,
-//         lat: json.lat,
-//         lng: json.lng,
-//         type: json.type
-//     };
-
-
-//     if (mongoose.connection.readyState === 1) {
-//         deviceDataService.ingestOne(payloadForIngest)
-//             .catch(err => {
-//                 console.error(`[Data] Save Error zone ${no}:`, err.message);
-//             });
-//     }
-//     const now = Date.now();
-
-//     // A. อัปเดตใน RAM ทันที (เพื่อให้ checkOfflineZones เห็นว่ายังอยู่)
-//     const item = deviceStatus.find(d => d.zone === no);
-//     if (item) {
-//         item.lastSeen = now;
-//     } else {
-//         // ถ้าไม่มีใน List ก็สร้างใหม่ (Optional)
-//         // upsertDeviceStatus(no, { online: true }); 
-//     }
-
-//     const lastUpdate = lastHeartbeatUpdate.get(no) || 0;
-    
-//     if (now - lastUpdate > 60000 && deviceId && mongoose.connection.readyState === 1) {
-//         Device.updateOne({ _id: deviceId }, { lastSeen: timestamp }).catch(()=>{});
-//         lastHeartbeatUpdate.set(no, now);
-//     }
-
-//     return true; 
-// }
-
 //2. จัดการ LWT (Last Will and Testament)
 async function handleLWT(topic, payloadStr) {
     const lwtMatch = topic.match(/^mass-radio\/([^/]+)\/lwt$/);
@@ -418,11 +331,10 @@ async function handleCommand(topic, payloadStr) {
 
     // Case: Select (หลายโซน)
     if (target === 'select' && json.zone && Array.isArray(json.zone)) {
-        console.log(`📨 Received SELECT command for zones:`, json.zone);
-        json.zone.forEach(zoneNo => {
-            const zonePayload = { ...json }; delete zonePayload.zone;
-            publish(`mass-radio/zone${zoneNo}/command`, zonePayload);
-        });
+        console.log(`📨 Received SELECT command for ${json.zone.length} zones:`, json.zone);
+        if (typeof json.set_stream === 'boolean') {
+            await sendMultiZoneUartCommand(json.zone, json.set_stream);
+        }
         return true;
     }
 
@@ -522,7 +434,6 @@ async function handleStatus(topic, payloadStr, packet) {
         upsertDeviceStatus(no, merged);
         const isFromManualPanel = merged.source === 'manual-panel';
 
-        // 🔥 4. SYNC Logic: Node is King + Flood Protection 🔥
         if (!isFromManualPanel && merged.stream_enabled !== undefined && merged.stream_enabled !== prevStreamStatus) {
             if (Date.now() < blockSyncUntil) {
             } else {
@@ -576,18 +487,15 @@ async function sendZoneUartCommand(zone, set_stream) {
         console.error('[RadioZone] UART write error for zone command:', err.message);
     }
 }
+
 //5.1 ส่งคำสั่ง Bulk เปิด/ปิดโซนไปยัง UART
 async function sendZoneUartBulkCommand(zone, set_stream) {
-    const TOTAL_ZONES = 200;
     let bulkString = '';
     if (zone === 1111) {
         bulkString = (set_stream ? 'Y' : 'N').repeat(TOTAL_ZONES);
-    } 
-    
-    else {
+    } else {
         for (let i = 1; i <= TOTAL_ZONES; i++) {
             let isZoneOn = false;
-
             if (i === zone) {
                 isZoneOn = set_stream;
             } 
@@ -595,15 +503,11 @@ async function sendZoneUartBulkCommand(zone, set_stream) {
                 const item = deviceStatus.find(d => d.zone === i);
                 isZoneOn = item && item.data ? item.data.stream_enabled : false;
             }
-
             bulkString += (isZoneOn ? 'Y' : 'N');
         }
     }
-
     const finalCmd = `${bulkString}`;
-    
-    // console.log(`[RadioZone] Bulk String Length: ${finalCmd.length}`);
-
+    console.log(`[RadioZone] Bulk String Length: ${finalCmd.length}`);
     const now = Date.now();
     if (lastUartCmd === finalCmd && (now - lastUartTs) < 300) {
         console.log('[RadioZone] Skip duplicate UART bulk cmd');
@@ -611,9 +515,7 @@ async function sendZoneUartBulkCommand(zone, set_stream) {
     }
     lastUartCmd = finalCmd;
     lastUartTs = now;
-
     console.log(`[RadioZone] 📤 UART Syncing ${TOTAL_ZONES} zones (Target: ${zone}, Val: ${set_stream})`);
-    
     try {
         await uart.writeString(finalCmd, 'ascii');
     } catch (err) {
@@ -621,7 +523,52 @@ async function sendZoneUartBulkCommand(zone, set_stream) {
     }
 }
 
-//6. ส่งคำสั่งปรับระดับเสียงโซนไปยัง UART
+// 5.2 ส่งคำสั่งเปิด/ปิดหลายโซน bulk ไปยัง UART
+async function sendMultiZoneUartCommand(targetZonesArray, set_stream) {
+    const TOTAL_ZONES = 200;
+    let bulkString = '';
+
+    // 1. แปลง Array เป็น Set เพื่อให้เช็คเร็วขึ้น (O(1)) และกันค่าซ้ำ
+    const targets = new Set(targetZonesArray.map(z => parseInt(z, 10)));
+
+    // 2. วนลูปสร้าง String 200 ตัว
+    for (let i = 1; i <= TOTAL_ZONES; i++) {
+        let isZoneOn = false;
+
+        // A. ถ้าโซนนี้ (i) อยู่ในรายชื่อที่เลือก -> ใช้ค่าใหม่ที่สั่งมา
+        if (targets.has(i)) {
+            isZoneOn = set_stream;
+        } 
+        // B. ถ้าไม่อยู่ -> ให้รักษาค่าเดิมจาก Memory ไว้
+        else {
+            const item = deviceStatus.find(d => d.zone === i);
+            isZoneOn = item && item.data ? item.data.stream_enabled : false;
+        }
+
+        bulkString += (isZoneOn ? 'Y' : 'N');
+    }
+
+    const finalCmd = `${bulkString}`;
+
+    // 3. ระบบ Debounce (กันส่งซ้ำ)
+    const now = Date.now();
+    if (lastUartCmd === finalCmd && (now - lastUartTs) < 300) {
+        console.log('[RadioZone] Skip duplicate UART Multi-Zone cmd');
+        return;
+    }
+    lastUartCmd = finalCmd;
+    lastUartTs = now;
+
+    // console.log(`[RadioZone] 📤 UART Multi-Zone Sync (${targetZonesArray.length} zones) -> ${set_stream ? 'ON' : 'OFF'}`);
+    try {
+        console.log('[RadioZone] UART Command:', finalCmd);
+        // await uart.writeString(finalCmd, 'ascii');
+    } catch (err) {
+        console.error('[RadioZone] ❌ UART Write Error:', err.message);
+    }
+}
+
+//7. ส่งคำสั่งปรับระดับเสียงโซนไปยัง UART
 async function sendVolUartCommand(zone, set_volume) {
     const zoneStr = String(zone).padStart(4, '0');
 
@@ -659,7 +606,7 @@ async function sendVolUartCommand(zone, set_volume) {
     }
 }
 
-//7. จัดการสถานะ Bulk (เช่น "YNNYYN...")
+//8. จัดการสถานะ Bulk (เช่น "YNNYYN...")
 async function handleRawBulkStatus(rawString) {
     const totalZones = rawString.length;
     if (rawString === lastBulkString) {
@@ -725,7 +672,7 @@ async function handleRawBulkStatus(rawString) {
     }
 }
 
-// 8. ตรวจสอบโซนที่ Offline (เงียบเกิน 35 วินาที)
+// 9. ตรวจสอบโซนที่ Offline (เงียบเกิน 35 วินาที)
 async function checkOfflineZones() {
     if (mongoose.connection.readyState !== 1) return;
 
@@ -753,7 +700,7 @@ async function checkOfflineZones() {
                 volume: currentMem ? currentMem.volume : 0,
                 
                 offline: true,
-                source: 'watchdog' // ระบุว่าโดน Watchdog จับได้ (ไม่ใช่ LWT)
+                source: 'watchdog' 
             });
         });
     }
