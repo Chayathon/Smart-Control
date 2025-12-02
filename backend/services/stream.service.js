@@ -602,13 +602,6 @@ async function startYoutubeUrl(url, seekMs = 0, opts = {}) {
             if (!pausePendingResume && code !== 0 && endedUrl) {
                 ytdlpCache.delete(endedUrl);
             }
-
-            if (!pausePendingResume && endedUrl) {
-                setTimeout(() => {
-                    console.log('🔁 Auto replay same URL');
-                    startYoutubeUrl(endedUrl).catch(e => console.error('Auto replay failed:', e));
-                }, 1500);
-            }
         });
 
         isPaused = false;

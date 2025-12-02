@@ -7,9 +7,13 @@ class NodeAlarmSummary {
   DateTime lastUpdated;
 
   /// key = field เช่น
-  /// - 'voltage'  : 0 = ปกติ, 1 = สูง, 2 = ต่ำ
-  /// - 'current'  : 0 = ปกติ, 1 = over current
-  /// - 'oat'      : 0 = ไม่ได้ประกาศ, 1 = กำลังประกาศ
+  /// - 'acVoltage' : 0 = ปกติ, 1 = over, 2 = under
+  /// - 'acCurrent' : 0 = ปกติ, 1 = over
+  /// - 'dcVoltage' : 0 = ปกติ, 1 = over, 2 = under
+  /// - 'dcCurrent' : 0 = ปกติ, 1 = over
+  /// - 'acSensor'  : 0 = ปกติ, 1 = sensor fault
+  /// - 'dcSensor'  : 0 = ปกติ, 1 = sensor fault
+  /// - 'oat'       : 0 = ไม่ได้ประกาศ, 1 = กำลังประกาศ
   ///
   /// value = int ตามสเปคด้านบน
   final Map<String, int> fields;
@@ -122,8 +126,8 @@ class _NotificationCenterState extends State<NotificationCenter> {
       padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
       child: Row(
         children: [
-          Row(
-            children: const [
+          const Row(
+            children: [
               Icon(
                 Icons.notifications_active_outlined,
                 size: 22,
@@ -207,16 +211,18 @@ class _NotificationCenterState extends State<NotificationCenter> {
           final s = display[i];
 
           final abnormalEntries =
-              s.fields.entries.where((e) => e.value != 0).toList();
+              s.fields.entries.where((e) => e.value != 0 || e.key == 'oat' || e.key == 'online').toList();
           if (abnormalEntries.isEmpty) {
             // ป้องกันการ์ดว่าง (ส่วนใหญ่จะถูกลบตั้งแต่ใน parent แล้ว)
             return const SizedBox.shrink();
           }
 
-          // ✅ ตัดสิน "สี" ของการ์ดจาก field ทางไฟฟ้าเท่านั้น (voltage/current/power)
+          // ✅ ตัดสิน "สี" ของการ์ดจาก field ทางไฟฟ้าเท่านั้น (ac/dc voltage/current/power)
           final criticalForColor = abnormalEntries.where((e) {
             final k = e.key;
-            return k != 'oat'; // oat = สถานะประกาศ, ไม่ใช้ตัดสินสีแดง/เหลือง
+            // oat/online ไม่ใช้ตัดสินสีแดง/เหลือง
+            if (k == 'oat' || k == 'online') return false;
+            return true;
           }).toList();
 
           final bool hasRed = criticalForColor.any((e) => e.value == 1);
@@ -230,20 +236,20 @@ class _NotificationCenterState extends State<NotificationCenter> {
           } else if (hasYellow) {
             baseColor = Colors.yellow[700] ?? Colors.yellow;
           } else {
-            // กรณีไม่มี critical field (มีแต่ oat หรือ field อื่น)
+            // กรณีไม่มี critical field (มีแต่ oat/online หรือ field อื่นที่ไม่อันตราย)
             baseColor = _accentColor;
           }
 
           final bool isRead = !s.hasUnread;
 
-          final Color cardBg = Colors.white;
-          final Color borderColor = const Color(0xFFCBD5E1);
+          const Color cardBg = Colors.white;
+          const Color borderColor = Color(0xFFCBD5E1);
           final Color titleColor =
               isRead ? const Color(0xFF4B5563) : const Color(0xFF111827);
-          final Color subtitleColor = const Color(0xFF6B7280);
+          const Color subtitleColor = Color(0xFF6B7280);
 
           final int abnormalCount = abnormalEntries.length;
-          final String title = '${s.name} มี $abnormalCount ค่าผิดปกติ';
+          final String title = '${s.name} มี $abnormalCount ค่าผิดปกติ/สถานะสำคัญ';
 
           return Padding(
             padding: const EdgeInsets.only(bottom: 8),
@@ -271,8 +277,10 @@ class _NotificationCenterState extends State<NotificationCenter> {
                       ),
                   ],
                 ),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -306,9 +314,8 @@ class _NotificationCenterState extends State<NotificationCenter> {
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
                                     fontSize: 14,
-                                    fontWeight: isRead
-                                        ? FontWeight.w500
-                                        : FontWeight.w700,
+                                    fontWeight:
+                                        isRead ? FontWeight.w500 : FontWeight.w700,
                                     color: titleColor,
                                   ),
                                 ),
@@ -352,7 +359,7 @@ class _NotificationCenterState extends State<NotificationCenter> {
                                   ),
                                   child: Text(
                                     '${_fieldLabel(e.key)}${_severityLabel(e.key, e.value)}',
-                                    style: TextStyle(
+                                    style: const TextStyle(
                                       fontSize: 11,
                                       height: 1.2,
                                       color: subtitleColor,
@@ -405,12 +412,13 @@ class _NotificationCenterState extends State<NotificationCenter> {
     return '${diff.inDays}d ago';
   }
 
-  /// แปลงชื่อ key ใน alarms
-  /// - voltage  : แรงดันไฟ
-  /// - current  : กระแสไฟ
-  /// - oat      : สถานะการประกาศ
+  /// แปลงชื่อ key ใน alarms → prefix ภาษาไทย
+  ///
+  /// รองรับทั้ง key เก่า (voltage/current/dcV/dcA/dcW) และ key ใหม่จาก backend
+  /// (acVoltage, acCurrent, dcVoltage, dcCurrent, acSensor, dcSensor, oat, online)
   String _fieldLabel(String key) {
     switch (key) {
+      // เดิม
       case 'voltage':
       case 'dcV':
         return 'แรงดันไฟ ';
@@ -423,6 +431,21 @@ class _NotificationCenterState extends State<NotificationCenter> {
         return 'กำลังไฟ ';
       case 'oat':
         return 'สถานะประกาศ ';
+      // ใหม่จาก backend
+      case 'acVoltage':
+        return 'แรงดัน AC ';
+      case 'acCurrent':
+        return 'กระแส AC ';
+      case 'dcVoltage':
+        return 'แรงดัน DC ';
+      case 'dcCurrent':
+        return 'กระแส DC ';
+      case 'acSensor':
+        return 'เซนเซอร์ AC ';
+      case 'dcSensor':
+        return 'เซนเซอร์ DC ';
+      case 'online':
+        return 'สถานะเชื่อมต่อ ';
       default:
         return '$key ';
     }
@@ -430,15 +453,19 @@ class _NotificationCenterState extends State<NotificationCenter> {
 
   /// แปลค่าระดับความผิดปกติ ตามชนิด field
   ///
-  /// - voltage:
-  ///   0 = ปกติ, 1 = สูง, 2 = ต่ำ
-  ///
-  /// - current:
-  ///   0 = ปกติ, 1 = over current
-  ///
+  /// สเปคใหม่จาก backend:
+  /// - acVoltage / dcVoltage:
+  ///     0 = normal, 1 = over, 2 = under
+  /// - acCurrent / dcCurrent:
+  ///     0 = normal, 1 = over
+  /// - acSensor / dcSensor:
+  ///     0 = normal, 1 = sensor false
   /// - oat:
-  ///   0 = ไม่ได้ประกาศ, 1 = กำลังประกาศ
+  ///     0 = ไม่ได้ประกาศ, 1 = กำลังประกาศ
+  /// - online: (ถ้าเคยใช้)
+  ///     0 = ออฟไลน์, 1 = ออนไลน์
   String _severityLabel(String key, int v) {
+    // oat = สถานะประกาศเสียง
     if (key == 'oat') {
       switch (v) {
         case 1:
@@ -450,7 +477,23 @@ class _NotificationCenterState extends State<NotificationCenter> {
       }
     }
 
-    if (key == 'current' || key == 'dcA') {
+    // สถานะ online/offline (ถ้ามีส่งมาใน alarms)
+    if (key == 'online') {
+      switch (v) {
+        case 1:
+          return 'ออนไลน์';
+        case 0:
+          return 'ออฟไลน์';
+        default:
+          return 'สถานะไม่ทราบ';
+      }
+    }
+
+    // กระแสไฟ (เดิม + ใหม่)
+    if (key == 'current' ||
+        key == 'dcA' ||
+        key == 'acCurrent' ||
+        key == 'dcCurrent') {
       switch (v) {
         case 1:
           return 'กระแสเกิน (Over current)';
@@ -461,7 +504,36 @@ class _NotificationCenterState extends State<NotificationCenter> {
       }
     }
 
-    // field ปกติอื่น ๆ: voltage / power
+    // แรงดันไฟ (เดิม + ใหม่)
+    if (key == 'acVoltage' ||
+        key == 'dcVoltage' ||
+        key == 'voltage' ||
+        key == 'dcV') {
+      switch (v) {
+        case 1:
+          return 'สูงผิดปกติ (Over voltage)';
+        case 2:
+          return 'ต่ำผิดปกติ (Under voltage)';
+        case 0:
+          return 'ปกติ';
+        default:
+          return 'ค่าผิดปกติ';
+      }
+    }
+
+    // สถานะเซนเซอร์ AC/DC
+    if (key == 'acSensor' || key == 'dcSensor') {
+      switch (v) {
+        case 0:
+          return 'ปกติ';
+        case 1:
+          return 'เซนเซอร์ผิดปกติ';
+        default:
+          return 'สถานะผิดปกติ';
+      }
+    }
+
+    // field ปกติอื่น ๆ: watt/power ฯลฯ
     switch (v) {
       case 1:
         return 'สูงผิดปกติ';

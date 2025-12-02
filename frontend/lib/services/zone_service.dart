@@ -1,3 +1,4 @@
+import 'dart:async'; // ✅ NEW
 import 'dart:convert';
 
 import 'package:smart_control/core/network/api_service.dart';
@@ -11,6 +12,18 @@ class ZoneService {
 
   WebSocketChannel? _channel;
   String statusWsUrl = AppConfig.wsStatus;
+
+  // ✅ NEW: เก็บ online/offline ของแต่ละ zone
+  final Map<int, bool> _onlineByZone = {};
+
+  // ✅ NEW: broadcast ให้หลายจอ subscribe ได้
+  final _onlineStreamCtrl = StreamController<Map<int, bool>>.broadcast();
+
+  /// ✅ NEW: stream ใช้ใน UI
+  Stream<Map<int, bool>> get onlineStream => _onlineStreamCtrl.stream;
+
+  /// ✅ NEW: snapshot ปัจจุบัน
+  Map<int, bool> get currentOnlineMap => Map.unmodifiable(_onlineByZone);
 
   Future<List<dynamic>> fetchAllZones() async {
     final api = await ApiService.private();
@@ -100,6 +113,10 @@ class ZoneService {
         try {
           final data = jsonDecode(message);
           if (data is Map<String, dynamic>) {
+            // ✅ NEW: อัปเดต online map จาก message ทุกตัว
+            _handleStatusForOnlineMap(data);
+
+            // callback เดิมยังทำงานเหมือนเดิม
             onData(data);
           }
         } catch (e) {
@@ -116,10 +133,41 @@ class ZoneService {
     );
   }
 
+  /// ✅ NEW: เรียกใช้ตอนอยากให้ WS ต่อแน่ ๆ แต่ไม่สน data ดิบ
+  void ensureStatusWsConnected() {
+    if (_channel != null) return;
+    // ใช้ callback ว่าง ๆ ก็พอ เราไปใช้จาก onlineStream แทน
+    subscribeToStatusUpdates((_) {});
+  }
+
+  /// ✅ NEW: handle ข้อมูลจาก /ws/status → map zone → online/offline
+  void _handleStatusForOnlineMap(Map<String, dynamic> data) {
+    // ต้องเป็น type = 'status' ถึงจะสน
+    if (data['type'] != 'status') return;
+
+    final zone = data['zone'];
+    if (zone is! int) return;
+
+    // ถ้า offline = true → offline, ถ้าไม่ใช่/ไม่มี → online
+    final offline = data['offline'] == true;
+    final online = !offline;
+
+    // ถ้าไม่มีการเปลี่ยนแปลง ไม่ต้อง broadcast
+    if (_onlineByZone[zone] == online) return;
+
+    _onlineByZone[zone] = online;
+
+    // ส่งสำเนา map ให้คนฟัง
+    _onlineStreamCtrl.add(Map<int, bool>.from(_onlineByZone));
+  }
+
   void dispose() {
     try {
       _channel?.sink.close();
     } catch (_) {}
     _channel = null;
+
+    // ❗ ไม่ปิด _onlineStreamCtrl นะ (กันกรณี app ยังใช้ต่อ)
+    // ถ้าจะปิดจริง ๆ ต้องแน่ใจว่าไม่มีจอไหนใช้แล้ว
   }
 }

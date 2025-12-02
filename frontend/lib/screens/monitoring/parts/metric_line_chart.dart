@@ -1,6 +1,7 @@
+// lib/screens/monitoring/parts/metric_line_chart.dart
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import 'mini_stats.dart'; // ใช้ MetricKey จากไฟล์นี้
+import 'mini_stats.dart'; // ใช้ MetricKey + metricLabel / unitOf / metricColor
 
 typedef Json = Map<String, dynamic>;
 
@@ -380,7 +381,6 @@ class _MetricLineChartState extends State<MetricLineChart> {
                 borderRadius: BorderRadius.circular(999),
                 splashColor: Colors.transparent,
                 highlightColor: Colors.transparent,
-                hoverColor: Colors.transparent,
                 onTap: () {
                   setState(() {
                     _zoomIndex = index;
@@ -463,7 +463,6 @@ class _MetricLineChartState extends State<MetricLineChart> {
 
     // ขนาด window ปัจจุบัน + ขอบซ้าย-ขวาใน index global
     final visibleCount = pts.length;
-    final maxStart = (totalAll - visibleCount).clamp(0, totalAll);
     final canPan = _zoomFactor > 1.0 && totalAll > visibleCount;
 
     final windowStart = _visibleStartIndex.clamp(
@@ -531,8 +530,8 @@ class _MetricLineChartState extends State<MetricLineChart> {
           borderRadius: BorderRadius.circular(999),
           onTap: enabled ? onTap : null,
           child: Container(
-            width: 30,
-            height: 30,
+            width: 36,  // ปุ่มใหญ่ขึ้น
+            height: 36,
             decoration: BoxDecoration(
               color: bgColor,
               borderRadius: BorderRadius.circular(999),
@@ -540,7 +539,7 @@ class _MetricLineChartState extends State<MetricLineChart> {
             ),
             child: Icon(
               icon,
-              size: 18,
+              size: 20,
               color: iconColor,
             ),
           ),
@@ -741,7 +740,7 @@ class _MetricLineChartState extends State<MetricLineChart> {
   }
 
   String _formatTimeForNavigator(DateTime dt) {
-    // ใช้รูปแบบใกล้เคียง tooltip แต่ย่อให้สั้นลง
+    // ✅ dt เป็น local time (+7) แล้ว
     switch (_selectedSpan) {
       case HistorySpan.day1:
         final hh = dt.hour.toString().padLeft(2, '0');
@@ -911,37 +910,66 @@ class _MetricLineChartState extends State<MetricLineChart> {
     return pts.sublist(startIndex, endIndex);
   }
 
-  // อ่าน timestamp จาก String / int / DateTime
+  // 🔧 ให้ timestamp เป็นเวลาไทย (local time, +7)
   DateTime? _parseTs(dynamic v) {
     try {
       if (v == null) return null;
-      if (v is DateTime) return v.toUtc();
+
+      if (v is DateTime) return v.toLocal();
+
       if (v is int) {
-        return DateTime.fromMillisecondsSinceEpoch(v, isUtc: true);
+        return DateTime.fromMillisecondsSinceEpoch(
+          v,
+          isUtc: true,
+        ).toLocal();
       }
+
       if (v is String && v.isNotEmpty) {
-        return DateTime.parse(v).toUtc();
+        return DateTime.parse(v).toLocal();
       }
     } catch (_) {}
     return null;
   }
 
-  /// แปลง row -> ค่า metric (ตอนนี้รองรับเฉพาะ dcV / dcA / dcW เท่านั้น)
+  /// แปลง row -> ค่า metric
+  ///
+  /// ใช้ enum ใหม่:
+  /// vdc, idc, wdc, vac, iac, wac, acfreq, acenergy, oat
   double? _valueForMetric(Json row, MetricKey metric) {
     dynamic raw;
     switch (metric) {
-      case MetricKey.dcV:
-        raw = row['dcV'];
+      // AC → ใช้ field ใหม่ vac / iac / wac / acfreq / acenergy
+      case MetricKey.vac:
+        raw = row['vac'];
         break;
-      case MetricKey.dcA:
-        raw = row['dcA'];
+      case MetricKey.iac:
+        raw = row['iac'];
         break;
-      case MetricKey.dcW:
-        raw = row['dcW'];
+      case MetricKey.wac:
+        raw = row['wac'];
         break;
+      case MetricKey.acfreq:
+        raw = row['acfreq'];
+        break;
+      case MetricKey.acenergy:
+        raw = row['acenergy'];
+        break;
+
+      // DC → ใช้ field ใหม่ vdc / idc / wdc
+      case MetricKey.vdc:
+        raw = row['vdc'];
+        break;
+      case MetricKey.idc:
+        raw = row['idc'];
+        break;
+      case MetricKey.wdc:
+        raw = row['wdc'];
+        break;
+
+      // OAT → numeric ก็ plot ได้
       case MetricKey.oat:
-        // ไม่ใช้ oat ทำกราฟแล้ว → คืน null
-        return null;
+        raw = row['oat'];
+        break;
     }
 
     if (raw == null) return null;
@@ -986,44 +1014,11 @@ class _MetricLineChartState extends State<MetricLineChart> {
 
   // ===== Helpers label / unit / สี =====
 
-  String _metricLabel(MetricKey m) {
-    switch (m) {
-      case MetricKey.dcV:
-        return 'DC Voltage';
-      case MetricKey.dcA:
-        return 'DC Current';
-      case MetricKey.dcW:
-        return 'DC Power';
-      case MetricKey.oat:
-        return 'Metric';
-    }
-  }
+  String _metricLabel(MetricKey m) => metricLabel(m);
 
-  String _unitOf(MetricKey m) {
-    switch (m) {
-      case MetricKey.dcV:
-        return 'V';
-      case MetricKey.dcA:
-        return 'A';
-      case MetricKey.dcW:
-        return 'W';
-      case MetricKey.oat:
-        return '';
-    }
-  }
+  String _unitOf(MetricKey m) => unitOf(m);
 
-  Color _metricColor(MetricKey m) {
-    switch (m) {
-      case MetricKey.dcV:
-        return const Color(0xFF06B6D4); // ฟ้าอมเขียว
-      case MetricKey.dcA:
-        return const Color(0xFF14B8A6); // เขียวอมฟ้า
-      case MetricKey.dcW:
-        return const Color(0xFFEF4444); // แดง
-      case MetricKey.oat:
-        return const Color(0xFF06B6D4);
-    }
-  }
+  Color _metricColor(MetricKey m) => metricColor(m);
 }
 
 class _Pt {
@@ -1142,7 +1137,7 @@ class _ChartPainter extends CustomPainter {
     minY -= yPad;
     maxY += yPad;
 
-    // ==== X range ====
+    // ==== X range (local time) ====
     final minT = points.first.t;
     final maxT = points.last.t;
     double totalSec = maxT.difference(minT).inSeconds.toDouble();
@@ -1179,14 +1174,18 @@ class _ChartPainter extends CustomPainter {
       );
     }
 
-    // vertical grid + x labels
+    // vertical grid + x labels (แกนล่าง) — ทุกช่วงเวลา
     const xDiv = 4;
+    final vAxis = Paint()
+      ..color = Colors.grey[300]!.withOpacity(0.5)
+      ..strokeWidth = 1;
+
     for (int i = 0; i <= xDiv; i++) {
       final tx = chart.left + chart.width * (i / xDiv);
       canvas.drawLine(
         Offset(tx, chart.top),
         Offset(tx, chart.bottom),
-        axis..color = axis.color.withOpacity(0.5),
+        vAxis,
       );
 
       final sec = totalSec * (i / xDiv);
@@ -1205,6 +1204,8 @@ class _ChartPainter extends CustomPainter {
         Offset(tx - tp.width / 2, chart.bottom + 6),
       );
     }
+
+    // === ไม่มีเส้นแบ่งวันพิเศษแล้ว (ตามที่สั่งให้เอาออก) ===
 
     // main line + เก็บตำแหน่งจุดไว้ใช้วาด marker
     final path = Path();
@@ -1369,7 +1370,7 @@ class _ChartPainter extends CustomPainter {
 
   /// label ที่แกน X
   ///  - 1D  : HH:mm
-  ///  - 7D+ : dd/MM
+  ///  - 7D+ : dd/MM/yy
   String _fmtTimeAxis(DateTime dt) {
     switch (span) {
       case HistorySpan.day1:
@@ -1381,7 +1382,8 @@ class _ChartPainter extends CustomPainter {
       case HistorySpan.day30:
         final dd = dt.day.toString().padLeft(2, '0');
         final mm = dt.month.toString().padLeft(2, '0');
-        return '$dd/$mm';
+        final yy = (dt.year % 100).toString().padLeft(2, '0');
+        return '$dd/$mm/$yy';
     }
   }
 
@@ -1400,7 +1402,7 @@ class _ChartPainter extends CustomPainter {
       case HistorySpan.day30:
         final dd = dt.day.toString().padLeft(2, '0');
         final mm = dt.month.toString().padLeft(2, '0');
-        final yy = dt.year.toString().substring(2);
+        final yy = (dt.year % 100).toString().padLeft(2, '0');
         final hh = dt.hour.toString().padLeft(2, '0');
         final mn = dt.minute.toString().padLeft(2, '0');
         final ss = dt.second.toString().padLeft(2, '0');

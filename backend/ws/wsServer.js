@@ -57,31 +57,67 @@ function createWSServer(server) {
         const mode = payload.activeMode || 'unknown';
         console.log(`🎵 [status event] ${event} | mode: ${mode} | playing: ${payload.isPlaying} | paused: ${payload.isPaused}`);
         
-        // Send LINE notifications for song events
+        // Send LINE notifications for all modes (playlist, file, youtube, schedule, mic)
         try {
-            // Song Started events
-            if (payload.event === 'started' && payload.extra?.title) {
-                const songTitle = payload.extra.title;
-                const mode = payload.activeMode || 'unknown';
-                lineNotifyService.sendSongStarted(songTitle, mode).catch(err => 
-                    console.error('LINE notification (started) error:', err)
-                );
+            // Song/Stream Started events
+            if (event === 'started' || event === 'playlist-started' || event === 'mic-started') {
+                // ตรวจสอบว่าสามารถแจ้งเตือน start ได้หรือไม่
+                // ถ้ายังไม่มีการแจ้ง end ก่อนหน้า จะไม่แจ้ง start ใหม่
+                if (!lineNotifyService.canNotifyStart()) {
+                    console.log(`📴 Skip LINE notification (${event}) - waiting for end notification first`);
+                    return;
+                }
+
+                let songTitle = '';
+                let notifyMode = payload.activeMode || mode;
+                
+                if (event === 'mic-started') {
+                    songTitle = 'ไมโครโฟน';
+                    notifyMode = 'mic';
+                } else if (event === 'playlist-started') {
+                    songTitle = payload.extra?.title || 'Playlist';
+                    notifyMode = 'playlist';
+                } else {
+                    // started event - could be file, youtube, schedule
+                    songTitle = payload.extra?.title || payload.name || payload.currentUrl || 'Unknown';
+                }
+
+                lineNotifyService.sendSongStarted(songTitle, notifyMode)
+                    .then(result => {
+                        if (result) {
+                            lineNotifyService.markStartNotified();
+                            console.log(`✅ LINE notify sent: ${event} (${notifyMode})`);
+                        }
+                    })
+                    .catch(err => console.error(`LINE notification (${event}) error:`, err));
             }
-            // Playlist Started event
-            else if (payload.event === 'playlist-started') {
-                const songTitle = payload.extra?.title || 'Playlist';
-                const mode = payload.activeMode || 'playlist';
-                lineNotifyService.sendSongStarted(songTitle, mode).catch(err => 
-                    console.error('LINE notification (playlist-started) error:', err)
-                );
-            }
-            // Song Ended events
-            else if (payload.event === 'ended' || payload.event === 'playlist-ended' || payload.event === 'stopped' || payload.event === 'stopped-all') {
-                const songTitle = payload.extra?.title || payload.currentUrl || '';
-                const mode = payload.activeMode || 'unknown';
-                lineNotifyService.sendSongEnded(songTitle, mode).catch(err => 
-                    console.error('LINE notification (ended) error:', err)
-                );
+            // Song/Stream Ended events
+            else if (event === 'ended' || event === 'playlist-ended' || event === 'stopped' || event === 'stopped-all' || event === 'mic-stopped') {
+                // ตรวจสอบว่าสามารถแจ้งเตือน end ได้หรือไม่
+                // ถ้ายังไม่มีการแจ้ง start ก่อนหน้า จะไม่แจ้ง end
+                if (!lineNotifyService.canNotifyEnd()) {
+                    console.log(`📴 Skip LINE notification (${event}) - no start notification was sent`);
+                    return;
+                }
+
+                let songTitle = '';
+                let notifyMode = payload.activeMode || mode;
+                
+                if (event === 'mic-stopped') {
+                    songTitle = 'ไมโครโฟน';
+                    notifyMode = 'mic';
+                } else {
+                    songTitle = payload.extra?.title || payload.currentUrl || '';
+                }
+
+                lineNotifyService.sendSongEnded(songTitle, notifyMode)
+                    .then(result => {
+                        if (result) {
+                            lineNotifyService.markEndNotified();
+                            console.log(`✅ LINE notify sent: ${event} (${notifyMode})`);
+                        }
+                    })
+                    .catch(err => console.error(`LINE notification (${event}) error:`, err));
             }
         } catch (err) {
             console.error('LINE notification error:', err);
