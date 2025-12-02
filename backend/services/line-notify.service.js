@@ -59,20 +59,26 @@ async function sendLineNotification(message) {
     }
 }
 
-async function sendSongStarted(songTitle, mode = 'unknown') {
+async function sendSongStarted(song, mode = 'unknown') {
     try {
         const settings = await settingsService.getAllSettings();
-        const template = settings.lineMessageStart || '🟢 เริ่มถ่ายทอดสดเพลง! {timestamp} 🎵';
+        const template = settings.lineMessageStart || '🟢 เริ่มถ่ายทอดสดเพลง! {date} 🎵';
+        
+        const now = new Date();
+        const dateStr = now.toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
+        const timeStr = now.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
         
         const message = template
-            .replace(/{songTitle}/g, songTitle)
+            .replace(/{song}/g, song)
             .replace(/{mode}/g, mode)
-            .replace(/{timestamp}/g, new Date().toLocaleString('th-TH'));
+            .replace(/{date}/g, dateStr)
+            .replace(/{time}/g, timeStr)
+            .replace(/{timestamp}/g, now.toLocaleString('th-TH'));
 
         console.log('📤 Sending LINE notification (Song Started):', message);
         const result = await sendLineNotification(message);
         if (result) {
-            console.log('✅ LINE notify sent: Song Started -', songTitle);
+            console.log('✅ LINE notify sent: Song Started -', song);
         }
         return result;
     } catch (error) {
@@ -81,21 +87,27 @@ async function sendSongStarted(songTitle, mode = 'unknown') {
     }
 }
 
-async function sendSongEnded(songTitle = '', mode = 'unknown') {
+async function sendSongEnded(song = '', mode = 'unknown') {
     try {
         const settings = await settingsService.getAllSettings();
-        const template = settings.lineMessageEnd || '🔴 หยุดการถ่ายทอดสด {timestamp}';
+        const template = settings.lineMessageEnd || '🔴 หยุดการถ่ายทอดสด {date}';
         
-        const songPart = songTitle ? `: ${songTitle}` : '';
+        const now = new Date();
+        const dateStr = now.toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
+        const timeStr = now.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        
+        const songPart = song ? `: ${song}` : '';
         const message = template
-            .replace(/{songTitle}/g, songPart)
+            .replace(/{song}/g, songPart)
             .replace(/{mode}/g, mode)
-            .replace(/{timestamp}/g, new Date().toLocaleString('th-TH'));
+            .replace(/{date}/g, dateStr)
+            .replace(/{time}/g, timeStr)
+            .replace(/{timestamp}/g, now.toLocaleString('th-TH'));
 
         console.log('📤 Sending LINE notification (Song Ended):', message);
         const result = await sendLineNotification(message);
         if (result) {
-            console.log('✅ LINE notify sent: Song Ended -', songTitle || 'Unknown');
+            console.log('✅ LINE notify sent: Song Ended -', song || 'Unknown');
         }
         return result;
     } catch (error) {
