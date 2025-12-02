@@ -665,23 +665,18 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
                                       SizedBox(
                                         height: mapHeight,
                                         child: MapCard(
-                                          mapController:
-                                              _mapController,
+                                          mapController: _mapController,
                                           items: filtered,
                                           center: _currentCenter,
                                           border: border,
-                                          isOnline: _onlineOf,
+                                          isOnline: _onlineOf,          // ✅ ใส่แล้ว
                                           selectedId: _selectedId,
-                                          onMarkerTap:
-                                              (row, list) {
+                                          onMarkerTap: (row, list) {
                                             setState(() {
-                                              _selectedId =
-                                                  _idOf(row);
+                                              _selectedId = _idOf(row);
                                             });
-                                            _smoothFocusMapOn(
-                                                row);
-                                            _scrollToRow(
-                                                row, filtered);
+                                            _smoothFocusMapOn(row);
+                                            _scrollToRow(row, filtered);
                                           },
                                         ),
                                       ),
@@ -867,14 +862,13 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
                                       Expanded(
                                         flex: 4,
                                         child: MiniStats(
-                                          current:
-                                              selectedRow,
-                                          activeMetric:
-                                              _activeMetric,
+                                          current: selectedRow,
+                                          activeMetric: _activeMetric,
                                           onSelectMetric: (m) =>
-                                              setState(() =>
-                                                  _activeMetric =
-                                                      m),
+                                              setState(() => _activeMetric = m),
+                                          isOnline: selectedRow == null
+                                              ? false
+                                              : _onlineOf(selectedRow),
                                         ),
                                       ),
                                     ],
