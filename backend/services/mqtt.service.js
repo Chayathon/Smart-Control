@@ -278,7 +278,7 @@ async function handleDeviceData(topic, payloadStr, packet) {
     let payloadForUI = payloadForIngest;
     try {
         payloadForUI = deviceDataService.toFrontendRow(payloadForIngest);
-        // console.log('[Data] Formatted for UI:', payloadForUI);   
+        console.log('[Data] Formatted for UI:', payloadForUI);   
     } catch (e) {
         console.warn('[Data] Formatting error, sending raw:', e.message);
     }
