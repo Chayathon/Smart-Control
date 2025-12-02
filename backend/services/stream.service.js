@@ -609,7 +609,7 @@ async function startYoutubeUrl(url, seekMs = 0, opts = {}) {
         activeMode = 'youtube';
         trackBaseOffsetMs = Math.max(0, seekMs | 0);
         trackStartMonotonic = nowMs();
-        bus.emit('status', { event: 'started', url });
+        emitStatus({ event: 'started', extra: { url } });
     } finally {
         starting = false;
     }
@@ -705,7 +705,7 @@ async function startLocalFile(filePath, seekMs = 0, opts = {}) {
         activeMode = isSchedule ? 'schedule' : 'file';
         trackBaseOffsetMs = Math.max(0, seekMs | 0);
         trackStartMonotonic = nowMs();
-        bus.emit('status', { event: 'started', url: absPath, name: currentDisplayName });
+        emitStatus({ event: 'started', extra: { url: absPath, name: currentDisplayName } });
     } finally {
         starting = false;
     }
