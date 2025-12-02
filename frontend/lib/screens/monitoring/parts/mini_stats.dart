@@ -109,11 +109,15 @@ class MiniStats extends StatelessWidget {
   /// เปลี่ยน metric (ให้ parent setState)
   final void Function(MetricKey) onSelectMetric;
 
+  /// ✅ สถานะ online ของอุปกรณ์นี้ (มาจาก LWT ผ่าน MonitoringScreen)
+  final bool isOnline;
+
   const MiniStats({
     super.key,
     required this.current,
     required this.activeMetric,
     required this.onSelectMetric,
+    required this.isOnline,
   });
 
   static const Color kBorderNormal = Color(0x1A000000);
@@ -139,9 +143,10 @@ class MiniStats extends StatelessWidget {
       );
     }
 
-    final online = _onlineOf(row);
+    // ❌ ไม่คิด online เองแล้ว ใช้จาก isOnline ที่ parent ส่งมา
+    final online = isOnline;
     final deviceName = _nameOf(row);
-    final onAir = _onAirTarget(row);
+    final onAir = _onAirTarget(row, online: online);
 
     return Container(
       decoration: BoxDecoration(
@@ -299,16 +304,16 @@ class MiniStats extends StatelessWidget {
     final tiles = <_TileSpec>[];
 
     // ===== AC Metrics =====
-    _maybeAddMetricTile(row, tiles, 'AC Voltage', MetricKey.vac);
-    _maybeAddMetricTile(row, tiles, 'AC Current', MetricKey.iac);
-    _maybeAddMetricTile(row, tiles, 'AC Power', MetricKey.wac);
-    _maybeAddMetricTile(row, tiles, 'AC Frequency', MetricKey.acfreq);
-    _maybeAddMetricTile(row, tiles, 'AC Energy', MetricKey.acenergy);
+    _maybeAddMetricTile(row, tiles, 'AC Voltage', MetricKey.vac, online: online);
+    _maybeAddMetricTile(row, tiles, 'AC Current', MetricKey.iac, online: online);
+    _maybeAddMetricTile(row, tiles, 'AC Power', MetricKey.wac, online: online);
+    _maybeAddMetricTile(row, tiles, 'AC Frequency', MetricKey.acfreq, online: online);
+    _maybeAddMetricTile(row, tiles, 'AC Energy', MetricKey.acenergy, online: online);
 
     // ===== DC Metrics =====
-    _maybeAddMetricTile(row, tiles, 'DC Voltage', MetricKey.vdc);
-    _maybeAddMetricTile(row, tiles, 'DC Current', MetricKey.idc);
-    _maybeAddMetricTile(row, tiles, 'DC Power', MetricKey.wdc);
+    _maybeAddMetricTile(row, tiles, 'DC Voltage', MetricKey.vdc, online: online);
+    _maybeAddMetricTile(row, tiles, 'DC Current', MetricKey.idc, online: online);
+    _maybeAddMetricTile(row, tiles, 'DC Power', MetricKey.wdc, online: online);
 
     // ให้เป็นจำนวนคู่ (2 คอลัมน์)
     if (tiles.length.isOdd) {
@@ -322,9 +327,10 @@ class MiniStats extends StatelessWidget {
     Map<String, dynamic> row,
     List<_TileSpec> tiles,
     String title,
-    MetricKey key,
-  ) {
-    final v = _metricValue(row, key);
+    MetricKey key, {
+    required bool online,
+  }) {
+    final v = _metricValue(row, key, online: online);
     if (v == null) return;
     tiles.add(
       _TileSpec.metric(
@@ -379,18 +385,14 @@ class MiniStats extends StatelessWidget {
     return ts;
   }
 
-  bool _onlineOf(Map<String, dynamic> row) {
-    final ts = _timestampOf(row);
-    if (ts == null) return false;
-
-    final diff = DateTime.now().toUtc().difference(ts);
-    return diff.inSeconds <= 5;
-  }
-
   /// แปลงค่า oat เป็นสถานะ On Air Target (กำลังประกาศ / ไม่ได้ประกาศ)
-  bool _onAirTarget(Map<String, dynamic> row) {
+  /// ✅ ไม่ใช้เวลา 5 วิ เช็ค online แล้ว แต่ใช้ flag online จาก LWT แทน
+  bool _onAirTarget(
+    Map<String, dynamic> row, {
+    required bool online,
+  }) {
     // ถ้าอุปกรณ์ Offline ให้ถือว่า "ไม่ได้ประกาศ" เสมอ
-    if (!_onlineOf(row)) return false;
+    if (!online) return false;
 
     final raw = row['oat']; // ใช้เฉพาะ oat ตัวเดียว
 
@@ -428,7 +430,9 @@ class MiniStats extends StatelessWidget {
 
   /// ✅ ดึงค่าจาก field ใหม่ของ backend:
   /// vdc, idc, wdc, vac, iac, wac, acfreq, acenergy, oat
-  double? _metricValue(Map<String, dynamic> row, MetricKey k) {
+  /// และใช้ online จาก LWT เพื่อตัดสินค่า oat (offline → 0)
+  double? _metricValue(Map<String, dynamic> row, MetricKey k,
+      {required bool online}) {
     dynamic raw;
     switch (k) {
       // DC → ใช้ field ใหม่ vdc / idc / wdc
@@ -462,7 +466,7 @@ class MiniStats extends StatelessWidget {
       // OAT = target (numeric) + ถ้า offline บังคับเป็น 0
       case MetricKey.oat:
         raw = row['oat'];
-        if (!_onlineOf(row)) {
+        if (!online) {
           raw = 0;
         }
         break;
@@ -612,7 +616,7 @@ class _MetricTile extends StatelessWidget {
         child: ClipRRect(
           borderRadius: BorderRadius.circular(16),
           child: SizedBox(
-            height:60, // 🔼 เพิ่มความสูงการ์ด metric
+            height: 60, // 🔼 เพิ่มความสูงการ์ด metric
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
@@ -1101,7 +1105,7 @@ class _LastUpdateTileState extends State<_LastUpdateTile>
     final now = DateTime.now().toUtc();
     final diff = now.difference(tsUtc);
 
-    // 🔹 นับทุกวินาทีเหมือนเดิม
+    // 🔹 นับทุกวินาทีเหมือนเดิม (ใช้โชว์อย่างเดียว ไม่เกี่ยวกับ online)
     if (diff.inSeconds < 60) {
       return '${diff.inSeconds} วินาทีที่แล้ว';
     }
