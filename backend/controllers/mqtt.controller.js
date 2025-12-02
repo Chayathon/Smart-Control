@@ -15,7 +15,9 @@ async function publish(req, res) {
 
   const isSpecialCmd = ['mass-radio/select/command', 'mass-radio/all/command'].includes(topic);
 
-  if (!isZoneCmd && !isDeviceData && !isSpecialCmd) {
+  const isZoneBulkTest = /^mass-radio\/test\/bulk$/.test(topic);
+
+  if (!isZoneCmd && !isDeviceData && !isSpecialCmd && !isZoneBulkTest) {
     console.warn(`[publish] Blocked invalid topic: ${topic}`);
     return res.status(400).json({ 
       error: 'Invalid topic format', 

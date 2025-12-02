@@ -3,7 +3,13 @@ const Settings = require('../models/Settings');
 const DEFAULT_SETTINGS = {
     sampleRate: 44100,
     loopPlaylist: false,
-    micVolume: 1.5,
+    micVolume: 5.5,
+    lineChannelAccessToken: '',
+    lineChannelSecret: '',
+    lineUserId: '',
+    lineNotifyEnabled: false,
+    lineMessageStart: '🎵 กำลังเล่น: {songTitle}',
+    lineMessageEnd: '⏹️ เพลงจบแล้ว{songTitle}',
 };
 
 async function getAllSettings() {
