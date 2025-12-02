@@ -51,9 +51,6 @@ async function sendLineNotification(message) {
             ]
         };
 
-        console.log('📡 Sending to LINE API:', LINE_BROADCAST_API_URL);
-        console.log('📝 Payload:', JSON.stringify(payload, null, 2));
-
         const response = await axios.post(LINE_BROADCAST_API_URL, payload, {
             headers: {
                 'Content-Type': 'application/json',
