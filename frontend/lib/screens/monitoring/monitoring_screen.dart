@@ -194,9 +194,18 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
     final newTs = _toDate(row['timestamp']) ??
         DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
 
-    if (newTs.isBefore(existingTs)) {
-      // แถวนี้เก่ากว่า → ไม่แตะการ์ด/แจ้งเตือน
+    // ถ้าไม่ใช่ realtime และแถวนี้เก่ากว่า → ข้าม
+    // แต่ถ้าเป็น realtime ให้บังคับอัปเดตได้ (กันกรณี clock เพี้ยน / timestamp ถอยหลัง)
+    if (!fromRealtime && newTs.isBefore(existingTs)) {
+      // แถวนี้เก่ากว่า (และไม่ใช่ realtime) → ไม่แตะการ์ด/แจ้งเตือน
       return;
+    }
+
+    if (fromRealtime && newTs.isBefore(existingTs)) {
+      debugPrint(
+        '⏩ [Monitoring] force update by realtime nodeId=$id '
+        'oldTs=$existingTs newTs=$newTs',
+      );
     }
 
     // row ใหม่นี้คือค่าล่าสุดของโหนด → override ค่าเดิม
@@ -665,23 +674,18 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
                                       SizedBox(
                                         height: mapHeight,
                                         child: MapCard(
-                                          mapController:
-                                              _mapController,
+                                          mapController: _mapController,
                                           items: filtered,
                                           center: _currentCenter,
                                           border: border,
-                                          isOnline: _onlineOf,
+                                          isOnline: _onlineOf,          // ✅ ใส่แล้ว
                                           selectedId: _selectedId,
-                                          onMarkerTap:
-                                              (row, list) {
+                                          onMarkerTap: (row, list) {
                                             setState(() {
-                                              _selectedId =
-                                                  _idOf(row);
+                                              _selectedId = _idOf(row);
                                             });
-                                            _smoothFocusMapOn(
-                                                row);
-                                            _scrollToRow(
-                                                row, filtered);
+                                            _smoothFocusMapOn(row);
+                                            _scrollToRow(row, filtered);
                                           },
                                         ),
                                       ),
@@ -867,14 +871,13 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
                                       Expanded(
                                         flex: 4,
                                         child: MiniStats(
-                                          current:
-                                              selectedRow,
-                                          activeMetric:
-                                              _activeMetric,
+                                          current: selectedRow,
+                                          activeMetric: _activeMetric,
                                           onSelectMetric: (m) =>
-                                              setState(() =>
-                                                  _activeMetric =
-                                                      m),
+                                              setState(() => _activeMetric = m),
+                                          isOnline: selectedRow == null
+                                              ? false
+                                              : _onlineOf(selectedRow),
                                         ),
                                       ),
                                     ],

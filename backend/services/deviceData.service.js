@@ -67,10 +67,7 @@ function decodeFlag(flag) {
 
   // ต้องยาว 6 ตัว และเป็นตัวเลข 0–2
   if (!/^[0-2]{6}$/.test(s)) {
-    console.warn(
-      '[deviceData.service] invalid 6-digit flag format:',
-      flag
-    );
+    console.warn('[deviceData.service] invalid 6-digit flag format:', flag);
     return null;
   }
 
@@ -143,25 +140,34 @@ function buildOrderedPayload(raw = {}) {
 function toFrontendRow(docOrData) {
   const r = docOrData.toObject ? docOrData.toObject() : { ...docOrData };
 
-  // 1) ดึงจาก flag 6 หลัก
+  // 1) decode flag
   const alarmsFromFlag = decodeFlag(r.flag) || {};
-
-  // 2) อิง oat จากค่าที่เก็บใน DB (0/1)
   const alarms = { ...alarmsFromFlag };
 
-  // ใช้ค่า oat จาก DB ตรง ๆ (0 หรือ 1 ก็ส่ง)
   if (typeof r.oat === 'number') {
     const oatBit = r.oat !== 0 ? 1 : 0;
     alarms.oat = oatBit;
   }
 
+  // 2) เติม nodeId ให้แน่ใจว่ามี
+  let nodeId = r.nodeId;
+  if (!nodeId) {
+    if (r.meta && r.meta.no != null) {
+      nodeId = String(r.meta.no);      // ใช้เลขโซนเป็น nodeId
+    } else if (r.meta && r.meta.devEui) {
+      nodeId = String(r.meta.devEui);  // สำรอง
+    }
+  }
+
   return {
     ...r,
+    ...(nodeId ? { nodeId } : {}), // ใส่เฉพาะถ้าเราหาได้จริง
     timestamp:
       r.timestamp instanceof Date ? r.timestamp.toISOString() : r.timestamp,
     ...(Object.keys(alarms).length ? { alarms } : {}),
   };
 }
+
 
 /** บันทึก 1 แถว + broadcast realtime */
 async function ingestOne(raw) {
