@@ -60,7 +60,7 @@ function createWSServer(server) {
         // Send LINE notifications for all modes (playlist, file, youtube, schedule, mic)
         try {
             // Song/Stream Started events
-            if (event === 'started' || event === 'playlist-started' || event === 'mic-started') {
+            if (event === 'started' || event === 'mic-started') {
                 // ตรวจสอบว่าสามารถแจ้งเตือน start ได้หรือไม่
                 // ถ้ายังไม่มีการแจ้ง end ก่อนหน้า จะไม่แจ้ง start ใหม่
                 if (!lineNotifyService.canNotifyStart()) {
@@ -74,11 +74,8 @@ function createWSServer(server) {
                 if (event === 'mic-started') {
                     songTitle = 'ไมโครโฟน';
                     notifyMode = 'mic';
-                } else if (event === 'playlist-started') {
-                    songTitle = payload.extra?.title || 'Playlist';
-                    notifyMode = 'playlist';
                 } else {
-                    // started event - could be file, youtube, schedule
+                    // started event - could be playlist, file, youtube, schedule
                     songTitle = payload.extra?.title || payload.name || payload.currentUrl || 'Unknown';
                 }
 
@@ -92,7 +89,7 @@ function createWSServer(server) {
                     .catch(err => console.error(`LINE notification (${event}) error:`, err));
             }
             // Song/Stream Ended events
-            else if (event === 'ended' || event === 'playlist-ended' || event === 'stopped' || event === 'stopped-all' || event === 'mic-stopped') {
+            else if (event === 'ended' || event === 'stopped' || event === 'stopped-all' || event === 'mic-stopped') {
                 // ตรวจสอบว่าสามารถแจ้งเตือน end ได้หรือไม่
                 // ถ้ายังไม่มีการแจ้ง start ก่อนหน้า จะไม่แจ้ง end
                 if (!lineNotifyService.canNotifyEnd()) {
