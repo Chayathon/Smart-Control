@@ -56,6 +56,11 @@ class _SidebarPanelState extends State<SidebarPanel> {
       () => Get.toNamed(AppRoutes.schedule),
     ),
     _MenuItem(
+      Icons.notifications_active,
+      'แจ้งเตือนผ่าน LINE',
+      () => Get.toNamed(AppRoutes.lineNotify),
+    ),
+    _MenuItem(
       Icons.settings,
       'ตั้งค่าระบบ',
       () => Get.toNamed(AppRoutes.system),

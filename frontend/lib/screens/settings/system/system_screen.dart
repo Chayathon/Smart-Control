@@ -24,9 +24,6 @@ class _SystemScreenState extends State<SystemScreen> {
   // ค่าการตั้งค่าปัจจุบัน
   int _selectedSampleRate = 44100;
   bool _loopPlaylist = false;
-
-  // สถานะการโหลด
-  bool _isLoading = false;
   bool _hasChanges = false;
 
   @override
@@ -37,8 +34,7 @@ class _SystemScreenState extends State<SystemScreen> {
 
   /// โหลดการตั้งค่าจาก API
   Future<void> _loadSettings() async {
-    setState(() => _isLoading = true);
-
+    // LoadingOverlay.show(context);
     try {
       final data = await SystemService.getSettings();
       setState(() {
@@ -53,7 +49,7 @@ class _SystemScreenState extends State<SystemScreen> {
         'เกิดข้อผิดพลาดในการโหลดการตั้งค่า กรุณาลองใหม่อีกครั้ง',
       );
     } finally {
-      setState(() => _isLoading = false);
+      LoadingOverlay.hide();
     }
   }
 
@@ -167,34 +163,28 @@ class _SystemScreenState extends State<SystemScreen> {
         iconTheme: const IconThemeData(color: Colors.black),
         elevation: 1,
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: _loadSettings,
-              child: ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  _buildSettingCard(
-                    title: 'Sample Rate (kHz)',
-                    subtitle: 'ความละเอียดของเสียง',
-                    icon: Icons.graphic_eq,
-                    child: _buildSampleRateSelector(),
-                  ),
-                  const SizedBox(height: 12),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          _buildSettingCard(
+            title: 'Sample Rate (kHz)',
+            subtitle: 'ความละเอียดของเสียง',
+            icon: Icons.graphic_eq,
+            child: _buildSampleRateSelector(),
+          ),
+          const SizedBox(height: 12),
 
-                  _buildSettingCard(
-                    title: 'วนซ้ำรายการเพลง',
-                    subtitle: 'เล่นเพลงซ้ำเมื่อเล่นครบทุกเพลง',
-                    icon: Icons.repeat,
-                    child: _buildLoopSwitch(),
-                  ),
-                  // const SizedBox(height: 24),
+          _buildSettingCard(
+            title: 'วนซ้ำรายการเพลง',
+            subtitle: 'เล่นเพลงซ้ำเมื่อเล่นครบทุกเพลง',
+            icon: Icons.repeat,
+            child: _buildLoopSwitch(),
+          ),
 
-                  // _buildResetButton(),
-                  // const SizedBox(height: 16),
-                ],
-              ),
-            ),
+          // _buildResetButton(),
+          // const SizedBox(height: 16),
+        ],
+      ),
       floatingActionButton: _hasChanges
           ? FloatingActionButton.extended(
               onPressed: _saveSettings,
@@ -207,68 +197,6 @@ class _SystemScreenState extends State<SystemScreen> {
               ),
             )
           : null,
-    );
-  }
-
-  /// ส่วนหัวของหมวดหมู่
-  Widget _buildSectionHeader({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Colors.blue[700]!, Colors.blue[500]!],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.blue.withOpacity(0.3),
-            blurRadius: 8,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(icon, color: Colors.white, size: 32),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.9),
-                    fontSize: 14,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
     );
   }
 

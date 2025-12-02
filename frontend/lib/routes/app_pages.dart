@@ -2,6 +2,7 @@ import 'package:get/get.dart';
 import 'package:smart_control/screens/home_screen.dart';
 import 'package:smart_control/screens/login/login_screen.dart';
 import 'package:smart_control/screens/playlist/playlist_screen.dart';
+import 'package:smart_control/screens/settings/line-notify/line-notify_screen.dart';
 import 'package:smart_control/screens/settings/schedule/schedule_screen.dart';
 import 'package:smart_control/screens/settings/system/system_screen.dart';
 import 'package:smart_control/screens/song/song_screen.dart';
@@ -21,6 +22,7 @@ class AppPages {
     GetPage(name: AppRoutes.monitoring, page: () => const MonitoringScreen()),
     GetPage(name: AppRoutes.system, page: () => const SystemScreen()),
     GetPage(name: AppRoutes.schedule, page: () => const ScheduleScreen()),
+    GetPage(name: AppRoutes.lineNotify, page: () => const LineNotifyScreen()),
     GetPage(name: AppRoutes.splash, page: () => const SplashScreen()),
   ];
 }
