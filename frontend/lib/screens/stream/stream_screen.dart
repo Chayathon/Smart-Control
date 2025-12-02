@@ -85,15 +85,14 @@ class _StreamScreenState extends State<StreamScreen>
           }
 
           if (state.processingState == ProcessingState.completed &&
-              _isStreamActive &&
               _isListening) {
             if (_retryCount < _maxRetries) {
               _retryCount++;
               print(
-                '🔄 Stream ended, retry attempt $_retryCount/$_maxRetries in 8s...',
+                '🔄 Stream ended, retry attempt $_retryCount/$_maxRetries in 5s...',
               );
-              Future.delayed(const Duration(seconds: 8), () {
-                if (mounted && _isStreamActive && _isListening) {
+              Future.delayed(const Duration(seconds: 5), () {
+                if (mounted && _isListening) {
                   _startListening();
                 }
               });
@@ -151,16 +150,6 @@ class _StreamScreenState extends State<StreamScreen>
     setState(() {
       final wasActive = _isStreamActive;
       _isStreamActive = isPlaying && activeMode != 'none';
-
-      if (!_isStreamActive && _isListening) {
-        if (wasActive) {
-          // Stream just stopped, reset retry counter
-          _retryCount = 0;
-          print('⚠️ Stream stopped by server, will retry on reconnection');
-        }
-        _stopListening();
-        AppSnackbar.info('สตรีมจบแล้ว', 'การถ่ายทอดสดสิ้นสุดลง');
-      }
 
       // Reset retry count when stream becomes active again
       if (_isStreamActive && !wasActive) {
@@ -253,21 +242,25 @@ class _StreamScreenState extends State<StreamScreen>
         elevation: 1,
         backgroundColor: Colors.white,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _buildStreamVisualizer(),
+      body: RefreshIndicator(
+        onRefresh: _fetchStatus,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _buildStreamVisualizer(),
 
-            const SizedBox(height: 16),
+              const SizedBox(height: 16),
 
-            _buildControlCard(),
+              _buildControlCard(),
 
-            const SizedBox(height: 16),
+              const SizedBox(height: 16),
 
-            _buildInfoCard(),
-          ],
+              _buildInfoCard(),
+            ],
+          ),
         ),
       ),
     );
