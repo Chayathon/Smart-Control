@@ -82,7 +82,7 @@ function createWSServer(server) {
                 lineNotifyService.sendSongStarted(songTitle, notifyMode)
                     .then(result => {
                         if (result) {
-                            lineNotifyService.markStartNotified();
+                            lineNotifyService.markStartNotified(notifyMode);
                             console.log(`✅ LINE notify sent: ${event} (${notifyMode})`);
                         }
                     })

@@ -4,6 +4,7 @@ const settingsService = require('./settings.service');
 const LINE_BROADCAST_API_URL = 'https://api.line.me/v2/bot/message/broadcast';
 
 let hasNotifiedStart = false;
+let lastActiveMode = 'unknown';
 
 function canNotifyStart() {
     return !hasNotifiedStart;
@@ -13,16 +14,32 @@ function canNotifyEnd() {
     return hasNotifiedStart;
 }
 
-function markStartNotified() {
+function markStartNotified(mode = 'unknown') {
     hasNotifiedStart = true;
+    lastActiveMode = mode;
 }
 
 function markEndNotified() {
     hasNotifiedStart = false;
 }
 
+function getLastActiveMode() {
+    return lastActiveMode;
+}
+
+function getMode(mode) {
+    const modeMap = {
+        'playlist': 'รายการเพลง',
+        'file': 'ไฟล์เพลง',
+        'youtube': 'YouTube',
+        'schedule': 'เพลงตั้งเวลา',
+        'mic': 'ไมโครโฟน'
+    };
+    return modeMap[mode] || mode;
+}
+
 function getNotificationState() {
-    return { hasNotifiedStart };
+    return { hasNotifiedStart, lastActiveMode };
 }
 
 async function sendLineNotification(message) {
@@ -87,9 +104,10 @@ async function sendSongStarted(song, mode = 'unknown') {
         const dateStr = now.toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
         const timeStr = now.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
         
+        const modeThai = getMode(mode);
         const message = template
             .replace(/{song}/g, song)
-            .replace(/{mode}/g, mode)
+            .replace(/{mode}/g, modeThai)
             .replace(/{date}/g, dateStr)
             .replace(/{time}/g, timeStr)
             .replace(/{timestamp}/g, now.toLocaleString('th-TH'));
@@ -115,10 +133,14 @@ async function sendSongEnded(song = '', mode = 'unknown') {
         const dateStr = now.toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
         const timeStr = now.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
         
+        // ใช้โหมดที่เก็บไว้ตอน start ถ้าโหมดที่ส่งมาเป็น none หรือ unknown
+        const actualMode = (mode === 'none' || mode === 'unknown') ? lastActiveMode : mode;
+        const modeThai = getMode(actualMode);
+        
         const songPart = song ? `: ${song}` : '';
         const message = template
             .replace(/{song}/g, songPart)
-            .replace(/{mode}/g, mode)
+            .replace(/{mode}/g, modeThai)
             .replace(/{date}/g, dateStr)
             .replace(/{time}/g, timeStr)
             .replace(/{timestamp}/g, now.toLocaleString('th-TH'));
@@ -168,5 +190,6 @@ module.exports = {
     canNotifyEnd,
     markStartNotified,
     markEndNotified,
+    getLastActiveMode,
     getNotificationState,
 };
