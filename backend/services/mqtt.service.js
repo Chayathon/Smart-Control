@@ -274,14 +274,6 @@ async function handleDeviceData(topic, payloadStr, packet) {
         lng: json.lng,
     };
 
-    if (mongoose.connection.readyState === 1) {
-        deviceDataService.ingestOne(payloadForIngest)
-            .catch(err => {
-                console.error(`[Data] Save Error zone ${no}:`, err.message);
-            }
-        );
-    }
-
     dbBuffer.push(payloadForIngest); // รอรถเมล์รอบ DB
     
     const now = Date.now();
