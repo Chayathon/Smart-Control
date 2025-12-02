@@ -142,11 +142,14 @@ class ZoneService {
 
   /// ✅ NEW: handle ข้อมูลจาก /ws/status → map zone → online/offline
   void _handleStatusForOnlineMap(Map<String, dynamic> data) {
-    // ต้องเป็น type = 'status' ถึงจะสน
-    if (data['type'] != 'status') return;
-
+    // ต้องมี zone ถึงจะสนใจ
     final zone = data['zone'];
     if (zone is! int) return;
+
+    // ต้องมี key offline ถึงจะถือว่าเป็น message จาก LWT / watchdog
+    if (!data.containsKey('offline')) {
+      return;
+    }
 
     // ถ้า offline = true → offline, ถ้าไม่ใช่/ไม่มี → online
     final offline = data['offline'] == true;

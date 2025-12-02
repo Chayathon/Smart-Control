@@ -104,8 +104,9 @@ class MapCard extends StatelessWidget {
                     dotSize: dotSize,
                     rippleMin: 20,
                     rippleMax: 48,
-                    onTap:
-                        onMarkerTap == null ? null : () => onMarkerTap!(e, items),
+                    onTap: onMarkerTap == null
+                        ? null
+                        : () => onMarkerTap!(e, items),
                   ),
                 );
               }).toList(),

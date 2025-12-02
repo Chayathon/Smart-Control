@@ -32,10 +32,10 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
   /// history ตาม nodeId (ใช้กับกราฟ)
   final Map<String, List<Json>> _historyById = {};
 
-  // ✅ NEW: เก็บสถานะออนไลน์จาก ZoneService (zone no → online?)
+  // ✅ เก็บสถานะออนไลน์จาก ZoneService (zone no → online?)
   Map<int, bool> _onlineByZone = {};
 
-  // ✅ NEW: subscription กับ onlineStream ของ ZoneService
+  // ✅ subscription กับ onlineStream ของ ZoneService
   StreamSubscription<Map<int, bool>>? _onlineSub;
 
   // UI states
@@ -76,13 +76,19 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
     super.initState();
     _currentCenter = const latlng.LatLng(13.6580, 100.6608);
     _init();
+
     _tick = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() {});
     });
 
-    // ✅ NEW: ต่อ WebSocket /ws/status ผ่าน ZoneService + subscribe online map
-    ZoneService.instance.ensureStatusWsConnected();
-    _onlineSub = ZoneService.instance.onlineStream.listen((map) {
+    // ✅ ต่อ WebSocket /ws/status ผ่าน ZoneService + subscribe online map
+    final zs = ZoneService.instance;
+    zs.ensureStatusWsConnected();
+
+    // ✅ ดึง snapshot ปัจจุบันก่อน (กันกรณี ZoneService รับ LWT มาก่อนหน้านี้แล้ว)
+    _onlineByZone = zs.currentOnlineMap;
+
+    _onlineSub = zs.onlineStream.listen((map) {
       if (!mounted) return;
       setState(() {
         _onlineByZone = map;
@@ -128,7 +134,7 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
 
       setState(() => _loading = false);
 
-      // 2) เปิด WebSocket แบบเรียลไทม์
+      // 2) เปิด WebSocket แบบเรียลไทม์ของ deviceData
       _svc.subscribeToRealtime((msg) {
         final row = _normalize(msg);
         debugPrint(
@@ -139,6 +145,7 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
         );
         debugPrint(
             '🔔 [Monitoring] nodeAlarms after realtime = ${_nodeAlarms.length}');
+
         if (mounted) setState(() {});
       }, url: AppConfig.wsDeviceData);
     } catch (e) {
@@ -415,34 +422,21 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
     return _idOf(row) ?? '-';
   }
 
-  /// ✅ NEW: ใช้ LWT + watchdog จาก ZoneService เป็นหลัก
-  /// ถ้ายังไม่เคยรู้สถานะของ zone นี้ → fallback ไปใช้ timestamp 5 วินาทีแบบเดิม
+  /// ✅ ตัดสิน online/offline จาก LWT เท่านั้น (ผ่าน ZoneService)
   bool _onlineOf(Json row) {
     int? no;
 
-    // ดึงหมายเลข zone จาก meta.no ก่อน
     final meta = row['meta'];
     if (meta is Map && meta['no'] is int) {
       no = meta['no'] as int;
     } else if (row['no'] is int) {
-      // เผื่อกรณี backend ส่ง no ไว้บน root
       no = row['no'] as int;
     }
 
-    // ถ้า ZoneService เคยรับ status ของ zone นี้แล้ว → ใช้ค่านั้นเลย
-    if (no != null && _onlineByZone.containsKey(no)) {
-      return _onlineByZone[no] == true;
-    }
+    if (no == null) return false;
 
-    // ถ้ายังไม่เคยเห็น zone นี้ใน LWT / watchdog เลย → เดาจาก timestamp
-    final ts = _toDate(row['timestamp']);
-    if (ts == null) return false;
-
-    final now = DateTime.now().toUtc();
-    final diff = now.difference(ts);
-
-    // เกิน 5 วินาทีถือว่า offline
-    return diff.inSeconds <= 5;
+    // ✅ ใช้เฉพาะค่าจาก LWT: ถ้าเคยได้ 'online' → true, ถ้า 'offline' หรือไม่มี → false
+    return _onlineByZone[no] == true;
   }
 
   /// ตอนนี้มีระบบเดียวคือ wireless (SIM)
@@ -577,7 +571,7 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
   @override
   void dispose() {
     _tick?.cancel();
-    _onlineSub?.cancel(); // ✅ NEW: ยกเลิกฟัง online stream
+    _onlineSub?.cancel(); // ✅ ยกเลิกฟัง online stream
     _onlineSub = null;
     _svc.dispose();
     super.dispose();
