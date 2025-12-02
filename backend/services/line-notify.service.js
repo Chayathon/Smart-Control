@@ -62,12 +62,18 @@ async function sendLineNotification(message) {
 async function sendSongStarted(songTitle, mode = 'unknown') {
     try {
         const settings = await settingsService.getAllSettings();
-        const template = settings.lineMessageStart || '🟢 เริ่มถ่ายทอดสดเพลง! {timestamp} 🎵';
+        const template = settings.lineMessageStart || '🟢 เริ่มถ่ายทอดสดเพลง! {date} 🎵';
+        
+        const now = new Date();
+        const dateStr = now.toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
+        const timeStr = now.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
         
         const message = template
             .replace(/{songTitle}/g, songTitle)
             .replace(/{mode}/g, mode)
-            .replace(/{timestamp}/g, new Date().toLocaleString('th-TH'));
+            .replace(/{date}/g, dateStr)
+            .replace(/{time}/g, timeStr)
+            .replace(/{timestamp}/g, now.toLocaleString('th-TH'));
 
         console.log('📤 Sending LINE notification (Song Started):', message);
         const result = await sendLineNotification(message);
@@ -84,13 +90,19 @@ async function sendSongStarted(songTitle, mode = 'unknown') {
 async function sendSongEnded(songTitle = '', mode = 'unknown') {
     try {
         const settings = await settingsService.getAllSettings();
-        const template = settings.lineMessageEnd || '🔴 หยุดการถ่ายทอดสด {timestamp}';
+        const template = settings.lineMessageEnd || '🔴 หยุดการถ่ายทอดสด {date}';
+        
+        const now = new Date();
+        const dateStr = now.toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
+        const timeStr = now.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
         
         const songPart = songTitle ? `: ${songTitle}` : '';
         const message = template
             .replace(/{songTitle}/g, songPart)
             .replace(/{mode}/g, mode)
-            .replace(/{timestamp}/g, new Date().toLocaleString('th-TH'));
+            .replace(/{date}/g, dateStr)
+            .replace(/{time}/g, timeStr)
+            .replace(/{timestamp}/g, now.toLocaleString('th-TH'));
 
         console.log('📤 Sending LINE notification (Song Ended):', message);
         const result = await sendLineNotification(message);
