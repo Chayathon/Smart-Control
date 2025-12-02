@@ -78,7 +78,7 @@ async function sendSongStarted(song, mode = 'unknown') {
         console.log('📤 Sending LINE notification (Song Started):', message);
         const result = await sendLineNotification(message);
         if (result) {
-            console.log('✅ LINE notify sent: Song Started -', song);
+            console.log('✅ LINE notify sent: Song Started');
         }
         return result;
     } catch (error) {
@@ -107,7 +107,7 @@ async function sendSongEnded(song = '', mode = 'unknown') {
         console.log('📤 Sending LINE notification (Song Ended):', message);
         const result = await sendLineNotification(message);
         if (result) {
-            console.log('✅ LINE notify sent: Song Ended -', song || 'Unknown');
+            console.log('✅ LINE notify sent: Song Ended');
         }
         return result;
     } catch (error) {
