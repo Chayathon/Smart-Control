@@ -13,11 +13,13 @@ async function publish(req, res) {
 
   const isDeviceData = /^mass-radio\/zone\d+\/monitoring$/.test(topic);
 
+  const isDeviceLtw = /^mass-radio\/zone\d+\/ltw$/.test(topic);
+
   const isSpecialCmd = ['mass-radio/select/command', 'mass-radio/all/command'].includes(topic);
 
   const isZoneBulkTest = /^mass-radio\/test\/bulk$/.test(topic);
 
-  if (!isZoneCmd && !isDeviceData && !isSpecialCmd && !isZoneBulkTest) {
+  if (!isZoneCmd && !isDeviceData && !isSpecialCmd && !isZoneBulkTest && !isDeviceLtw) {
     console.warn(`[publish] Blocked invalid topic: ${topic}`);
     return res.status(400).json({ 
       error: 'Invalid topic format', 

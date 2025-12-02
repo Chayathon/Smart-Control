@@ -225,11 +225,9 @@ async function handleDeviceData(topic, payloadStr, packet) {
     
     const m = topic.match(/^mass-radio\/(zone\d+)\/monitoring$/);    
     if (!m) return false;
-
     const nodeKey = m[1]; 
     const noFromTopic = parseInt(nodeKey.replace(/^zone/, ''), 10); 
-
-    console.log('[MQTT] 📥 incoming deviceData from', nodeKey); // เปิด log ถ้าน้อย, ปิดถ้าเยอะ
+    console.log(`[MQTT] 📥 incoming deviceData from ${nodeKey} : `, payloadStr);
 
     let json;
     try {
@@ -262,11 +260,18 @@ async function handleDeviceData(topic, payloadStr, packet) {
             no,
             ...(deviceId ? { deviceId } : {}),
         },
-        vac: json.vac, iac: json.iac, wac: json.wac,
-        acfreq: json.acfreq, acenergy: json.acenergy,
-        vdc: json.vdc, idc: json.idc, wdc: json.wdc,
-        flag: json.flag, oat: json.oat, lat: json.lat, lng: json.lng,
-        type: json.type
+        vac: json.vac, 
+        iac: json.iac, 
+        wac: json.wac,
+        acfreq: json.acfreq, 
+        acenergy: json.acenergy,
+        vdc: json.vdc, 
+        idc: json.idc, 
+        wdc: json.wdc,
+        flag: json.flag, 
+        oat: json.oat, 
+        lat: json.lat, 
+        lng: json.lng,
     };
 
     if (mongoose.connection.readyState === 1) {
@@ -552,10 +557,16 @@ async function sendMultiZoneUartCommand(targetZonesArray, set_stream) {
 
     // 3. ระบบ Debounce (กันส่งซ้ำ)
     const now = Date.now();
-    if (lastUartCmd === finalCmd && (now - lastUartTs) < 300) {
-        console.log('[RadioZone] Skip duplicate UART Multi-Zone cmd');
+    if (lastUartCmd === finalCmd) {
+        console.log('[RadioZone] ⏹️ Skip sending UART: State unchanged (Already sent)');
         return;
     }
+
+    if ((now - lastUartTs) < 300) {
+        console.log('[RadioZone] ⚠️ Skip sending UART: Too fast (Rate limit)');
+        return;
+    }
+
     lastUartCmd = finalCmd;
     lastUartTs = now;
 
