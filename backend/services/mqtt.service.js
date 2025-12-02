@@ -274,14 +274,6 @@ async function handleDeviceData(topic, payloadStr, packet) {
         lng: json.lng,
     };
 
-    if (mongoose.connection.readyState === 1) {
-        deviceDataService.ingestOne(payloadForIngest)
-            .catch(err => {
-                console.error(`[Data] Save Error zone ${no}:`, err.message);
-            }
-        );
-    }
-
     dbBuffer.push(payloadForIngest); // รอรถเมล์รอบ DB
     
     const now = Date.now();
@@ -297,6 +289,8 @@ async function handleDeviceData(topic, payloadStr, packet) {
     const item = deviceStatus.find(d => d.zone === no);
     if (item) {
         item.lastSeen = now;
+    } else {
+        upsertDeviceStatus(no, {online: true, lastSeen: now});
     }
 
     return true; 
@@ -597,10 +591,16 @@ async function sendVolUartCommand(zone, set_volume) {
     const key = baseCmd;
 
     // กันยิงซ้ำในเวลาใกล้ ๆ กัน (เหมือน set_stream)
-    if (lastUartCmd === key && (now - lastUartTs) < 300) {
+    if (lastUartCmd === key) {
         console.log('[RadioZone] skip duplicate UART cmd (VOL):', key);
         return;
     }
+
+    if ((now - lastUartTs) < 300) {
+        console.log('[RadioZone] skip UART vol cmd: too fast');
+        return;
+    }
+    
     lastUartCmd = key;
     lastUartTs = now;
 
