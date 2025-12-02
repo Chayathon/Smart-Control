@@ -6,6 +6,7 @@ import 'package:latlong2/latlong.dart' as latlng;
 
 import 'package:smart_control/core/config/app_config.dart';
 import 'package:smart_control/services/device_data_service.dart';
+import 'package:smart_control/services/zone_service.dart'; // ✅ NEW
 
 import 'parts/map_card.dart';
 import 'parts/list_card.dart'; // MonitoringKind, TypeFilter, StatusFilter
@@ -31,6 +32,12 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
   /// history ตาม nodeId (ใช้กับกราฟ)
   final Map<String, List<Json>> _historyById = {};
 
+  // ✅ NEW: เก็บสถานะออนไลน์จาก ZoneService (zone no → online?)
+  Map<int, bool> _onlineByZone = {};
+
+  // ✅ NEW: subscription กับ onlineStream ของ ZoneService
+  StreamSubscription<Map<int, bool>>? _onlineSub;
+
   // UI states
   bool _loading = true;
   String? _error;
@@ -41,9 +48,7 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
   TypeFilter _typeFilter = TypeFilter.all;
   StatusFilter _statusFilter = StatusFilter.all;
 
-  // metric ปัจจุบัน (ส่งให้ MiniStats / กราฟ)
-  // เริ่มต้นใช้ DC Voltage เป็น metric หลัก
-  MetricKey _activeMetric = MetricKey.dcV;
+  MetricKey _activeMetric = MetricKey.vdc;
 
   // Map camera states
   final MapController _mapController = MapController();
@@ -73,6 +78,15 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
     _init();
     _tick = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() {});
+    });
+
+    // ✅ NEW: ต่อ WebSocket /ws/status ผ่าน ZoneService + subscribe online map
+    ZoneService.instance.ensureStatusWsConnected();
+    _onlineSub = ZoneService.instance.onlineStream.listen((map) {
+      if (!mounted) return;
+      setState(() {
+        _onlineByZone = map;
+      });
     });
   }
 
@@ -235,15 +249,6 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
   }
 
   /// อัปเดต summary alarm ระดับ "โหนด" (1 การ์ดต่อโหนดใน NotificationCenter)
-  ///
-  /// ใช้ "ข้อมูลล่าสุดของแต่ละโหนด" เป็นตัวตัดสิน:
-  /// - ถ้าแถวนี้เก่ากว่า timestamp ที่เคยจำไว้ของโหนดนั้น → ข้าม
-  /// - ถ้าแถวนี้ใหม่สุดและไม่มี alarm / สถานะให้แสดง → ลบโหนดนี้ออกจาก _nodeAlarms
-  /// - ถ้าแถวนี้ใหม่สุดและมีอย่างน้อย 1 field → เก็บเป็น NodeAlarmSummary
-  ///
-  /// ✅ พิเศษ:
-  /// - field `online` & `oat` ให้เก็บทั้งค่า 0 และ 1 (สถานะ)
-  /// - field อื่น (acSensor/acVoltage/.../dcCurrent) เก็บเฉพาะค่าที่ != 0
   void _updateNodeAlarmFromRow(Json row, {required bool fromRealtime}) {
     final id = _idOf(row);
     if (id == null) return;
@@ -285,7 +290,6 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
 
     if (abnormal.isEmpty) {
       // ✅ ไม่มีอะไรให้แสดง (ไม่มี alarm และไม่มีสถานะ online/oat)
-      //    → ลบโหนดนี้ออกจากแผงแจ้งเตือน
       debugPrint(
           '✅ [Monitoring] clear alarm nodeId=$id (no alarms & no online/oat field)');
       _nodeAlarms.remove(id);
@@ -411,10 +415,26 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
     return _idOf(row) ?? '-';
   }
 
-  /// ตัดสิน online/offline จาก timestamp ล่าสุดของ record
-  /// - ถ้า timestamp ภายใน 5 วินาทีล่าสุด → online
-  /// - ถ้าเกิน 5 วินาที → offline
+  /// ✅ NEW: ใช้ LWT + watchdog จาก ZoneService เป็นหลัก
+  /// ถ้ายังไม่เคยรู้สถานะของ zone นี้ → fallback ไปใช้ timestamp 5 วินาทีแบบเดิม
   bool _onlineOf(Json row) {
+    int? no;
+
+    // ดึงหมายเลข zone จาก meta.no ก่อน
+    final meta = row['meta'];
+    if (meta is Map && meta['no'] is int) {
+      no = meta['no'] as int;
+    } else if (row['no'] is int) {
+      // เผื่อกรณี backend ส่ง no ไว้บน root
+      no = row['no'] as int;
+    }
+
+    // ถ้า ZoneService เคยรับ status ของ zone นี้แล้ว → ใช้ค่านั้นเลย
+    if (no != null && _onlineByZone.containsKey(no)) {
+      return _onlineByZone[no] == true;
+    }
+
+    // ถ้ายังไม่เคยเห็น zone นี้ใน LWT / watchdog เลย → เดาจาก timestamp
     final ts = _toDate(row['timestamp']);
     if (ts == null) return false;
 
@@ -557,6 +577,8 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
   @override
   void dispose() {
     _tick?.cancel();
+    _onlineSub?.cancel(); // ✅ NEW: ยกเลิกฟัง online stream
+    _onlineSub = null;
     _svc.dispose();
     super.dispose();
   }
