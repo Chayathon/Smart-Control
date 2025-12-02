@@ -17,14 +17,14 @@ let blockSyncUntil = 0;
 let lastBulkString = "";
 
 let dbBuffer = [];
-let wsBuffer = []; 
+let wsBuffer = [];
 const BATCH_INTERVAL = 500;
 const TOTAL_ZONES = 200;
 
-const deviceIdCache = new Map(); 
+const deviceIdCache = new Map();
 const lastHeartbeatUpdate = new Map();
 const pendingRequestsByZone = {};
-const lastManualByZone = new Map();  
+const lastManualByZone = new Map();
 
 function connectAndSend({
     brokerUrl = 'mqtt://192.168.1.83:1883',
@@ -34,7 +34,6 @@ function connectAndSend({
     dataTopic = process.env.MQTT_TOPIC_ZONE_DATA,
     zoneCommandTopic = process.env.MQTT_TOPIC_ZONE_COMMAND,
     zoneLwtTopic = process.env.MQTT_TOPIC_ZONE_LWT
-    
 } = {}) {
     deviceStatus = [];
     seenZones.clear();
@@ -61,7 +60,6 @@ function connectAndSend({
             else console.log('📥 Subscribed to mass-radio/+/command');
         });
 
-
         client.subscribe(statusTopic, { qos: 1 }, (err) => {
             if (err) console.error('❌ Subscribe error:', err.message);
             else console.log(`📥 Subscribed to ${statusTopic}`);
@@ -86,8 +84,6 @@ function connectAndSend({
         connected = false;
         console.warn('⚠️ MQTT connection closed');
     });
-
-
 
     client.on('message', async (topic, message, packet) => {
         const payloadStr = message.toString();
@@ -164,7 +160,7 @@ function publish(topic, payload, opts = { qos: 1, retain: false }) {
 function upsertDeviceStatus(no, data) {
     const now = Date.now();
     const index = deviceStatus.findIndex(d => d.zone === no);
-    
+
     if (index >= 0) {
         deviceStatus[index] = { zone: no, data, lastSeen: now };
     } else {
@@ -200,10 +196,10 @@ async function updateDeviceInDB(no, data) {
 async function processBatch() {
     if (dbBuffer.length > 0) {
         const batch = [...dbBuffer];
-        dbBuffer = []; 
+        dbBuffer = [];
 
         if (mongoose.connection.readyState === 1) {
-            DeviceData.insertMany(batch, { ordered: false })
+            DeviceData.insertMany(batch)
                 .catch(err => console.error('[Batch-DB] Error:', err.message));
         }
     }
@@ -212,22 +208,21 @@ async function processBatch() {
         const batch = [...wsBuffer];
         wsBuffer = [];
 
-        broadcastDeviceData({
-            type: 'MONITOR_UPDATE_BULK', 
+        broadcast({
+            type: 'MONITOR_UPDATE_BULK',
             data: batch
         });
-
     }
 }
 
-//1. จัดการข้อมูล DeviceData ที่เข้ามา
+// 1. จัดการข้อมูล DeviceData ที่เข้ามา
 async function handleDeviceData(topic, payloadStr, packet) {
     if (packet && packet.retain) return true;
-    
-    const m = topic.match(/^mass-radio\/(zone\d+)\/monitoring$/);    
+
+    const m = topic.match(/^mass-radio\/(zone\d+)\/monitoring$/);
     if (!m) return false;
-    const nodeKey = m[1]; 
-    const noFromTopic = parseInt(nodeKey.replace(/^zone/, ''), 10); 
+    const nodeKey = m[1];
+    const noFromTopic = parseInt(nodeKey.replace(/^zone/, ''), 10);
     console.log(`[MQTT] 📥 incoming deviceData from ${nodeKey} : `, payloadStr);
 
     let json;
@@ -249,50 +244,56 @@ async function handleDeviceData(topic, payloadStr, packet) {
                 deviceId = device._id;
                 deviceIdCache.set(no, device._id);
             }
-        } catch(e) {}
+        } catch (e) { }
     }
 
     const timestamp = json.timestamp ? new Date(json.timestamp) : new Date();
 
-    // ข้อมูลสำหรับลง DB
+    // ข้อมูลสำหรับลง DB / ส่งต่อ
     const payloadForIngest = {
         timestamp,
         meta: {
             no,
             ...(deviceId ? { deviceId } : {}),
         },
-        vac: json.vac, 
-        iac: json.iac, 
+        vac: json.vac,
+        iac: json.iac,
         wac: json.wac,
-        acfreq: json.acfreq, 
+        acfreq: json.acfreq,
         acenergy: json.acenergy,
-        vdc: json.vdc, 
-        idc: json.idc, 
+        vdc: json.vdc,
+        idc: json.idc,
         wdc: json.wdc,
-        flag: json.flag, 
-        oat: json.oat, 
-        lat: json.lat, 
+        flag: json.flag,
+        oat: json.oat,
+        lat: json.lat,
         lng: json.lng,
     };
 
     let payloadForUI = payloadForIngest;
     try {
         payloadForUI = deviceDataService.toFrontendRow(payloadForIngest);
-        console.log('[Data] Formatted for UI:', payloadForUI);   
     } catch (e) {
         console.warn('[Data] Formatting error, sending raw:', e.message);
     }
 
-    wsBuffer.push(payloadForUI);
+    // ✅ ส่ง realtime ไปยัง /ws/device-data แบบเวอร์ชันเก่า (row ต่อ row)
+    try {
+        broadcastDeviceData(payloadForUI);
+    } catch (e) {
+        console.warn('[WS] broadcastDeviceData error:', e.message);
+    }
 
-    dbBuffer.push(payloadForIngest);
-    
+    // ✅ ยังเก็บ buffer สำหรับ bulk WS + Mongo ตามเดิม
+    wsBuffer.push(payloadForUI);
+    dbBuffer.push(payloadForIngest); // รอรถเมล์รอบ DB
+
     const now = Date.now();
     const lastUpdate = lastHeartbeatUpdate.get(no) || 0;
-    
-    // อัปเดต DB แค่นาทีละครั้ง
+
+    // อัปเดต DB แค่นาทีละครั้ง (ตาราง Device)
     if (now - lastUpdate > 60000 && deviceId && mongoose.connection.readyState === 1) {
-        Device.updateOne({ _id: deviceId }, { lastSeen: timestamp }).catch(()=>{});
+        Device.updateOne({ _id: deviceId }, { lastSeen: timestamp }).catch(() => { });
         lastHeartbeatUpdate.set(no, now);
     }
 
@@ -301,13 +302,13 @@ async function handleDeviceData(topic, payloadStr, packet) {
     if (item) {
         item.lastSeen = now;
     } else {
-        upsertDeviceStatus(no, {online: true, lastSeen: now});
+        upsertDeviceStatus(no, { online: true, lastSeen: now });
     }
 
-    return true; 
+    return true;
 }
 
-//2. จัดการ LWT (Last Will and Testament)
+// 2. จัดการ LWT (Last Will and Testament)
 async function handleLWT(topic, payloadStr) {
     const lwtMatch = topic.match(/^mass-radio\/([^/]+)\/lwt$/);
     if (!lwtMatch) return false;
@@ -327,7 +328,7 @@ async function handleLWT(topic, payloadStr) {
     return true;
 }
 
-//3. จัดการคำสั่ง (Command) จาก App/Web
+// 3. จัดการคำสั่ง (Command) จาก App/Web
 async function handleCommand(topic, payloadStr) {
     const cmdMatch = topic.match(/^mass-radio\/([^/]+)\/command$/);
     if (!cmdMatch) return false;
@@ -337,7 +338,6 @@ async function handleCommand(topic, payloadStr) {
     try { json = JSON.parse(payloadStr); } catch (e) { return true; }
 
     if (!json || json.source === 'manual-panel') return true;
-
 
     // Case: Select (หลายโซน)
     if (target === 'select' && json.zone && Array.isArray(json.zone)) {
@@ -363,15 +363,15 @@ async function handleCommand(topic, payloadStr) {
                 blockSyncUntil = Date.now() + 5000; // กัน Flood
             }
             await sendZoneUartCommand(zoneNum, json.set_stream);
-        } 
+        }
         else if (typeof json.set_volume === 'number') {
             await sendVolUartCommand(zoneNum, json.set_volume);
         }
     }
-    return true; 
+    return true;
 }
 
-//4. จัดการสถานะ (Status) จาก Hardware/Manual Panel
+// 4. จัดการสถานะ (Status) จาก Hardware/Manual Panel
 async function handleStatus(topic, payloadStr, packet) {
     const statusMatch = topic.match(/^mass-radio\/([^/]+)\/status$/);
     if (!statusMatch) return false;
@@ -387,21 +387,21 @@ async function handleStatus(topic, payloadStr, packet) {
         const streamEnabled = !!json.stream_enabled;
         const now = Date.now();
         console.log('[RadioZone] ALL status ->', streamEnabled ? 'ON' : 'OFF');
-        
-        deviceStatus = deviceStatus.map(d => ({ 
-            ...d, 
-            data: { ...d.data, stream_enabled: streamEnabled, is_playing: streamEnabled }, 
-            lastSeen: now 
+
+        deviceStatus = deviceStatus.map(d => ({
+            ...d,
+            data: { ...d.data, stream_enabled: streamEnabled, is_playing: streamEnabled },
+            lastSeen: now
         }));
 
         if (mongoose.connection.readyState === 1) {
-            Device.updateMany({}, { 
-                $set: { 'status.stream_enabled': streamEnabled, 'status.is_playing': streamEnabled, lastSeen: now } 
-            }).catch(()=>{});
+            Device.updateMany({}, {
+                $set: { 'status.stream_enabled': streamEnabled, 'status.is_playing': streamEnabled, lastSeen: now }
+            }).catch(() => { });
         }
-        
-        deviceStatus.forEach(d => broadcast({ 
-            zone: d.zone, stream_enabled: streamEnabled, is_playing: streamEnabled, source: 'manual-all' 
+
+        deviceStatus.forEach(d => broadcast({
+            zone: d.zone, stream_enabled: streamEnabled, is_playing: streamEnabled, source: 'manual-all'
         }));
         return true;
     }
@@ -446,6 +446,7 @@ async function handleStatus(topic, payloadStr, packet) {
 
         if (!isFromManualPanel && merged.stream_enabled !== undefined && merged.stream_enabled !== prevStreamStatus) {
             if (Date.now() < blockSyncUntil) {
+                // ภายในช่วง block จากคำสั่ง ALL → ไม่ sync UART ซ้ำ
             } else {
                 console.log(`[Sync] Node/Web changed status (Zone ${no}). Syncing to UART Machine...`);
                 sendZoneUartCommand(no, merged.stream_enabled).catch(err => {
@@ -459,7 +460,7 @@ async function handleStatus(topic, payloadStr, packet) {
         // 5. Broadcast & DB
         console.log(`✅ Response from zone ${no}:`, merged);
         broadcast({ zone: no, ...merged });
-        
+
         if (mongoose.connection.readyState === 1) {
             updateDeviceInDB(no, merged);
         }
@@ -468,7 +469,7 @@ async function handleStatus(topic, payloadStr, packet) {
     return false;
 }
 
-//5. ส่งคำสั่งเปิด/ปิดโซนไปยัง UART
+// 5. ส่งคำสั่งเปิด/ปิดโซนไปยัง UART
 async function sendZoneUartCommand(zone, set_stream) {
     const zoneStr = String(zone).padStart(4, '0');
     const baseCmd = set_stream
@@ -498,7 +499,7 @@ async function sendZoneUartCommand(zone, set_stream) {
     }
 }
 
-//5.1 ส่งคำสั่ง Bulk เปิด/ปิดโซนไปยัง UART
+// 5.1 ส่งคำสั่ง Bulk เปิด/ปิดโซนไปยัง UART
 async function sendZoneUartBulkCommand(zone, set_stream) {
     let bulkString = '';
     if (zone === 1111) {
@@ -508,7 +509,7 @@ async function sendZoneUartBulkCommand(zone, set_stream) {
             let isZoneOn = false;
             if (i === zone) {
                 isZoneOn = set_stream;
-            } 
+            }
             else {
                 const item = deviceStatus.find(d => d.zone === i);
                 isZoneOn = item && item.data ? item.data.stream_enabled : false;
@@ -548,7 +549,7 @@ async function sendMultiZoneUartCommand(targetZonesArray, set_stream) {
         // A. ถ้าโซนนี้ (i) อยู่ในรายชื่อที่เลือก -> ใช้ค่าใหม่ที่สั่งมา
         if (targets.has(i)) {
             isZoneOn = set_stream;
-        } 
+        }
         // B. ถ้าไม่อยู่ -> ให้รักษาค่าเดิมจาก Memory ไว้
         else {
             const item = deviceStatus.find(d => d.zone === i);
@@ -575,7 +576,6 @@ async function sendMultiZoneUartCommand(targetZonesArray, set_stream) {
     lastUartCmd = finalCmd;
     lastUartTs = now;
 
-    // console.log(`[RadioZone] 📤 UART Multi-Zone Sync (${targetZonesArray.length} zones) -> ${set_stream ? 'ON' : 'OFF'}`);
     try {
         console.log('[RadioZone] UART Command:', finalCmd);
         // await uart.writeString(finalCmd, 'ascii');
@@ -584,7 +584,7 @@ async function sendMultiZoneUartCommand(targetZonesArray, set_stream) {
     }
 }
 
-//7. ส่งคำสั่งปรับระดับเสียงโซนไปยัง UART
+// 7. ส่งคำสั่งปรับระดับเสียงโซนไปยัง UART
 async function sendVolUartCommand(zone, set_volume) {
     const zoneStr = String(zone).padStart(4, '0');
 
@@ -611,7 +611,7 @@ async function sendVolUartCommand(zone, set_volume) {
         console.log('[RadioZone] skip UART vol cmd: too fast');
         return;
     }
-    
+
     lastUartCmd = key;
     lastUartTs = now;
 
@@ -628,7 +628,7 @@ async function sendVolUartCommand(zone, set_volume) {
     }
 }
 
-//8. จัดการสถานะ Bulk (เช่น "YNNYYN...")
+// 8. จัดการสถานะ Bulk (เช่น "YNNYYN...")
 async function handleRawBulkStatus(rawString) {
     const totalZones = rawString.length;
     if (rawString === lastBulkString) {
@@ -650,7 +650,7 @@ async function handleRawBulkStatus(rawString) {
         const prev = getCurrentStatusOfZone(zoneNum);
         const oldState = prev ? prev.stream_enabled : false;
         if (prev) {
-            prev.lastSeen = now; 
+            prev.lastSeen = now;
         } else {
             upsertDeviceStatus(zoneNum, { stream_enabled: oldState, lastSeen: now });
         }
@@ -660,20 +660,20 @@ async function handleRawBulkStatus(rawString) {
         bulkOps.push({
             updateOne: {
                 filter: { no: zoneNum },
-                update: { 
-                    $set: { 
-                        'status.stream_enabled': streamEnabled, 
-                        'status.is_playing': streamEnabled, 
-                        lastSeen: now 
-                    } 
+                update: {
+                    $set: {
+                        'status.stream_enabled': streamEnabled,
+                        'status.is_playing': streamEnabled,
+                        lastSeen: now
+                    }
                 }
             }
         });
-        upsertDeviceStatus(zoneNum, { 
-            stream_enabled: streamEnabled, 
-            is_playing: streamEnabled, 
+        upsertDeviceStatus(zoneNum, {
+            stream_enabled: streamEnabled,
+            is_playing: streamEnabled,
             volume: prev ? prev.volume : 0,
-            source: 'bulk-scan' 
+            source: 'bulk-scan'
         });
         updatesForBroadcast.push({ zone: zoneNum, stream_enabled: streamEnabled });
     }
@@ -681,12 +681,12 @@ async function handleRawBulkStatus(rawString) {
         try {
             await Device.bulkWrite(bulkOps);
             console.log(`[Bulk] ✅ DB Updated for ${bulkOps.length} changed zones.`);
-            
+
             if (updatesForBroadcast.length > 0) {
-                broadcast({ 
+                broadcast({
                     type: 'STATE_CHANGE_BULK',
                     data: updatesForBroadcast,
-                    source: 'bulk' 
+                    source: 'bulk'
                 });
             }
 
@@ -714,19 +714,20 @@ async function checkOfflineZones() {
     if (offlineZones.length > 0) {
         offlineZones.forEach(zoneNo => {
             const currentMem = getCurrentStatusOfZone(zoneNo);
-            
+
             broadcast({
                 zone: zoneNo,
                 stream_enabled: currentMem ? currentMem.stream_enabled : false,
                 is_playing: currentMem ? currentMem.is_playing : false,
                 volume: currentMem ? currentMem.volume : 0,
-                
+
                 offline: true,
-                source: 'watchdog' 
+                source: 'watchdog'
             });
         });
     }
 }
+
 module.exports = {
     connectAndSend,
     getStatus,

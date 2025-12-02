@@ -217,6 +217,7 @@ class _LineNotifyScreenState extends State<LineNotifyScreen> {
                   _hasChanges = true;
                 });
               },
+              textInputAction: TextInputAction.done,
             ),
           ),
           const SizedBox(height: 8),
@@ -246,6 +247,7 @@ class _LineNotifyScreenState extends State<LineNotifyScreen> {
                   _hasChanges = true;
                 });
               },
+              textInputAction: TextInputAction.done,
             ),
           ),
           const SizedBox(height: 8),
@@ -266,6 +268,7 @@ class _LineNotifyScreenState extends State<LineNotifyScreen> {
                   _hasChanges = true;
                 });
               },
+              textInputAction: TextInputAction.newline,
             ),
           ),
           const SizedBox(height: 8),
@@ -286,6 +289,7 @@ class _LineNotifyScreenState extends State<LineNotifyScreen> {
                   _hasChanges = true;
                 });
               },
+              textInputAction: TextInputAction.newline,
             ),
           ),
           const SizedBox(height: 8),
