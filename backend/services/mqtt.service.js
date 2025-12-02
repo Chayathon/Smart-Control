@@ -17,7 +17,7 @@ let blockSyncUntil = 0;
 let lastBulkString = "";
 
 let dbBuffer = [];
-// let wsBuffer = []; 
+let wsBuffer = []; 
 const BATCH_INTERVAL = 500;
 const TOTAL_ZONES = 200;
 
@@ -208,15 +208,15 @@ async function processBatch() {
         }
     }
 
-    // if (wsBuffer.length > 0) {
-    //     const batch = [...wsBuffer];
-    //     wsBuffer = [];
+    if (wsBuffer.length > 0) {
+        const batch = [...wsBuffer];
+        wsBuffer = [];
 
-    //     broadcast({
-    //         type: 'MONITOR_UPDATE_BULK', 
-    //         data: batch
-    //     });
-    // }
+        broadcast({
+            type: 'MONITOR_UPDATE_BULK', 
+            data: batch
+        });
+    }
 }
 
 //1. จัดการข้อมูล DeviceData ที่เข้ามา
@@ -274,6 +274,14 @@ async function handleDeviceData(topic, payloadStr, packet) {
         lng: json.lng,
     };
 
+    let payloadForUI = payloadForIngest;
+    try {
+        payloadForUI = deviceDataService.toFrontendRow(payloadForIngest);
+    } catch (e) {
+        console.warn('[Data] Formatting error, sending raw:', e.message);
+    }
+
+    wsBuffer.push(payloadForUI);
     dbBuffer.push(payloadForIngest); // รอรถเมล์รอบ DB
     
     const now = Date.now();
