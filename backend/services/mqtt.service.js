@@ -1,5 +1,5 @@
 const mqtt = require('mqtt');
-const { broadcast } = require('../ws/wsServer');
+const { broadcast, broadcastDeviceData } = require('../ws/wsServer');
 const Device = require('../models/Device');
 const DeviceData = require('../models/DeviceData');
 const uart = require('./uart.handle');
@@ -203,7 +203,7 @@ async function processBatch() {
         dbBuffer = []; 
 
         if (mongoose.connection.readyState === 1) {
-            DeviceData.insertMany(batch)
+            DeviceData.insertMany(batch, { ordered: false })
                 .catch(err => console.error('[Batch-DB] Error:', err.message));
         }
     }
@@ -212,10 +212,11 @@ async function processBatch() {
         const batch = [...wsBuffer];
         wsBuffer = [];
 
-        broadcast({
+        broadcastDeviceData({
             type: 'MONITOR_UPDATE_BULK', 
             data: batch
         });
+
     }
 }
 
@@ -277,12 +278,14 @@ async function handleDeviceData(topic, payloadStr, packet) {
     let payloadForUI = payloadForIngest;
     try {
         payloadForUI = deviceDataService.toFrontendRow(payloadForIngest);
+        // console.log('[Data] Formatted for UI:', payloadForUI);   
     } catch (e) {
         console.warn('[Data] Formatting error, sending raw:', e.message);
     }
 
     wsBuffer.push(payloadForUI);
-    dbBuffer.push(payloadForIngest); // รอรถเมล์รอบ DB
+
+    dbBuffer.push(payloadForIngest);
     
     const now = Date.now();
     const lastUpdate = lastHeartbeatUpdate.get(no) || 0;
