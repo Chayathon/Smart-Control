@@ -105,12 +105,14 @@ async function sendSongStarted(song, mode = 'unknown') {
         const timeStr = now.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
         
         const modeThai = getMode(mode);
+        const streamLink = 'smartcontrol://stream';
         const message = template
             .replace(/{song}/g, song)
             .replace(/{mode}/g, modeThai)
             .replace(/{date}/g, dateStr)
             .replace(/{time}/g, timeStr)
-            .replace(/{timestamp}/g, now.toLocaleString('th-TH'));
+            .replace(/{timestamp}/g, now.toLocaleString('th-TH'))
+            .replace(/{link}/g, streamLink);
 
         console.log('📤 Sending LINE notification (Song Started):', message);
         const result = await sendLineNotification(message);
@@ -138,12 +140,14 @@ async function sendSongEnded(song = '', mode = 'unknown') {
         const modeThai = getMode(actualMode);
         
         const songPart = song ? `: ${song}` : '';
+        const streamLink = 'smartcontrol://stream';
         const message = template
             .replace(/{song}/g, songPart)
             .replace(/{mode}/g, modeThai)
             .replace(/{date}/g, dateStr)
             .replace(/{time}/g, timeStr)
-            .replace(/{timestamp}/g, now.toLocaleString('th-TH'));
+            .replace(/{timestamp}/g, now.toLocaleString('th-TH'))
+            .replace(/{link}/g, streamLink);
 
         console.log('📤 Sending LINE notification (Song Ended):', message);
         const result = await sendLineNotification(message);
