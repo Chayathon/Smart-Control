@@ -262,7 +262,9 @@ class _LineNotifyScreenState extends State<LineNotifyScreen> {
             child: TextFieldBox(
               hint: '🟢 เริ่มถ่ายทอดสดเพลง! {date} 🎵',
               controller: _lineMessageStartCtrl,
-              maxLines: 3,
+              maxLines: null,
+              minLines: 3,
+              keyboardType: TextInputType.multiline,
               onChanged: (value) {
                 setState(() {
                   _hasChanges = true;
@@ -283,7 +285,9 @@ class _LineNotifyScreenState extends State<LineNotifyScreen> {
             child: TextFieldBox(
               hint: '🔴 หยุดการถ่ายทอดสด {date}',
               controller: _lineMessageEndCtrl,
-              maxLines: 3,
+              maxLines: null,
+              minLines: 3,
+              keyboardType: TextInputType.multiline,
               onChanged: (value) {
                 setState(() {
                   _hasChanges = true;

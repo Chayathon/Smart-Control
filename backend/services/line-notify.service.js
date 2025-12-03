@@ -98,7 +98,7 @@ async function sendLineNotification(message) {
 async function sendSongStarted(song, mode = 'unknown') {
     try {
         const settings = await settingsService.getAllSettings();
-        const template = settings.lineMessageStart || '🟢 เริ่มถ่ายทอดสดเพลง! {date} 🎵';
+        const template = settings.lineMessageStart || '🟢 เริ่มถ่ายทอดสด {mode}! {date} 🎵';
         
         const now = new Date();
         const dateStr = now.toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
