@@ -8,10 +8,10 @@ import 'package:smart_control/routes/app_routes.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await dotenv.load(fileName: '.env');
-  
+
   // Initialize deep link service
   await DeepLinkService().init();
-  
+
   runApp(const MyApp());
 }
 

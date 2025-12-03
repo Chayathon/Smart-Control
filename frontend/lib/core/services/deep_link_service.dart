@@ -12,7 +12,7 @@ class DeepLinkService {
 
   Future<void> init() async {
     if (_isInitialized) return;
-    
+
     _appLinks = AppLinks();
     _isInitialized = true;
 
@@ -30,11 +30,11 @@ class DeepLinkService {
 
   void _handleDeepLink(Uri uri) {
     print('🔗 Deep link received: $uri');
-    
+
     // Parse the path from the URI
     // Example: smartcontrol://stream -> path is "stream"
     final path = uri.host.isNotEmpty ? uri.host : uri.path;
-    
+
     switch (path) {
       case 'stream':
         _navigateToStream();
@@ -58,7 +58,7 @@ class DeepLinkService {
       print('📍 Already on stream screen');
       return;
     }
-    
+
     // Navigate to stream screen
     Get.toNamed(AppRoutes.stream);
   }
