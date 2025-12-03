@@ -25,6 +25,8 @@ class _StreamScreenState extends State<StreamScreen>
   int _retryCount = 0;
   static const int _maxRetries = 3;
 
+  bool _isRetrying = false;
+
   int? _icecastPort;
   String? _icecastMount;
 
@@ -85,24 +87,9 @@ class _StreamScreenState extends State<StreamScreen>
           }
 
           if (state.processingState == ProcessingState.completed &&
-              _isListening) {
-            if (_retryCount < _maxRetries) {
-              _retryCount++;
-              print(
-                '🔄 Stream ended, retry attempt $_retryCount/$_maxRetries in 5s...',
-              );
-              Future.delayed(const Duration(seconds: 5), () {
-                if (mounted && _isListening) {
-                  _startListening();
-                }
-              });
-            } else {
-              print('❌ Max retries reached, stopping stream');
-              setState(() {
-                _isListening = false;
-              });
-              AppSnackbar.info('สตรีมจบแล้ว', 'ไม่สามารถเชื่อมต่อสตรีมได้');
-            }
+              _isListening &&
+              !_isRetrying) {
+            _handleRetryOrStop();
           }
         });
       }
@@ -112,15 +99,19 @@ class _StreamScreenState extends State<StreamScreen>
     _player.playbackEventStream.listen(
       (event) {},
       onError: (Object e, StackTrace st) {
-        if (mounted) {
-          setState(() {
-            _isListening = false;
-            _isLoading = false;
-          });
-          AppSnackbar.error(
-            'การเล่นเสียงขัดข้อง',
-            'ไม่สามารถเชื่อมต่อกับสตรีมได้',
-          );
+        if (mounted && !_isRetrying) {
+          print('Playback error: $e');
+          // Don't show error if we're going to retry
+          if (_retryCount >= _maxRetries) {
+            setState(() {
+              _isListening = false;
+              _isLoading = false;
+            });
+            AppSnackbar.error(
+              'การเล่นเสียงขัดข้อง',
+              'ไม่สามารถเชื่อมต่อกับสตรีมได้',
+            );
+          }
         }
       },
     );
@@ -172,10 +163,18 @@ class _StreamScreenState extends State<StreamScreen>
       return;
     }
 
+    await _connectToStream();
+  }
+
+  Future<void> _retryListening() async {
+    await _connectToStream();
+  }
+
+  Future<void> _connectToStream() async {
     if (_icecastPort == null || _icecastMount == null) {
       await _fetchStatus();
       if (_icecastPort == null || _icecastMount == null) {
-        AppSnackbar.error('ข้อผิดพลาด', 'ไม่พบข้อมูลการเชื่อมต่อสตรีม');
+        _handleRetryOrStop();
         return;
       }
     }
@@ -200,16 +199,32 @@ class _StreamScreenState extends State<StreamScreen>
       await _player.play();
       // Reset retry count on successful connection
       _retryCount = 0;
+      _isRetrying = false;
     } catch (e) {
       print('Error starting stream: $e');
-      String errorMsg = 'ไม่สามารถเชื่อมต่อกับสตรีมได้';
-      if (e.toString().contains('SocketException')) {
-        errorMsg += ' (ปัญหาการเชื่อมต่อเครือข่าย)';
-      } else if (e.toString().contains('404')) {
-        errorMsg += ' (ไม่พบสตรีม)';
-      }
-      AppSnackbar.error('ข้อผิดพลาด', errorMsg);
       setState(() => _isLoading = false);
+      _handleRetryOrStop();
+    }
+  }
+
+  void _handleRetryOrStop() {
+    if (_retryCount < _maxRetries) {
+      _retryCount++;
+      _isRetrying = true;
+      print('🔄 Retry attempt $_retryCount/$_maxRetries in 5s...');
+      Future.delayed(const Duration(seconds: 5), () {
+        if (mounted) {
+          _retryListening();
+        }
+      });
+    } else {
+      print('❌ Max retries reached, stopping stream');
+      _retryCount = 0;
+      _isRetrying = false;
+      setState(() {
+        _isListening = false;
+      });
+      AppSnackbar.info('สตรีมจบแล้ว', 'ไม่สามารถเชื่อมต่อสตรีมได้');
     }
   }
 
