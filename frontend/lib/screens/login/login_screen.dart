@@ -100,7 +100,10 @@ class _LoginScreenState extends State<LoginScreen> {
                     borderRadius: BorderRadius.circular(24),
                   ),
                   child: Padding(
-                    padding: const EdgeInsets.all(32.0),
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 24.0,
+                      horizontal: 32.0,
+                    ),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -189,6 +192,24 @@ class _LoginScreenState extends State<LoginScreen> {
                                 backgroundColor: Colors.blue,
                               ),
                             ],
+                          ),
+                        ),
+
+                        const SizedBox(height: 24),
+                        const Divider(),
+                        const SizedBox(height: 8),
+
+                        TextButton.icon(
+                          onPressed: () {
+                            Get.toNamed(AppRoutes.stream);
+                          },
+                          icon: const Icon(Icons.headphones_rounded, size: 20),
+                          label: const Text(
+                            "ฟังสตรีมมิ่ง",
+                            style: TextStyle(fontSize: 14),
+                          ),
+                          style: TextButton.styleFrom(
+                            foregroundColor: Colors.grey.shade700,
                           ),
                         ),
                       ],
