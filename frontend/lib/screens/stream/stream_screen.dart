@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:smart_control/core/alert/app_snackbar.dart';
 import 'package:smart_control/core/config/app_config.dart';
 import 'package:smart_control/core/network/api_service.dart';
@@ -41,6 +42,9 @@ class _StreamScreenState extends State<StreamScreen>
     _initAnimations();
     _initPlayer();
     _fetchStatus();
+
+    // ป้องกันหน้าจอดับ
+    WakelockPlus.enable();
 
     _statusSse.onStatusUpdate = (data) {
       if (mounted) {
@@ -238,6 +242,8 @@ class _StreamScreenState extends State<StreamScreen>
 
   @override
   void dispose() {
+    // ปิด wakelock เมื่อออกจากหน้านี้
+    WakelockPlus.disable();
     _pulseController.dispose();
     _waveController.dispose();
     _player.dispose();
