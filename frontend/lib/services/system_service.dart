@@ -24,6 +24,7 @@ class SystemService {
     bool? lineNotifyEnabled,
     String? lineMessageStart,
     String? lineMessageEnd,
+    String? appBaseUrl,
   }) async {
     try {
       final api = await ApiService.private();
@@ -40,6 +41,7 @@ class SystemService {
         data['lineNotifyEnabled'] = lineNotifyEnabled;
       if (lineMessageStart != null) data['lineMessageStart'] = lineMessageStart;
       if (lineMessageEnd != null) data['lineMessageEnd'] = lineMessageEnd;
+      if (appBaseUrl != null) data['appBaseUrl'] = appBaseUrl;
 
       final response = await api.post('/settings/bulk', data: data);
 

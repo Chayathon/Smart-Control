@@ -1,5 +1,6 @@
 const axios = require('axios');
 const settingsService = require('./settings.service');
+const config = require('../config/config');
 
 const LINE_BROADCAST_API_URL = 'https://api.line.me/v2/bot/message/broadcast';
 
@@ -105,7 +106,11 @@ async function sendSongStarted(song, mode = 'unknown') {
         const timeStr = now.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
         
         const modeThai = getMode(mode);
-        const streamLink = 'smartcontrol://stream';
+        
+        // สร้าง HTTP URL ที่ LINE สามารถแสดงเป็นลิงก์ได้
+        const baseUrl = settings.appBaseUrl || process.env.APP_BASE_URL || `http://localhost:${config.app.port}`;
+        const streamLink = `${baseUrl}/app/stream`;
+        
         const message = template
             .replace(/{song}/g, song)
             .replace(/{mode}/g, modeThai)
@@ -140,7 +145,11 @@ async function sendSongEnded(song = '', mode = 'unknown') {
         const modeThai = getMode(actualMode);
         
         const songPart = song ? `: ${song}` : '';
-        const streamLink = 'smartcontrol://stream';
+        
+        // สร้าง HTTP URL ที่ LINE สามารถแสดงเป็นลิงก์ได้
+        const baseUrl = settings.appBaseUrl || process.env.APP_BASE_URL || `http://localhost:${config.app.port}`;
+        const streamLink = `${baseUrl}/app/stream`;
+        
         const message = template
             .replace(/{song}/g, songPart)
             .replace(/{mode}/g, modeThai)
