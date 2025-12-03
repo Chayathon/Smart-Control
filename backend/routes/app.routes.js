@@ -90,7 +90,7 @@ router.get('/stream', (req, res) => {
  */
 router.get('/:path', (req, res) => {
     const path = req.params.path || 'home';
-    const deepLink = \`smartcontrol://\${path}\`;
+    const deepLink = `smartcontrol://${path}`;
     
     res.redirect(302, deepLink);
 });
