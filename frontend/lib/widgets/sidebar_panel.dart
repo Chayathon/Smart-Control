@@ -82,13 +82,11 @@ class _SidebarPanelState extends State<SidebarPanel>
       'สตรีมเสียง',
       () => Get.toNamed(AppRoutes.stream),
     ),
-    _MenuItem(
-      Icons.monitor_heart_rounded,
-      'ตรวจสอบสถานะ',
-      () => Get.toNamed(AppRoutes.monitoring),
-    ),
-    _MenuItem(=> Get.toNamed(AppRoutes.stream),
-    ),
+    // _MenuItem(
+    //   Icons.monitor_heart_rounded,
+    //   'ตรวจสอบสถานะ',
+    //   () => Get.toNamed(AppRoutes.monitoring),
+    // ),
     _MenuItem(
       Icons.phone_in_talk_rounded,
       'SOS',
@@ -166,7 +164,7 @@ class _SidebarPanelState extends State<SidebarPanel>
                                   isActive: m.isActive,
                                   isDestructive: m.isDestructive,
                                 );
-                                if (m.title == 'ตรวจสอบสถานะ') {
+                                if (m.title == 'SOS') {
                                   return Column(
                                     children: [
                                       menuWidget,

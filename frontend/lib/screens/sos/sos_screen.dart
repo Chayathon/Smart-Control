@@ -4,16 +4,16 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:sip_ua/sip_ua.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
-class SOSPage extends StatefulWidget {
+class SosScreen extends StatefulWidget {
   final SIPUAHelper helper;
 
-  const SOSPage({super.key, required this.helper});
+  const SosScreen({super.key, required this.helper});
 
   @override
-  State<SOSPage> createState() => _SOSPageState();
+  State<SosScreen> createState() => _SosScreenState();
 }
 
-class _SOSPageState extends State<SOSPage> implements SipUaHelperListener {
+class _SosScreenState extends State<SosScreen> implements SipUaHelperListener {
   String _connectionStatus = 'Disconnected';
   Call? _currentCall;
   bool _isCallActive = false;
@@ -83,8 +83,7 @@ class _SOSPageState extends State<SOSPage> implements SipUaHelperListener {
   /// โทรเสียงอย่างเดียวไปหา board
   Future<void> _callBoard() async {
     if (!widget.helper.connected ||
-        widget.helper.registerState.state !=
-            RegistrationStateEnum.REGISTERED) {
+        widget.helper.registerState.state != RegistrationStateEnum.REGISTERED) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -116,8 +115,7 @@ class _SOSPageState extends State<SOSPage> implements SipUaHelperListener {
   /// โทรแบบ Video ไปหา board (ขอทั้งเสียง+ภาพ)
   Future<void> _callBoardVideo() async {
     if (!widget.helper.connected ||
-        widget.helper.registerState.state !=
-            RegistrationStateEnum.REGISTERED) {
+        widget.helper.registerState.state != RegistrationStateEnum.REGISTERED) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -148,9 +146,9 @@ class _SOSPageState extends State<SOSPage> implements SipUaHelperListener {
 
   void _toggleMicMute() {
     if (_localStream == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('ยังไม่มีสายที่ใช้งานอยู่')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('ยังไม่มีสายที่ใช้งานอยู่')));
       return;
     }
 
@@ -162,9 +160,9 @@ class _SOSPageState extends State<SOSPage> implements SipUaHelperListener {
 
   void _toggleSpeakerMute() {
     if (_remoteRenderer.srcObject == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('ยังไม่มีสายที่ใช้งานอยู่')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('ยังไม่มีสายที่ใช้งานอยู่')));
       return;
     }
 
@@ -278,25 +276,15 @@ class _SOSPageState extends State<SOSPage> implements SipUaHelperListener {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
-                    _buildBtn(
-                      Icons.call,
-                      Colors.green,
-                      "ANSWER",
-                      () {
-                        // รับสายแบบรองรับ video ด้วย
-                        _currentCall!.answer(
-                          widget.helper.buildCallOptions(false),
-                        );
-                      },
-                    ),
-                    _buildBtn(
-                      Icons.call_end,
-                      Colors.red,
-                      "REJECT",
-                      () {
-                        _currentCall?.hangup();
-                      },
-                    ),
+                    _buildBtn(Icons.call, Colors.green, "ANSWER", () {
+                      // รับสายแบบรองรับ video ด้วย
+                      _currentCall!.answer(
+                        widget.helper.buildCallOptions(false),
+                      );
+                    }),
+                    _buildBtn(Icons.call_end, Colors.red, "REJECT", () {
+                      _currentCall?.hangup();
+                    }),
                   ],
                 ),
 
@@ -311,9 +299,7 @@ class _SOSPageState extends State<SOSPage> implements SipUaHelperListener {
                       if (_currentCall != null && _isCallActive) {
                         _currentCall!.sendDTMF("1");
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text("Sending Unlock..."),
-                          ),
+                          const SnackBar(content: Text("Sending Unlock...")),
                         );
                       }
                     }),
