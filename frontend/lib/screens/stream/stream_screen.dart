@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:smart_control/core/alert/app_snackbar.dart';
 import 'package:smart_control/core/config/app_config.dart';
 import 'package:smart_control/core/network/api_service.dart';
@@ -25,6 +26,8 @@ class _StreamScreenState extends State<StreamScreen>
   int _retryCount = 0;
   static const int _maxRetries = 3;
 
+  bool _isRetrying = false;
+
   int? _icecastPort;
   String? _icecastMount;
 
@@ -39,6 +42,9 @@ class _StreamScreenState extends State<StreamScreen>
     _initAnimations();
     _initPlayer();
     _fetchStatus();
+
+    // ป้องกันหน้าจอดับ
+    WakelockPlus.enable();
 
     _statusSse.onStatusUpdate = (data) {
       if (mounted) {
@@ -85,25 +91,9 @@ class _StreamScreenState extends State<StreamScreen>
           }
 
           if (state.processingState == ProcessingState.completed &&
-              _isStreamActive &&
-              _isListening) {
-            if (_retryCount < _maxRetries) {
-              _retryCount++;
-              print(
-                '🔄 Stream ended, retry attempt $_retryCount/$_maxRetries in 8s...',
-              );
-              Future.delayed(const Duration(seconds: 8), () {
-                if (mounted && _isStreamActive && _isListening) {
-                  _startListening();
-                }
-              });
-            } else {
-              print('❌ Max retries reached, stopping stream');
-              setState(() {
-                _isListening = false;
-              });
-              AppSnackbar.info('สตรีมจบแล้ว', 'ไม่สามารถเชื่อมต่อสตรีมได้');
-            }
+              _isListening &&
+              !_isRetrying) {
+            _handleRetryOrStop();
           }
         });
       }
@@ -113,15 +103,19 @@ class _StreamScreenState extends State<StreamScreen>
     _player.playbackEventStream.listen(
       (event) {},
       onError: (Object e, StackTrace st) {
-        if (mounted) {
-          setState(() {
-            _isListening = false;
-            _isLoading = false;
-          });
-          AppSnackbar.error(
-            'การเล่นเสียงขัดข้อง',
-            'ไม่สามารถเชื่อมต่อกับสตรีมได้',
-          );
+        if (mounted && !_isRetrying) {
+          print('Playback error: $e');
+          // Don't show error if we're going to retry
+          if (_retryCount >= _maxRetries) {
+            setState(() {
+              _isListening = false;
+              _isLoading = false;
+            });
+            AppSnackbar.error(
+              'การเล่นเสียงขัดข้อง',
+              'ไม่สามารถเชื่อมต่อกับสตรีมได้',
+            );
+          }
         }
       },
     );
@@ -152,16 +146,6 @@ class _StreamScreenState extends State<StreamScreen>
       final wasActive = _isStreamActive;
       _isStreamActive = isPlaying && activeMode != 'none';
 
-      if (!_isStreamActive && _isListening) {
-        if (wasActive) {
-          // Stream just stopped, reset retry counter
-          _retryCount = 0;
-          print('⚠️ Stream stopped by server, will retry on reconnection');
-        }
-        _stopListening();
-        AppSnackbar.info('สตรีมจบแล้ว', 'การถ่ายทอดสดสิ้นสุดลง');
-      }
-
       // Reset retry count when stream becomes active again
       if (_isStreamActive && !wasActive) {
         _retryCount = 0;
@@ -183,10 +167,18 @@ class _StreamScreenState extends State<StreamScreen>
       return;
     }
 
+    await _connectToStream();
+  }
+
+  Future<void> _retryListening() async {
+    await _connectToStream();
+  }
+
+  Future<void> _connectToStream() async {
     if (_icecastPort == null || _icecastMount == null) {
       await _fetchStatus();
       if (_icecastPort == null || _icecastMount == null) {
-        AppSnackbar.error('ข้อผิดพลาด', 'ไม่พบข้อมูลการเชื่อมต่อสตรีม');
+        _handleRetryOrStop();
         return;
       }
     }
@@ -211,16 +203,32 @@ class _StreamScreenState extends State<StreamScreen>
       await _player.play();
       // Reset retry count on successful connection
       _retryCount = 0;
+      _isRetrying = false;
     } catch (e) {
       print('Error starting stream: $e');
-      String errorMsg = 'ไม่สามารถเชื่อมต่อกับสตรีมได้';
-      if (e.toString().contains('SocketException')) {
-        errorMsg += ' (ปัญหาการเชื่อมต่อเครือข่าย)';
-      } else if (e.toString().contains('404')) {
-        errorMsg += ' (ไม่พบสตรีม)';
-      }
-      AppSnackbar.error('ข้อผิดพลาด', errorMsg);
       setState(() => _isLoading = false);
+      _handleRetryOrStop();
+    }
+  }
+
+  void _handleRetryOrStop() {
+    if (_retryCount < _maxRetries) {
+      _retryCount++;
+      _isRetrying = true;
+      print('🔄 Retry attempt $_retryCount/$_maxRetries in 5s...');
+      Future.delayed(const Duration(seconds: 5), () {
+        if (mounted) {
+          _retryListening();
+        }
+      });
+    } else {
+      print('❌ Max retries reached, stopping stream');
+      _retryCount = 0;
+      _isRetrying = false;
+      setState(() {
+        _isListening = false;
+      });
+      AppSnackbar.info('สตรีมจบแล้ว', 'ไม่สามารถเชื่อมต่อสตรีมได้');
     }
   }
 
@@ -234,6 +242,8 @@ class _StreamScreenState extends State<StreamScreen>
 
   @override
   void dispose() {
+    // ปิด wakelock เมื่อออกจากหน้านี้
+    WakelockPlus.disable();
     _pulseController.dispose();
     _waveController.dispose();
     _player.dispose();
@@ -253,21 +263,25 @@ class _StreamScreenState extends State<StreamScreen>
         elevation: 1,
         backgroundColor: Colors.white,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _buildStreamVisualizer(),
+      body: RefreshIndicator(
+        onRefresh: _fetchStatus,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _buildStreamVisualizer(),
 
-            const SizedBox(height: 16),
+              const SizedBox(height: 16),
 
-            _buildControlCard(),
+              _buildControlCard(),
 
-            const SizedBox(height: 16),
+              const SizedBox(height: 16),
 
-            _buildInfoCard(),
-          ],
+              _buildInfoCard(),
+            ],
+          ),
         ),
       ),
     );

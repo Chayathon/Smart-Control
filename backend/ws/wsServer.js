@@ -97,6 +97,9 @@ function createWSServer(server) {
                     return;
                 }
 
+                // Mark end notified ทันทีเพื่อป้องกันการแจ้งเตือนซ้ำจาก event อื่น
+                lineNotifyService.markEndNotified();
+
                 let songTitle = '';
                 let notifyMode = payload.activeMode || mode;
                 
@@ -110,7 +113,6 @@ function createWSServer(server) {
                 lineNotifyService.sendSongEnded(songTitle, notifyMode)
                     .then(result => {
                         if (result) {
-                            lineNotifyService.markEndNotified();
                             console.log(`✅ LINE notify sent: ${event} (${notifyMode})`);
                         }
                     })

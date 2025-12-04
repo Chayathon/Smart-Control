@@ -1,5 +1,6 @@
 const axios = require('axios');
 const settingsService = require('./settings.service');
+const config = require('../config/config');
 
 const LINE_BROADCAST_API_URL = 'https://api.line.me/v2/bot/message/broadcast';
 
@@ -98,19 +99,25 @@ async function sendLineNotification(message) {
 async function sendSongStarted(song, mode = 'unknown') {
     try {
         const settings = await settingsService.getAllSettings();
-        const template = settings.lineMessageStart || '🟢 เริ่มถ่ายทอดสดเพลง! {date} 🎵';
+        const template = settings.lineMessageStart || '🟢 เริ่มถ่ายทอดสด {mode}! {date} 🎵';
         
         const now = new Date();
         const dateStr = now.toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
         const timeStr = now.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
         
         const modeThai = getMode(mode);
+        
+        // สร้าง HTTP URL ที่ LINE สามารถแสดงเป็นลิงก์ได้
+        const baseUrl = settings.appBaseUrl || process.env.APP_BASE_URL || `http://localhost:${config.app.port}`;
+        const streamLink = `${baseUrl}/app/stream`;
+        
         const message = template
             .replace(/{song}/g, song)
             .replace(/{mode}/g, modeThai)
             .replace(/{date}/g, dateStr)
             .replace(/{time}/g, timeStr)
-            .replace(/{timestamp}/g, now.toLocaleString('th-TH'));
+            .replace(/{timestamp}/g, now.toLocaleString('th-TH'))
+            .replace(/{link}/g, streamLink);
 
         console.log('📤 Sending LINE notification (Song Started):', message);
         const result = await sendLineNotification(message);
@@ -138,12 +145,18 @@ async function sendSongEnded(song = '', mode = 'unknown') {
         const modeThai = getMode(actualMode);
         
         const songPart = song ? `: ${song}` : '';
+        
+        // สร้าง HTTP URL ที่ LINE สามารถแสดงเป็นลิงก์ได้
+        const baseUrl = settings.appBaseUrl || process.env.APP_BASE_URL || `http://localhost:${config.app.port}`;
+        const streamLink = `${baseUrl}/app/stream`;
+        
         const message = template
             .replace(/{song}/g, songPart)
             .replace(/{mode}/g, modeThai)
             .replace(/{date}/g, dateStr)
             .replace(/{time}/g, timeStr)
-            .replace(/{timestamp}/g, now.toLocaleString('th-TH'));
+            .replace(/{timestamp}/g, now.toLocaleString('th-TH'))
+            .replace(/{link}/g, streamLink);
 
         console.log('📤 Sending LINE notification (Song Ended):', message);
         const result = await sendLineNotification(message);
