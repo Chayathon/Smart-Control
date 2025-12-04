@@ -10,6 +10,7 @@ const DEFAULT_SETTINGS = {
     lineNotifyEnabled: false,
     lineMessageStart: '🎵 กำลังเล่น: {songTitle}',
     lineMessageEnd: '⏹️ เพลงจบแล้ว{songTitle}',
+    appBaseUrl: '', // URL สำหรับลิงก์เปิดแอป เช่น https://yourserver.com
 };
 
 async function getAllSettings() {

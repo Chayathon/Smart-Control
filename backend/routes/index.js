@@ -16,4 +16,7 @@ router.use('/settings', require('./settings.routes'));
 
 router.use('/uplink', require('./uplink.routes'));
 
+// App deep link redirect
+router.use('/app', require('./app.routes'));
+
 module.exports = router;

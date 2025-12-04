@@ -20,6 +20,7 @@ class _LineNotifyScreenState extends State<LineNotifyScreen> {
   final TextEditingController _lineUserIdCtrl = TextEditingController();
   final TextEditingController _lineMessageStartCtrl = TextEditingController();
   final TextEditingController _lineMessageEndCtrl = TextEditingController();
+  final TextEditingController _appBaseUrlCtrl = TextEditingController();
 
   bool _obscureLineAccessToken = true;
   bool _obscureLineSecret = true;
@@ -38,6 +39,7 @@ class _LineNotifyScreenState extends State<LineNotifyScreen> {
     _lineUserIdCtrl.dispose();
     _lineMessageStartCtrl.dispose();
     _lineMessageEndCtrl.dispose();
+    _appBaseUrlCtrl.dispose();
     super.dispose();
   }
 
@@ -54,6 +56,7 @@ class _LineNotifyScreenState extends State<LineNotifyScreen> {
             data['lineMessageStart'] ?? '🎵 กำลังเล่น: {songTitle}';
         _lineMessageEndCtrl.text =
             data['lineMessageEnd'] ?? '⏹️ เพลงจบแล้ว{songTitle}';
+        _appBaseUrlCtrl.text = data['appBaseUrl'] ?? '';
         _hasChanges = false;
       });
     } catch (error) {
@@ -89,6 +92,7 @@ class _LineNotifyScreenState extends State<LineNotifyScreen> {
         lineNotifyEnabled: _lineNotifyEnabled,
         lineMessageStart: _lineMessageStartCtrl.text,
         lineMessageEnd: _lineMessageEndCtrl.text,
+        appBaseUrl: _appBaseUrlCtrl.text,
       );
       setState(() => _hasChanges = false);
       AppSnackbar.success('สำเร็จ', 'บันทึกการตั้งค่าเรียบร้อยแล้ว');
@@ -252,6 +256,26 @@ class _LineNotifyScreenState extends State<LineNotifyScreen> {
           ),
           const SizedBox(height: 8),
 
+          // App Base URL
+          _buildSettingCard(
+            title: 'URL ของ Server',
+            subtitle: 'URL สำหรับลิงก์เปิดแอป (ใช้กับตัวแปร {link})',
+            icon: Icons.link,
+            iconColor: Colors.purple,
+            child: TextFieldBox(
+              hint: 'https://your-server.com',
+              controller: _appBaseUrlCtrl,
+              keyboardType: TextInputType.url,
+              onChanged: (value) {
+                setState(() {
+                  _hasChanges = true;
+                });
+              },
+              textInputAction: TextInputAction.done,
+            ),
+          ),
+          const SizedBox(height: 8),
+
           // Message Start Template
           _buildSettingCard(
             title: 'ข้อความเมื่อเริ่มเล่น',
@@ -262,7 +286,9 @@ class _LineNotifyScreenState extends State<LineNotifyScreen> {
             child: TextFieldBox(
               hint: '🟢 เริ่มถ่ายทอดสดเพลง! {date} 🎵',
               controller: _lineMessageStartCtrl,
-              maxLines: 3,
+              maxLines: null,
+              minLines: 3,
+              keyboardType: TextInputType.multiline,
               onChanged: (value) {
                 setState(() {
                   _hasChanges = true;
@@ -283,7 +309,9 @@ class _LineNotifyScreenState extends State<LineNotifyScreen> {
             child: TextFieldBox(
               hint: '🔴 หยุดการถ่ายทอดสด {date}',
               controller: _lineMessageEndCtrl,
-              maxLines: 3,
+              maxLines: null,
+              minLines: 3,
+              keyboardType: TextInputType.multiline,
               onChanged: (value) {
                 setState(() {
                   _hasChanges = true;
@@ -472,7 +500,8 @@ class _LineNotifyScreenState extends State<LineNotifyScreen> {
           const TextSpan(text: '{mode} - โหมดการเล่น\n'),
           const TextSpan(text: '{date} - วันที่\n'),
           const TextSpan(text: '{time} - เวลา\n'),
-          const TextSpan(text: '{timestamp} - วันที่และเวลา'),
+          const TextSpan(text: '{timestamp} - วันที่และเวลา\n'),
+          const TextSpan(text: '{link} - ลิงก์เปิดแอป'),
         ],
       ),
       padding: const EdgeInsets.all(12),

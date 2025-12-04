@@ -7,6 +7,7 @@ import 'package:smart_control/routes/app_routes.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await dotenv.load(fileName: '.env');
+
   runApp(const MyApp());
 }
 

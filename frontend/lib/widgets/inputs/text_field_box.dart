@@ -9,6 +9,7 @@ class TextFieldBox extends StatelessWidget {
     this.keyboardType,
     this.obscureText = false,
     this.maxLines = 1,
+    this.minLines,
     this.enabled = true,
     this.prefixIcon,
     this.suffixIcon,
@@ -22,7 +23,8 @@ class TextFieldBox extends StatelessWidget {
   final TextInputAction? textInputAction;
   final TextInputType? keyboardType;
   final bool obscureText;
-  final int maxLines;
+  final int? maxLines;
+  final int? minLines;
   final bool enabled;
   final Widget? prefixIcon;
   final Widget? suffixIcon;
@@ -38,6 +40,7 @@ class TextFieldBox extends StatelessWidget {
       keyboardType: keyboardType,
       obscureText: obscureText,
       maxLines: maxLines,
+      minLines: minLines,
       enabled: enabled,
       onChanged: onChanged,
       validator: validator,
