@@ -208,8 +208,7 @@ async function processBatch() {
         const batch = [...wsBuffer];
         wsBuffer = [];
 
-        broadcast({
-            type: 'MONITOR_UPDATE_BULK',
+        broadcastDeviceData({
             data: batch
         });
     }
@@ -223,7 +222,7 @@ async function handleDeviceData(topic, payloadStr, packet) {
     if (!m) return false;
     const nodeKey = m[1];
     const noFromTopic = parseInt(nodeKey.replace(/^zone/, ''), 10);
-    console.log(`[MQTT] 📥 incoming deviceData from ${nodeKey} : `, payloadStr);
+    // console.log(`[MQTT] 📥 incoming deviceData from ${nodeKey} : `, payloadStr);
 
     let json;
     try {
@@ -277,12 +276,12 @@ async function handleDeviceData(topic, payloadStr, packet) {
         console.warn('[Data] Formatting error, sending raw:', e.message);
     }
 
-    // ✅ ส่ง realtime ไปยัง /ws/device-data แบบเวอร์ชันเก่า (row ต่อ row)
-    try {
-        broadcastDeviceData(payloadForUI);
-    } catch (e) {
-        console.warn('[WS] broadcastDeviceData error:', e.message);
-    }
+    // // ✅ ส่ง realtime ไปยัง /ws/device-data แบบเวอร์ชันเก่า (row ต่อ row)
+    // try {
+    //     broadcastDeviceData(payloadForUI);
+    // } catch (e) {
+    //     console.warn('[WS] broadcastDeviceData error:', e.message);
+    // }
 
     // ✅ ยังเก็บ buffer สำหรับ bulk WS + Mongo ตามเดิม
     wsBuffer.push(payloadForUI);
