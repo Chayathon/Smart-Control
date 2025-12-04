@@ -142,7 +142,6 @@ class _SidebarPanelState extends State<SidebarPanel>
                       children: [
                         // Header with profile
                         _buildHeader(),
-                        const SizedBox(height: 8),
                         // Menu items
                         Expanded(
                           child: ListView(
