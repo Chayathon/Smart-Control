@@ -10,7 +10,8 @@ import 'package:smart_control/screens/stream/stream_screen.dart';
 import 'package:smart_control/screens/splash_screen/splash_screen.dart';
 import 'package:smart_control/screens/monitoring/monitoring_screen.dart';
 import 'package:smart_control/screens/sos/sos_screen.dart';
-
+import 'package:sip_ua/sip_ua.dart';
+import 'package:smart_control/screens/sos/sos_binding.dart';
 import 'app_routes.dart';
 
 class AppPages {
@@ -25,6 +26,15 @@ class AppPages {
     GetPage(name: AppRoutes.schedule, page: () => const ScheduleScreen()),
     GetPage(name: AppRoutes.lineNotify, page: () => const LineNotifyScreen()),
     GetPage(name: AppRoutes.splash, page: () => const SplashScreen()),
-    GetPage(name: AppRoutes.sos, page: () => const SosScreen()),
+    GetPage(
+      name: AppRoutes.sos,
+      binding: SOSBinding(),
+
+      page: () {
+        final SIPUAHelper sipHelper = Get.find<SIPUAHelper>();
+
+        return SOSPage(helper: sipHelper);
+      },
+    ),
   ];
 }
