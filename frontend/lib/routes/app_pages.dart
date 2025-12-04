@@ -9,6 +9,7 @@ import 'package:smart_control/screens/song/song_screen.dart';
 import 'package:smart_control/screens/stream/stream_screen.dart';
 import 'package:smart_control/screens/splash_screen/splash_screen.dart';
 import 'package:smart_control/screens/monitoring/monitoring_screen.dart';
+import 'package:smart_control/screens/sos/sos_screen.dart';
 
 import 'app_routes.dart';
 
@@ -24,5 +25,6 @@ class AppPages {
     GetPage(name: AppRoutes.schedule, page: () => const ScheduleScreen()),
     GetPage(name: AppRoutes.lineNotify, page: () => const LineNotifyScreen()),
     GetPage(name: AppRoutes.splash, page: () => const SplashScreen()),
+    GetPage(name: AppRoutes.sos, page: () => const SosScreen()),
   ];
 }

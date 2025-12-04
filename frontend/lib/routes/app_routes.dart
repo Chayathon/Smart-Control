@@ -10,4 +10,5 @@ abstract class AppRoutes {
   static const lineNotify = '/settings/line-notify';
   static const splash = '/splash';
   static const test = "/test";
+  static const sos = '/sos';
 }
