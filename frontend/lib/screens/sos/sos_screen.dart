@@ -31,7 +31,7 @@ class _SosScreenState extends State<SosScreen> implements SipUaHelperListener {
   bool _videoMuted = false; // ปิด/เปิดกล้องระหว่างสาย
 
   // เบอร์ board ที่จะโทรหา (ปรับตามจริงได้)
-  final String _boardTarget = 'sip:301@192.168.1.83';
+  final String _boardTarget = 'sip:201@192.168.1.83';
 
   @override
   void initState() {
