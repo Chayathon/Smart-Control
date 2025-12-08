@@ -3,17 +3,18 @@ import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:sip_ua/sip_ua.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'dart:io' show Platform;
 
-class SosScreen extends StatefulWidget {
+class SOSPage extends StatefulWidget {
   final SIPUAHelper helper;
 
-  const SosScreen({super.key, required this.helper});
+  const SOSPage({super.key, required this.helper});
 
   @override
-  State<SosScreen> createState() => _SosScreenState();
+  State<SOSPage> createState() => _SOSPageState();
 }
 
-class _SosScreenState extends State<SosScreen> implements SipUaHelperListener {
+class _SOSPageState extends State<SOSPage> implements SipUaHelperListener {
   String _connectionStatus = 'Disconnected';
   Call? _currentCall;
   bool _isCallActive = false;
@@ -21,16 +22,15 @@ class _SosScreenState extends State<SosScreen> implements SipUaHelperListener {
   final RTCVideoRenderer _remoteRenderer = RTCVideoRenderer();
   final RTCVideoRenderer _localRenderer = RTCVideoRenderer();
 
-  // เก็บ stream เพื่อควบคุม mic/speaker/video
   MediaStream? _localStream;
   MediaStream? _remoteStream;
 
   bool _micMuted = false;
   bool _speakerMuted = false;
-  bool _videoEnabled = false; // ใช้บอกว่าตอนนี้เป็นสายวิดีโอไหม
-  bool _videoMuted = false; // ปิด/เปิดกล้องระหว่างสาย
+  bool _videoEnabled = false;
+  bool _videoMuted = false;
 
-  // เบอร์ board ที่จะโทรหา (ปรับตามจริงได้)
+  // เบอร์บอร์ด / กล้อง
   final String _boardTarget = 'sip:201@192.168.1.83';
 
   @override
@@ -50,14 +50,33 @@ class _SosScreenState extends State<SosScreen> implements SipUaHelperListener {
     if (!kIsWeb &&
         (defaultTargetPlatform == TargetPlatform.android ||
             defaultTargetPlatform == TargetPlatform.iOS)) {
-      // ⭐ ขอสิทธิ์ใช้งานกล้อง/ไมค์ แม้จะไม่ได้ส่งวิดีโอ (จำเป็นสำหรับการรับ stream)
-      await [Permission.microphone, Permission.camera].request();
+      final statuses = await [
+        Permission.microphone,
+        Permission.camera,
+      ].request();
+
+      if (kDebugMode) {
+        print('MIC perm = ${statuses[Permission.microphone]}');
+        print('CAM perm = ${statuses[Permission.camera]}');
+      }
+
+      if (statuses[Permission.microphone]?.isDenied == true ||
+          statuses[Permission.camera]?.isDenied == true) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('กรุณาอนุญาตไมค์และกล้องใน Settings ก่อนใช้วิดีโอ'),
+            ),
+          );
+        }
+      }
     }
+
     _registerSIP();
   }
 
   void _registerSIP() {
-    UaSettings settings = UaSettings();
+    final settings = UaSettings();
 
     settings.transportType = TransportType.WS;
     settings.webSocketUrl = 'ws://192.168.1.83:8088/ws';
@@ -80,8 +99,7 @@ class _SosScreenState extends State<SosScreen> implements SipUaHelperListener {
 
   // ================== CALL FUNCTION ==================
 
-  /// โทรเสียงอย่างเดียวไปหา board
-  Future<void> _callBoard() async {
+  Future<void> _callBoard({bool video = false}) async {
     if (!widget.helper.connected ||
         widget.helper.registerState.state != RegistrationStateEnum.REGISTERED) {
       if (!mounted) return;
@@ -94,50 +112,24 @@ class _SosScreenState extends State<SosScreen> implements SipUaHelperListener {
     }
 
     setState(() {
-      _videoEnabled = false;
+      _videoEnabled = video;
       _videoMuted = false;
     });
 
     final ok = await widget.helper.call(
       _boardTarget,
-      voiceOnly: true, // 🔹 สายเสียงอย่างเดียว
+      voiceOnly: !video, // false = ขอ audio+video, true = เอาแค่เสียง
     );
 
     if (!ok && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('โทรไปหา board ไม่สำเร็จ (ดู log Not connected)'),
+        SnackBar(
+          content: Text(
+            video
+                ? 'Video call ไปหา board ไม่สำเร็จ'
+                : 'โทรไปหา board ไม่สำเร็จ',
+          ),
         ),
-      );
-    }
-  }
-
-  /// โทรแบบ Video ไปหา board (ขอทั้งเสียง+ภาพ)
-  Future<void> _callBoardVideo() async {
-    if (!widget.helper.connected ||
-        widget.helper.registerState.state != RegistrationStateEnum.REGISTERED) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('ยังไม่ได้เชื่อมต่อ SIP (ยังไม่ Registered)'),
-        ),
-      );
-      return;
-    }
-
-    setState(() {
-      _videoEnabled = true;
-      _videoMuted = false;
-    });
-
-    final ok = await widget.helper.call(
-      _boardTarget,
-      voiceOnly: false, // 🔹 ขอทั้งเสียง+ภาพ
-    );
-
-    if (!ok && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Video call ไปหา board ไม่สำเร็จ')),
       );
     }
   }
@@ -167,8 +159,25 @@ class _SosScreenState extends State<SosScreen> implements SipUaHelperListener {
     }
 
     setState(() => _speakerMuted = !_speakerMuted);
-    // ✅ ใช้ Helper.setSpeakerphoneOn แทนไปปิด track ตรงๆ
-    Helper.setSpeakerphoneOn(!_speakerMuted);
+
+    // ✅ ใช้ Helper.setSpeakerphoneOn เฉพาะบน Android / iOS เท่านั้น
+    if (!kIsWeb &&
+        (defaultTargetPlatform == TargetPlatform.android ||
+            defaultTargetPlatform == TargetPlatform.iOS)) {
+      try {
+        Helper.setSpeakerphoneOn(!_speakerMuted);
+      } catch (e) {
+        if (kDebugMode) {
+          print('setSpeakerphoneOn error: $e');
+        }
+      }
+    } else {
+      if (kDebugMode) {
+        print(
+          'Desktop/Web: ไม่เรียก setSpeakerphoneOn, ใช้ระบบเสียงปกติของ OS',
+        );
+      }
+    }
   }
 
   void _toggleVideoMute() {
@@ -186,7 +195,6 @@ class _SosScreenState extends State<SosScreen> implements SipUaHelperListener {
     }
 
     final newMuted = !_videoMuted;
-
     for (final track in _localStream!.getVideoTracks()) {
       track.enabled = !newMuted;
     }
@@ -209,7 +217,7 @@ class _SosScreenState extends State<SosScreen> implements SipUaHelperListener {
   Widget _buildCallUI() {
     return Column(
       children: [
-        // ======= VIDEO AREA =======
+        // ======= VIDEO / PREVIEW =======
         Expanded(
           child: Container(
             color: Colors.black,
@@ -251,33 +259,32 @@ class _SosScreenState extends State<SosScreen> implements SipUaHelperListener {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // แถวปุ่มโทรหลัก (ตอนยังไม่มีสายใช้งาน)
+              // ยังไม่มีสาย → ปุ่มโทรออก
               if (!_isCallActive && _currentCall == null)
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
                     _buildBtn(
-                      Icons.phone_forwarded,
+                      Icons.phone,
                       Colors.blueGrey,
                       "CALL BOARD",
-                      _callBoard,
+                      () => _callBoard(video: false),
                     ),
                     _buildBtn(
                       Icons.videocam,
                       Colors.purple,
                       "VIDEO CALL",
-                      _callBoardVideo,
+                      () => _callBoard(video: true),
                     ),
                   ],
                 ),
 
-              // ถ้ามีสายเข้า (CALL_INITIATION ฝั่ง remote) ให้โชว์ปุ่ม ANSWER/HANGUP
+              // มีสายเข้า แต่ยังไม่รับ
               if (!_isCallActive && _currentCall != null)
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
                     _buildBtn(Icons.call, Colors.green, "ANSWER", () {
-                      // รับสายแบบรองรับ video ด้วย
                       _currentCall!.answer(
                         widget.helper.buildCallOptions(false),
                       );
@@ -288,6 +295,7 @@ class _SosScreenState extends State<SosScreen> implements SipUaHelperListener {
                   ],
                 ),
 
+              // สายกำลังใช้งาน
               if (_isCallActive) ...[
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -343,6 +351,7 @@ class _SosScreenState extends State<SosScreen> implements SipUaHelperListener {
 
   @override
   Widget build(BuildContext context) {
+    // 👈 build() อยู่ใน class ชัดเจน แก้ error non_abstract_class_inherits_abstract_member
     return Scaffold(
       appBar: AppBar(
         title: const Text('SOS Control Center'),
@@ -422,7 +431,7 @@ class _SosScreenState extends State<SosScreen> implements SipUaHelperListener {
 
     switch (state.state) {
       case CallStateEnum.CALL_INITIATION:
-        // มีสายเข้า/เริ่มโทร แต่เราไม่เปลี่ยนหน้าแล้ว แค่เก็บ _currentCall ไว้
+        // มีสายเข้า / เริ่มโทร
         break;
 
       case CallStateEnum.STREAM:
@@ -467,7 +476,17 @@ class _SosScreenState extends State<SosScreen> implements SipUaHelperListener {
 
       case CallStateEnum.CONFIRMED:
       case CallStateEnum.ACCEPTED:
-        Helper.setSpeakerphoneOn(true); // ✅ บังคับ route ไป speaker
+        if (!kIsWeb &&
+            (defaultTargetPlatform == TargetPlatform.android ||
+                defaultTargetPlatform == TargetPlatform.iOS)) {
+          try {
+            Helper.setSpeakerphoneOn(true);
+          } catch (e) {
+            if (kDebugMode) {
+              print('setSpeakerphoneOn error: $e');
+            }
+          }
+        }
         setState(() {
           _isCallActive = true;
         });
@@ -475,6 +494,10 @@ class _SosScreenState extends State<SosScreen> implements SipUaHelperListener {
 
       case CallStateEnum.ENDED:
       case CallStateEnum.FAILED:
+        if (kDebugMode) {
+          print('❌ Call ended or failed, cause=${state.cause}');
+        }
+
         _remoteRenderer.srcObject = null;
         _localRenderer.srcObject = null;
         _remoteStream?.getTracks().forEach((track) => track.stop());
