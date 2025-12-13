@@ -7,13 +7,12 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:file_selector/file_selector.dart';
-import 'package:flutter/services.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:sip_ua/sip_ua.dart';
 
 import 'manage_contacts.dart';
 
-class SOSPage extends StatefulWidget {
-  final SIPUAHelper helper;
+typedef Json = Map<String, dynamic>;
 
 // 🔤 สไตล์กลางสำหรับ Logs / Contacts
 const TextStyle kListTitleStyle = TextStyle(
@@ -59,11 +58,17 @@ class ContactItem {
   ContactItem({required this.name, required this.number});
 }
 
+/// หน้าจอหลัก SOS Softphone
 class SosScreen extends StatefulWidget {
-  const SosScreen({super.key});
+  final SIPUAHelper helper;
+
+  const SosScreen({
+    Key? key,
+    required this.helper,
+  }) : super(key: key);
 
   @override
-  State<SOSPage> createState() => _SOSPageState();
+  State<SosScreen> createState() => _SosScreenState();
 }
 
 class _SosScreenState extends State<SosScreen>
@@ -183,6 +188,8 @@ class _SosScreenState extends State<SosScreen>
   late final AnimationController _answerBtnController;
   Animation<Offset>? _answerBtnAnimation;
 
+  bool get _hasNumber => _numberController.text.trim().isNotEmpty;
+
   @override
   void initState() {
     super.initState();
@@ -252,7 +259,7 @@ class _SosScreenState extends State<SosScreen>
     super.dispose();
   }
 
-  // ================== UI ==================
+  // ================== Sound helpers ==================
 
   String _soundFileForKey(String key) {
     switch (key) {
@@ -330,6 +337,8 @@ class _SosScreenState extends State<SosScreen>
     _answerBtnController.reset();
   }
 
+  // ================== Toast SOS ==================
+
   void _showIncomingSosToast(String number) {
     _toastTimer?.cancel();
     setState(() {
@@ -360,10 +369,10 @@ class _SosScreenState extends State<SosScreen>
         _showIncomingToast = false;
       });
 
-      // 👉 เปิดหน้า SOS (ไฟล์นี้เอง)
+      // 👉 เปิดหน้า SOS (ไฟล์นี้เอง) พร้อม helper เดิม
       Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (_) => const SosScreen(),
+          builder: (_) => SosScreen(helper: widget.helper),
         ),
       );
     }
@@ -451,7 +460,7 @@ class _SosScreenState extends State<SosScreen>
                     ),
                     const SizedBox(height: 1),
                     Text(
-                      'คลิกเพื่อเปิด', // 🔁 เปลี่ยนข้อความตรงนี้
+                      'คลิกเพื่อเปิด',
                       style: TextStyle(
                         color: Colors.white.withOpacity(0.75),
                         fontSize: 11,
@@ -477,6 +486,8 @@ class _SosScreenState extends State<SosScreen>
       ),
     );
   }
+
+  // ================== Dial helpers ==================
 
   void _appendDial(String value) {
     setState(() {
@@ -508,6 +519,8 @@ class _SosScreenState extends State<SosScreen>
       _activeAction = null;
     });
   }
+
+  // ================== Simulate Call ==================
 
   void _simulateOutgoingCall() {
     if (!_hasNumber) {
@@ -854,88 +867,89 @@ class _SosScreenState extends State<SosScreen>
     );
   }
 
+  // ================== BUILD ==================
+
   @override
   Widget build(BuildContext context) {
     final bool showToast = _showIncomingToast && _toastNumber != null;
 
     return Scaffold(
       backgroundColor: const Color(0xFFE3E3E3),
-appBar: AppBar(
-  elevation: 0,
-  backgroundColor: Colors.transparent,
-  centerTitle: true,
-  toolbarHeight: 54,
-  iconTheme: const IconThemeData(color: Colors.white),
-  flexibleSpace: Container(
-    decoration: BoxDecoration(
-      gradient: const LinearGradient(
-        colors: [
-          Color(0xFF141E30),
-          Color(0xFF243B55),
+      appBar: AppBar(
+        elevation: 0,
+        backgroundColor: Colors.transparent,
+        centerTitle: true,
+        toolbarHeight: 54,
+        iconTheme: const IconThemeData(color: Colors.white),
+        flexibleSpace: Container(
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [
+                Color(0xFF141E30),
+                Color(0xFF243B55),
+              ],
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.35),
+                blurRadius: 10,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+        ),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 30,
+              height: 30,
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.06),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.phone_in_talk_rounded,
+                size: 18,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(width: 10),
+            const Text(
+              'SOS',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+                letterSpacing: 0.4,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(
+              Icons.play_circle_outline,
+              color: Colors.white,
+            ),
+            tooltip: 'Test incoming call',
+            onPressed: _onTestCall,
+          ),
+          Padding(
+            padding: const EdgeInsets.only(right: 12.0),
+            child: IconButton(
+              icon: const Icon(
+                Icons.people_alt_outlined,
+                color: Colors.white,
+              ),
+              tooltip: 'Manage contacts',
+              onPressed: _openManageContacts,
+            ),
+          ),
         ],
-        begin: Alignment.centerLeft,
-        end: Alignment.centerRight,
       ),
-      boxShadow: [
-        BoxShadow(
-          color: Colors.black.withOpacity(0.35),
-          blurRadius: 10,
-          offset: const Offset(0, 3),
-        ),
-      ],
-    ),
-  ),
-  title: Row(
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      Container(
-        width: 30,
-        height: 30,
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.06),
-          shape: BoxShape.circle,
-        ),
-        child: const Icon(
-          Icons.phone_in_talk_rounded,
-          size: 18,
-          color: Colors.white,
-        ),
-      ),
-      const SizedBox(width: 10),
-      const Text(
-        'SOS',
-        style: TextStyle(
-          fontSize: 20,
-          fontWeight: FontWeight.w700,
-          color: Colors.white,
-          letterSpacing: 0.4,
-        ),
-      ),
-    ],
-  ),
-  actions: [
-    IconButton(
-      icon: const Icon(
-        Icons.play_circle_outline,
-        color: Colors.white,
-      ),
-      tooltip: 'Test incoming call',
-      onPressed: _onTestCall,
-    ),
-    Padding(
-      padding: const EdgeInsets.only(right: 12.0),
-      child: IconButton(
-        icon: const Icon(
-          Icons.people_alt_outlined,
-          color: Colors.white,
-        ),
-        tooltip: 'Manage contacts',
-        onPressed: _openManageContacts,
-      ),
-    ),
-  ],
-),
-
       body: SafeArea(
         child: Stack(
           children: [
@@ -1025,7 +1039,6 @@ appBar: AppBar(
           _buildBottomStatusBar(),
         ],
       ),
-      body: _buildCallUI(),
     );
   }
 
@@ -1040,13 +1053,12 @@ appBar: AppBar(
         return Container(
           height: 36,
           decoration: BoxDecoration(
-            color: const Color(0xFFE4E4E4),           // พื้นหลังเทาอ่อนเหมือนเดิม
-            borderRadius: BorderRadius.circular(10),   // สี่เหลี่ยมมุมมน
+            color: const Color(0xFFE4E4E4),
+            borderRadius: BorderRadius.circular(10),
             border: Border.all(color: Colors.grey.shade400),
           ),
           child: Stack(
             children: [
-              // ▶ ปุ่มที่ถูกเลือก – ใช้สีเหมือนแถบสถานะการโทร
               AnimatedPositioned(
                 duration: const Duration(milliseconds: 220),
                 curve: Curves.easeOut,
@@ -1059,7 +1071,7 @@ appBar: AppBar(
                     borderRadius: BorderRadius.circular(8),
                     gradient: const LinearGradient(
                       colors: [
-                        Color(0xFF141E30), // เหมือนแถบสถานะการโทร
+                        Color(0xFF141E30),
                         Color(0xFF243B55),
                       ],
                       begin: Alignment.centerLeft,
@@ -1079,8 +1091,6 @@ appBar: AppBar(
                   ),
                 ),
               ),
-
-              // 📝 ตัวอักษรของแท็บ
               Row(
                 children: tabs.asMap().entries.map((entry) {
                   final idx = entry.key;
@@ -1098,9 +1108,8 @@ appBar: AppBar(
                             fontSize: 13,
                             fontWeight:
                                 active ? FontWeight.w700 : FontWeight.w400,
-                            color: active
-                                ? Colors.white
-                                : Colors.grey.shade700,
+                            color:
+                                active ? Colors.white : Colors.grey.shade700,
                           ),
                         ),
                       ),
@@ -1170,7 +1179,7 @@ appBar: AppBar(
                 const Text(
                   'SIP server',
                   style: TextStyle(
-                    fontSize: 15,              // ⬆️ เพิ่มอีก
+                    fontSize: 15,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -1189,7 +1198,7 @@ appBar: AppBar(
                         controller: _sipServerController,
                         focusNode: _sipFocus,
                         style: const TextStyle(
-                          fontSize: 15,          // ⬆️ เพิ่มอีก
+                          fontSize: 15,
                         ),
                         textAlignVertical: TextAlignVertical.center,
                         decoration: const InputDecoration(
@@ -1223,7 +1232,7 @@ appBar: AppBar(
                 const Text(
                   'Recording folder',
                   style: TextStyle(
-                    fontSize: 15,              // ⬆️ เพิ่มอีก
+                    fontSize: 15,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -1248,7 +1257,7 @@ appBar: AppBar(
                               controller: _recordFolderController,
                               focusNode: _recordFocus,
                               style: const TextStyle(
-                                fontSize: 15,    // ⬆️ เพิ่มอีก
+                                fontSize: 15,
                               ),
                               maxLines: 1,
                               textAlignVertical: TextAlignVertical.center,
@@ -1363,7 +1372,7 @@ appBar: AppBar(
                         Text(
                           'บันทึก',
                           style: TextStyle(
-                            fontSize: 14,        // ⬆️ นิดหน่อย
+                            fontSize: 14,
                             fontWeight: FontWeight.w700,
                             color: Colors.white,
                           ),
@@ -1424,9 +1433,7 @@ appBar: AppBar(
                   tooltip: '',
                   color: Colors.white,
                   elevation: 6,
-                  // ✅ ใช้ offset เดิม
                   offset: const Offset(-291, 46),
-                  // ✅ ขยายพื้นที่เมนูให้กว้างขึ้น
                   constraints: const BoxConstraints(
                     minWidth: 346,
                   ),
@@ -1456,7 +1463,7 @@ appBar: AppBar(
                               child: Text(
                                 e,
                                 style: const TextStyle(
-                                  fontSize: 18, // ⬆️ ฟอนต์ใหญ่ 18
+                                  fontSize: 18,
                                   fontWeight: FontWeight.w500,
                                   color: Colors.black87,
                                 ),
@@ -1595,7 +1602,8 @@ appBar: AppBar(
 
     Widget buildCallButton() {
       final bool isOutgoingRinging =
-          (_callState == CallState.dialing || _callState == CallState.ringing) &&
+          (_callState == CallState.dialing ||
+                  _callState == CallState.ringing) &&
               !_hasIncoming;
       final bool isInCall = _callState == CallState.inCall;
       final bool isIncomingRinging =
@@ -1777,7 +1785,7 @@ appBar: AppBar(
     return Column(
       children: [
         SizedBox(
-          height: 34, // ⬅️ เดิม 40 ให้เตี้ยลง
+          height: 34,
           child: Row(
             children: [
               IconButton(
@@ -1790,7 +1798,7 @@ appBar: AppBar(
                 padding: EdgeInsets.zero,
                 visualDensity: VisualDensity.compact,
               ),
-              const SizedBox(width: 2), // ⬅️ เดิม 4
+              const SizedBox(width: 2),
               const Text('0', style: TextStyle(fontSize: 13)),
               Expanded(
                 child: _buildWindowsSlider(
@@ -1807,13 +1815,13 @@ appBar: AppBar(
                   },
                 ),
               ),
-              const SizedBox(width: 4), // ⬅️ เพิ่มคุมระยะด้านขวาเล็กน้อย
+              const SizedBox(width: 4),
               const Text('100', style: TextStyle(fontSize: 13)),
             ],
           ),
         ),
         SizedBox(
-          height: 34, // ⬅️ เดิม 40
+          height: 34,
           child: Row(
             children: [
               IconButton(
@@ -1826,7 +1834,7 @@ appBar: AppBar(
                 padding: EdgeInsets.zero,
                 visualDensity: VisualDensity.compact,
               ),
-              const SizedBox(width: 2), // ⬅️ เดิม 4
+              const SizedBox(width: 2),
               const Text('0', style: TextStyle(fontSize: 13)),
               Expanded(
                 child: _buildWindowsSlider(
@@ -1849,6 +1857,146 @@ appBar: AppBar(
           ),
         ),
       ],
+    );
+  }
+
+  // -------------------- Bottom Status Bar --------------------
+  Widget _buildBottomStatusBar() {
+    String statusLabel;
+    Color statusColor;
+
+    if (!_isOnline) {
+      statusLabel = 'Offline';
+      statusColor = Colors.redAccent;
+    } else if (_requestStatus.toLowerCase().contains('timeout')) {
+      statusLabel = 'Request timeout';
+      statusColor = Colors.orangeAccent;
+    } else {
+      statusLabel = 'Online';
+      statusColor = Colors.greenAccent;
+    }
+
+    return Container(
+      height: 46,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        gradient: const LinearGradient(
+          colors: [
+            Color(0xFF141E30),
+            Color(0xFF243B55),
+          ],
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.35),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      child: Row(
+        children: [
+          // 🔵 สถานะ
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 12,
+                height: 12,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: statusColor,
+                  boxShadow: [
+                    BoxShadow(
+                      color: statusColor.withOpacity(0.9),
+                      blurRadius: 8,
+                      spreadRadius: 0.5,
+                    ),
+                    BoxShadow(
+                      color: statusColor.withOpacity(0.5),
+                      blurRadius: 14,
+                      spreadRadius: 2,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                statusLabel,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(width: 12),
+          Container(
+            width: 1,
+            height: 22,
+            color: Colors.white.withOpacity(0.14),
+          ),
+          const SizedBox(width: 12),
+
+          // 🧑‍💻 ชื่อ account
+          Expanded(
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.person_outline,
+                  size: 20,
+                  color: Colors.white,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Tooltip(
+                    message: _currentName,
+                    waitDuration: const Duration(milliseconds: 500),
+                    child: Text(
+                      _currentName,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                      softWrap: false,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(width: 12),
+          Row(
+            children: [
+              const Icon(
+                Icons.call_outlined,
+                size: 15,
+                color: Colors.white,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                _currentExtension,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                  letterSpacing: 0.6,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -1926,7 +2074,6 @@ appBar: AppBar(
       ),
       child: Row(
         children: [
-          // 🔤 ข้อความ "สถานะการโทร"
           const Text(
             'สถานะการโทร',
             style: TextStyle(
@@ -1936,8 +2083,6 @@ appBar: AppBar(
             ),
           ),
           const SizedBox(width: 14),
-
-          // 🔹 ชิปสถานะการโทร
           SizedBox(
             width: 260,
             child: Container(
@@ -1963,7 +2108,6 @@ appBar: AppBar(
               child: Stack(
                 alignment: Alignment.center,
                 children: [
-                  // ไอคอนชิดซ้าย
                   Align(
                     alignment: Alignment.centerLeft,
                     child: Icon(
@@ -1972,7 +2116,6 @@ appBar: AppBar(
                       color: Colors.white,
                     ),
                   ),
-                  // ข้อความอยู่กลางชิป
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 30),
                     child: Text(
@@ -1991,7 +2134,6 @@ appBar: AppBar(
               ),
             ),
           ),
-
           const Spacer(),
         ],
       ),
@@ -2007,7 +2149,6 @@ appBar: AppBar(
 
       final isVideo = _incomingIsVideo;
 
-      // ปุ่มรับสาย (ยังใช้ animation เดิม)
       Widget answerButton = ElevatedButton.icon(
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.green,
@@ -2044,18 +2185,15 @@ appBar: AppBar(
               ),
               child: Stack(
                 children: [
-                  // 🟣 block กลางจอ ใช้ฟังก์ชันเดียวกับ idle
                   _buildCenterVideoBlock(
                     icon: isVideo ? Icons.videocam : Icons.call,
                     line1: displayName,
                     line2: displayNumber,
                   ),
-
-                  // 🔻 ปุ่มรับสาย / วางสาย – ขยับขึ้นจากขอบล่างอีก
                   Positioned(
                     left: 0,
                     right: 0,
-                    bottom: 120, // ⬅ ขยับขึ้นสูงกว่าเดิม
+                    bottom: 120,
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
@@ -2151,7 +2289,7 @@ appBar: AppBar(
       );
     }
 
-    // ⚪️ Idle – ใช้ block กลางจอเดียวกัน
+    // ⚪️ Idle
     return Column(
       children: [
         Expanded(
@@ -2262,7 +2400,7 @@ appBar: AppBar(
             decoration: InputDecoration(
               isDense: true,
               prefixIcon: const Icon(Icons.search, size: 16),
-              hintText: 'ค้นหาจากชื่อหรือเบอร์',   // ✅ ใช้คำเดียวกัน
+              hintText: 'ค้นหาจากชื่อหรือเบอร์',
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(6),
               ),
@@ -2275,12 +2413,23 @@ appBar: AppBar(
     );
   }
 
-  // ================== SIP Listener ==================
+  Widget _buildCallLogTile(CallLogItem item) {
+    IconData icon;
+    Color color;
+    String directionTh;
 
-  @override
-  void transportStateChanged(TransportState state) {
-    if (kDebugMode) {
-      print('Transport state: ${state.state}');
+    if (item.missed && item.incoming) {
+      icon = Icons.call_missed;
+      color = Colors.redAccent;
+      directionTh = 'สายที่ไม่ได้รับ';
+    } else if (item.incoming) {
+      icon = Icons.call_received;
+      color = Colors.green;
+      directionTh = 'สายเข้า';
+    } else {
+      icon = Icons.call_made;
+      color = Colors.blue;
+      directionTh = 'สายออก';
     }
 
     final displayNumber = item.number.trim();
@@ -2418,158 +2567,9 @@ appBar: AppBar(
       ],
     );
   }
-
-  @override
-  void callStateChanged(Call call, CallState state) {
-    setState(() {
-      _currentCall = call;
-    });
-
-    if (!_isOnline) {
-      statusLabel = 'Offline';
-      statusColor = Colors.redAccent;
-    } else if (_requestStatus.toLowerCase().contains('timeout')) {
-      statusLabel = 'Request timeout';
-      statusColor = Colors.orangeAccent;
-    } else {
-      statusLabel = 'Online';
-      statusColor = Colors.greenAccent;
-    }
-
-    return Container(
-      height: 46,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
-        gradient: const LinearGradient(
-          colors: [
-            Color(0xFF141E30),
-            Color(0xFF243B55),
-          ],
-          begin: Alignment.centerLeft,
-          end: Alignment.centerRight,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.35),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 14),
-      child: Row(
-        children: [
-          // 🔵 สถานะ (บีบช่องไฟซ้ายขวาให้แคบลง)
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 12,
-                height: 12,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: statusColor,
-                  boxShadow: [
-                    BoxShadow(
-                      color: statusColor.withOpacity(0.9),
-                      blurRadius: 8,
-                      spreadRadius: 0.5,
-                    ),
-                    BoxShadow(
-                      color: statusColor.withOpacity(0.5),
-                      blurRadius: 14,
-                      spreadRadius: 2,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 6),
-              Text(
-                statusLabel,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
-                  color: Colors.white,
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(width: 12),
-          Container(
-            width: 1,
-            height: 22,
-            color: Colors.white.withOpacity(0.14),
-          ),
-          const SizedBox(width: 12),
-
-          // 🧑‍💻 ชื่อ account
-          Expanded(
-            child: Row(
-              children: [
-                const Icon(
-                  Icons.person_outline,
-                  size: 20,
-                  color: Colors.white,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Tooltip(
-                    message: _currentName,
-                    waitDuration: const Duration(milliseconds: 500),
-                    child: Text(
-                      _currentName,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                      softWrap: false,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          const SizedBox(width: 12),
-          Row(
-            children: [
-              const Icon(
-                Icons.call_outlined,
-                size: 15,
-                color: Colors.white,
-              ),
-              const SizedBox(width: 6),
-              Text(
-                _currentExtension,
-                style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white,
-                  letterSpacing: 0.6,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  @override
-  void onNewReinvite(ReInvite reInvite) {}
-
-  @override
-  void onNewMessage(SIPMessageRequest msg) {}
-
-  @override
-  void onNewNotify(Notify ntf) {}
 }
 
+/// extension สำหรับ darken สีในแถบสถานะการโทร
 extension _ColorX on Color {
   Color darken([double amount = 0.18]) {
     final hsl = HSLColor.fromColor(this);
