@@ -12,7 +12,8 @@ import 'package:audioplayers/audioplayers.dart';
 
 import 'manage_contacts.dart';
 
-typedef Json = Map<String, dynamic>;
+class SOSPage extends StatefulWidget {
+  final SIPUAHelper helper;
 
 // 🔤 สไตล์กลางสำหรับ Logs / Contacts
 const TextStyle kListTitleStyle = TextStyle(
@@ -62,7 +63,7 @@ class SosScreen extends StatefulWidget {
   const SosScreen({super.key});
 
   @override
-  State<SosScreen> createState() => _SosScreenState();
+  State<SOSPage> createState() => _SOSPageState();
 }
 
 class _SosScreenState extends State<SosScreen>
@@ -251,7 +252,7 @@ class _SosScreenState extends State<SosScreen>
     super.dispose();
   }
 
-  bool get _hasNumber => _numberController.text.trim().isNotEmpty;
+  // ================== UI ==================
 
   String _soundFileForKey(String key) {
     switch (key) {
@@ -1024,6 +1025,7 @@ appBar: AppBar(
           _buildBottomStatusBar(),
         ],
       ),
+      body: _buildCallUI(),
     );
   }
 
@@ -1499,6 +1501,7 @@ appBar: AppBar(
     ];
 
     return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
       children: [
         Expanded(
           child: GridView.builder(
@@ -2272,23 +2275,12 @@ appBar: AppBar(
     );
   }
 
-  Widget _buildCallLogTile(CallLogItem item) {
-    IconData icon;
-    Color color;
-    String directionTh;
+  // ================== SIP Listener ==================
 
-    if (item.missed && item.incoming) {
-      icon = Icons.call_missed;
-      color = Colors.red;
-      directionTh = 'โทรเข้ามาไม่รับสาย';
-    } else if (item.incoming && !item.missed) {
-      icon = Icons.call_received;
-      color = Colors.green;
-      directionTh = 'โทรเข้ามารับสาย';
-    } else {
-      icon = Icons.call_made;
-      color = Colors.blue;
-      directionTh = 'โทรออก';
+  @override
+  void transportStateChanged(TransportState state) {
+    if (kDebugMode) {
+      print('Transport state: ${state.state}');
     }
 
     final displayNumber = item.number.trim();
@@ -2427,10 +2419,11 @@ appBar: AppBar(
     );
   }
 
-  // -------------------- Bottom Status Bar --------------------
-  Widget _buildBottomStatusBar() {
-    String statusLabel;
-    Color statusColor;
+  @override
+  void callStateChanged(Call call, CallState state) {
+    setState(() {
+      _currentCall = call;
+    });
 
     if (!_isOnline) {
       statusLabel = 'Offline';
@@ -2566,6 +2559,15 @@ appBar: AppBar(
       ),
     );
   }
+
+  @override
+  void onNewReinvite(ReInvite reInvite) {}
+
+  @override
+  void onNewMessage(SIPMessageRequest msg) {}
+
+  @override
+  void onNewNotify(Notify ntf) {}
 }
 
 extension _ColorX on Color {
