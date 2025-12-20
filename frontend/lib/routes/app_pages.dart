@@ -30,11 +30,9 @@ class AppPages {
     GetPage(
       name: AppRoutes.sos,
       binding: SOSBinding(),
-
       page: () {
         final SIPUAHelper sipHelper = Get.find<SIPUAHelper>();
-
-        return SosScreen(helper: sipHelper);
+        return SosScreen(helper: sipHelper); // ✅ ตรงนี้แหละที่ต้องไปเพิ่ม constructor ให้ตรง
       },
     ),
   ];
