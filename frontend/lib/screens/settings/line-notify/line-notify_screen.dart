@@ -349,11 +349,10 @@ class _LineNotifyScreenState extends State<LineNotifyScreen> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        '1. ไปที่ developers.line.biz\n'
-                        '2. สร้าง Messaging API channel\n'
-                        '3. คัดลอก Channel Access Token\n'
-                        '4. เพิ่มบอทเป็นเพื่อนกับบัญชี LINE ของคุณ\n'
-                        '5. ระบบจะส่งแจ้งเตือนไปยังทุกคนที่เป็นเพื่อนกับบอท',
+                        '1. ไปที่ https://developers.line.biz/console และเข้าสู่ระบบ\n'
+                        '2. ไปที่แท็บ Providers -> Channels\n'
+                        '3. เลือก Channel ที่ใช้สำหรับการแจ้งเตือน\n'
+                        '4. สามารถปรับแต่งการตั้งค่าต่างๆ ได้ตามต้องการ เช่น รูปภาพ, คำอธิบาย ฯลฯ',
                         style: TextStyle(
                           fontSize: 13,
                           color: Colors.blue[800],
