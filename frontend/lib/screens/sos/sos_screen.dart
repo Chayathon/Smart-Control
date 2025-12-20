@@ -4,11 +4,13 @@
 
 import 'dart:ui';
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:sip_ua/sip_ua.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'manage_contacts.dart';
 
@@ -27,6 +29,11 @@ const TextStyle kListSubtitleStyle = TextStyle(
   fontWeight: FontWeight.normal,
 );
 
+// 🔑 Keys สำหรับ SharedPreferences
+const String _kPrefsKeyLogFolder = 'sos_log_folder_path';
+const String _kPrefsKeyRecordFolder = 'sos_record_folder_path';
+const String _kPrefsKeySipServer = 'sos_sip_server';
+
 enum CallState {
   idle,
   dialing,
@@ -36,7 +43,7 @@ enum CallState {
 }
 
 class CallLogItem {
-  final String number;
+  final String number; // หมายเลขอีกฝั่ง (remote)
   final DateTime time;
   final Duration duration;
   final bool incoming;
@@ -80,7 +87,7 @@ class _SosScreenState extends State<SosScreen>
   final TextEditingController _logSearchController = TextEditingController();
   String _logSearchQuery = '';
 
-  // 🔍 Search contacts (ยังไม่ filter แค่ช่องไว้ก่อน)
+  // 🔍 Search contacts
   final TextEditingController _contactSearchController =
       TextEditingController();
 
@@ -88,10 +95,14 @@ class _SosScreenState extends State<SosScreen>
   final TextEditingController _sipServerController = TextEditingController();
   final FocusNode _sipFocus = FocusNode();
 
-  // ✅ ไม่ใช้ late — สร้างตอนประกาศเลย
+  // Recording folder (เก็บวิดีโอ)
   final TextEditingController _recordFolderController =
       TextEditingController();
-  final FocusNode _recordFocus = FocusNode();
+  final FocusNode _recordFolderFocus = FocusNode();
+
+  // Log folder
+  final TextEditingController _logFolderController = TextEditingController();
+  final FocusNode _logFolderFocus = FocusNode();
 
   String _currentExtension = '2000';
   String _currentServer = '192.168.1.1';
@@ -123,29 +134,8 @@ class _SosScreenState extends State<SosScreen>
   bool _isDropdownOpen = false;
   String? _activeAction; // 'video'
 
-  final List<CallLogItem> _callLogs = [
-    CallLogItem(
-      number: '1002',
-      time: DateTime.now().subtract(const Duration(minutes: 3)),
-      duration: const Duration(minutes: 2, seconds: 30),
-      incoming: true,
-      missed: false,
-    ),
-    CallLogItem(
-      number: '2000',
-      time: DateTime.now().subtract(const Duration(hours: 1, minutes: 10)),
-      duration: const Duration(minutes: 5, seconds: 2),
-      incoming: false,
-      missed: false,
-    ),
-    CallLogItem(
-      number: '3001',
-      time: DateTime.now().subtract(const Duration(hours: 5, minutes: 40)),
-      duration: Duration.zero,
-      incoming: true,
-      missed: true,
-    ),
-  ];
+  /// 🔔 ประวัติการโทร (อ่านจากไฟล์ + เพิ่มใหม่)
+  final List<CallLogItem> _callLogs = [];
 
   final List<ContactItem> _contacts = [
     ContactItem(name: 'Control Room', number: '1002'),
@@ -171,28 +161,43 @@ class _SosScreenState extends State<SosScreen>
   bool _incomingIsVideo = false;
   bool _isInVideoCall = false;
 
+  // path สำหรับ Recording และ Log
   String _recordFolderPath = '';
+  String _logFolderPath = '';
 
+  // 🎧 เสียง
   final AudioPlayer _keyPlayer = AudioPlayer();
   final AudioPlayer _ringPlayer = AudioPlayer();
 
+  // 🔔 Toast SOS
   bool _showIncomingToast = false;
   String? _toastNumber;
   Timer? _toastTimer;
 
+  // 💾 Overlay แสดงผลบันทึก settings
   bool _showSaveOverlay = false;
   bool _saveSuccess = true;
   String _saveTitle = '';
   String _saveSubtitle = '';
 
+  // 🎬 ปุ่มรับสายกระดิก
   late final AnimationController _answerBtnController;
   Animation<Offset>? _answerBtnAnimation;
+
+  // 🕒 ข้อมูลสายปัจจุบัน (ใช้สำหรับ log ลงไฟล์)
+  DateTime? _callStartTime;
+  bool _currentCallIsIncoming = false;
+  String? _currentRemoteNumber;
 
   bool get _hasNumber => _numberController.text.trim().isNotEmpty;
 
   @override
   void initState() {
     super.initState();
+
+    // log folder default = โฟลเดอร์ที่รันโปรแกรมอยู่
+    _logFolderPath = Directory.current.path;
+    _logFolderController.text = _logFolderPath;
 
     _numberFocus.addListener(() {
       setState(() {});
@@ -215,13 +220,23 @@ class _SosScreenState extends State<SosScreen>
       setState(() {});
     });
 
-    _recordFolderController.text = _recordFolderPath;
+    // Recording folder listeners
     _recordFolderController.addListener(() {
       setState(() {
         _recordFolderPath = _recordFolderController.text;
       });
     });
-    _recordFocus.addListener(() {
+    _recordFolderFocus.addListener(() {
+      setState(() {});
+    });
+
+    // Log folder listeners
+    _logFolderController.addListener(() {
+      setState(() {
+        _logFolderPath = _logFolderController.text;
+      });
+    });
+    _logFolderFocus.addListener(() {
       setState(() {});
     });
 
@@ -238,6 +253,9 @@ class _SosScreenState extends State<SosScreen>
         curve: Curves.easeInOut,
       ),
     );
+
+    // โหลดค่าที่เคยบันทึก (SIP + โฟลเดอร์ วิดีโอ + log)
+    _loadPersistedSettings();
   }
 
   @override
@@ -249,14 +267,66 @@ class _SosScreenState extends State<SosScreen>
 
     _sipServerController.dispose();
     _sipFocus.dispose();
+
     _recordFolderController.dispose();
-    _recordFocus.dispose();
+    _recordFolderFocus.dispose();
+
+    _logFolderController.dispose();
+    _logFolderFocus.dispose();
 
     _keyPlayer.dispose();
     _ringPlayer.dispose();
     _toastTimer?.cancel();
     _answerBtnController.dispose();
     super.dispose();
+  }
+
+  // ================== SharedPreferences helpers ==================
+
+  Future<void> _loadPersistedSettings() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedLogDir = prefs.getString(_kPrefsKeyLogFolder);
+      final savedRecDir = prefs.getString(_kPrefsKeyRecordFolder);
+      final savedSip = prefs.getString(_kPrefsKeySipServer);
+
+      if (!mounted) return;
+
+      setState(() {
+        if (savedSip != null && savedSip.isNotEmpty) {
+          _currentServer = savedSip;
+          _sipServerController.text = savedSip;
+        }
+
+        if (savedRecDir != null && savedRecDir.isNotEmpty) {
+          _recordFolderPath = savedRecDir;
+          _recordFolderController.text = savedRecDir;
+        }
+
+        if (savedLogDir != null && savedLogDir.isNotEmpty) {
+          _logFolderPath = savedLogDir;
+          _logFolderController.text = savedLogDir;
+        }
+      });
+
+      // หลังจากมี path ล่าสุดแล้ว โหลด logs ตามโฟลเดอร์นั้น
+      await _loadLogsFromFile();
+    } catch (e) {
+      debugPrint('load prefs error: $e');
+      // fallback: อย่างน้อยให้ลองโหลดจาก logFolderPath ที่ตั้ง default ไว้
+      await _loadLogsFromFile();
+    }
+  }
+
+  Future<void> _persistSettings() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kPrefsKeySipServer, _currentServer);
+      await prefs.setString(_kPrefsKeyRecordFolder, _recordFolderPath);
+      await prefs.setString(_kPrefsKeyLogFolder, _logFolderPath);
+    } catch (e) {
+      debugPrint('save prefs error: $e');
+    }
   }
 
   // ================== Sound helpers ==================
@@ -347,9 +417,6 @@ class _SosScreenState extends State<SosScreen>
     });
   }
 
-  /// 🔔 Toast แจ้งเตือน SOS
-  /// - คลิกที่ตัว Toast = ปิด + เปิดหน้า SosScreen
-  /// - กดปุ่ม X = ปิดอย่างเดียว
   Widget _buildIncomingToast(String number) {
     final contactName = _findContactName(number);
     final displayName = contactName ?? number;
@@ -369,7 +436,6 @@ class _SosScreenState extends State<SosScreen>
         _showIncomingToast = false;
       });
 
-      // 👉 เปิดหน้า SOS (ไฟล์นี้เอง) พร้อม helper เดิม
       Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => SosScreen(helper: widget.helper),
@@ -520,6 +586,173 @@ class _SosScreenState extends State<SosScreen>
     });
   }
 
+  // ================== Log helpers (ไฟล์ text) ==================
+
+  /// สร้าง path ของไฟล์ log: <log-folder>/call_logs.txt
+  String _buildLogFilePath() {
+    final baseDir =
+        _logFolderPath.isNotEmpty ? _logFolderPath : Directory.current.path;
+    final sep = Platform.pathSeparator;
+    if (baseDir.endsWith(sep)) {
+      return '${baseDir}call_logs.txt';
+    }
+    return '$baseDir$sep'
+        'call_logs.txt';
+  }
+
+  /// เขียน 1 บรรทัดลงไฟล์ log
+  ///
+  /// แพทเทิร์น:
+  /// เวลา|โทรจากเบอร์|ไปหาเบอร์ไหน|เหตุการณ์|รับสายกี่นาที
+  Future<void> _appendLogLine(CallLogItem item) async {
+    try {
+      final file = File(_buildLogFilePath());
+      final t = item.time;
+      final timeStr =
+          '${t.year.toString().padLeft(4, '0')}-${t.month.toString().padLeft(2, '0')}-${t.day.toString().padLeft(2, '0')} '
+          '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}:${t.second.toString().padLeft(2, '0')}';
+
+      final fromNumber = item.incoming ? item.number : _currentExtension;
+      final toNumber = item.incoming ? _currentExtension : item.number;
+
+      String event;
+      if (item.missed && item.incoming) {
+        event = 'สายที่ไม่ได้รับ';
+      } else if (item.missed && !item.incoming) {
+        event = 'โทรไม่สำเร็จ';
+      } else if (item.incoming) {
+        event = 'สายเข้า';
+      } else {
+        event = 'สายออก';
+      }
+
+      final minutes = item.duration.inSeconds / 60.0;
+      final durationStr = minutes.toStringAsFixed(2);
+
+      final line = '$timeStr|$fromNumber|$toNumber|$event|$durationStr\n';
+      await file.writeAsString(line, mode: FileMode.append, flush: true);
+    } catch (e) {
+      debugPrint('append log error: $e');
+    }
+  }
+
+  /// โหลด log จากไฟล์มาแสดงในแท็บ Logs
+  Future<void> _loadLogsFromFile() async {
+    try {
+      final file = File(_buildLogFilePath());
+      if (!await file.exists()) {
+        if (mounted) {
+          setState(() {
+            _callLogs.clear();
+          });
+        }
+        return;
+      }
+
+      final lines = await file.readAsLines();
+      final List<CallLogItem> items = [];
+
+      for (final raw in lines) {
+        final line = raw.trim();
+        if (line.isEmpty) continue;
+
+        final parts = line.split('|');
+        if (parts.length < 5) continue;
+
+        final timeStr = parts[0].trim();
+        final fromNumber = parts[1].trim();
+        final toNumber = parts[2].trim();
+        final eventStr = parts[3].trim();
+        final durationStr = parts[4].trim();
+
+        DateTime time;
+        try {
+          time = DateTime.parse(timeStr);
+        } catch (_) {
+          time = DateTime.now();
+        }
+
+        bool incoming;
+        bool missed;
+
+        if (eventStr == 'สายเข้า') {
+          incoming = true;
+          missed = false;
+        } else if (eventStr == 'สายออก') {
+          incoming = false;
+          missed = false;
+        } else if (eventStr == 'สายที่ไม่ได้รับ') {
+          incoming = true;
+          missed = true;
+        } else if (eventStr == 'โทรไม่สำเร็จ' || eventStr == 'วางก่อนรับ') {
+          incoming = false;
+          missed = true;
+        } else {
+          incoming = false;
+          missed = false;
+        }
+
+        final minutes = double.tryParse(durationStr) ?? 0.0;
+        final duration =
+            Duration(milliseconds: (minutes * 60 * 1000).round());
+
+        final remoteNumber = incoming ? fromNumber : toNumber;
+
+        items.add(
+          CallLogItem(
+            number: remoteNumber,
+            time: time,
+            duration: duration,
+            incoming: incoming,
+            missed: missed,
+          ),
+        );
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _callLogs
+          ..clear()
+          ..addAll(items.reversed);
+      });
+    } catch (e) {
+      debugPrint('load logs error: $e');
+    }
+  }
+
+  /// เวลาสายจบ (วาง/ปฏิเสธ) ให้เรียกฟังก์ชันนี้เพื่อสร้าง log + เขียนไฟล์
+  void _finalizeAndLogCall() {
+    if (_currentRemoteNumber == null || _currentRemoteNumber!.isEmpty) {
+      return;
+    }
+
+    final now = DateTime.now();
+    final start = _callStartTime ?? now;
+    final duration =
+        _callStartTime == null ? Duration.zero : now.difference(start);
+
+    final incoming = _currentCallIsIncoming;
+    final missed = duration == Duration.zero;
+
+    final item = CallLogItem(
+      number: _currentRemoteNumber!,
+      time: now,
+      duration: duration,
+      incoming: incoming,
+      missed: missed,
+    );
+
+    setState(() {
+      _callLogs.insert(0, item);
+    });
+
+    _appendLogLine(item);
+
+    _callStartTime = null;
+    _currentRemoteNumber = null;
+    _currentCallIsIncoming = false;
+  }
+
   // ================== Simulate Call ==================
 
   void _simulateOutgoingCall() {
@@ -530,17 +763,23 @@ class _SosScreenState extends State<SosScreen>
       return;
     }
 
+    final targetNumber = _numberController.text.trim();
+
     _stopIncomingRingtone();
     _toastTimer?.cancel();
     _showIncomingToast = false;
     _stopAnswerButtonAnimation();
 
     setState(() {
+      _currentCallIsIncoming = false;
+      _currentRemoteNumber = targetNumber;
+      _callStartTime = null;
+
       _hasIncoming = false;
       _incomingIsVideo = false;
       _isInVideoCall = false;
       _callState = CallState.dialing;
-      _statusText = 'กำลังโทรออกไปยัง ${_numberController.text} ...';
+      _statusText = 'กำลังโทรออกไปยัง $targetNumber ...';
       _requestStatus = 'Sending INVITE';
     });
 
@@ -548,7 +787,7 @@ class _SosScreenState extends State<SosScreen>
       if (!mounted) return;
       setState(() {
         _callState = CallState.ringing;
-        _statusText = 'กำลังส่งเสียงเรียกไปยัง ${_numberController.text} ...';
+        _statusText = 'กำลังส่งเสียงเรียกไปยัง $targetNumber ...';
         _requestStatus = '180 Ringing';
       });
     });
@@ -557,9 +796,10 @@ class _SosScreenState extends State<SosScreen>
       if (!mounted) return;
       setState(() {
         _callState = CallState.inCall;
-        _statusText = 'กำลังสนทนากับ ${_numberController.text}';
+        _statusText = 'กำลังสนทนากับ $targetNumber';
         _requestStatus = '200 OK';
         _isInVideoCall = true;
+        _callStartTime = DateTime.now();
       });
     });
   }
@@ -571,6 +811,8 @@ class _SosScreenState extends State<SosScreen>
     _toastTimer?.cancel();
     _showIncomingToast = false;
     _stopAnswerButtonAnimation();
+
+    _finalizeAndLogCall();
 
     setState(() {
       _callState = CallState.ended;
@@ -622,6 +864,10 @@ class _SosScreenState extends State<SosScreen>
       _incomingIsVideo = true;
       _isInVideoCall = false;
 
+      _currentCallIsIncoming = true;
+      _currentRemoteNumber = incomingNo;
+      _callStartTime = null;
+
       _callState = CallState.ringing;
       _statusText = 'สายวิดีโอเรียกเข้าจาก $incomingNo';
       _requestStatus = 'Incoming INVITE (video)';
@@ -651,6 +897,10 @@ class _SosScreenState extends State<SosScreen>
           _incomingIsVideo ? '200 OK (video)' : '200 OK (audio)';
       _isInVideoCall = _incomingIsVideo;
       _hasIncoming = false;
+
+      _currentCallIsIncoming = true;
+      _currentRemoteNumber ??= _incomingNumber;
+      _callStartTime = DateTime.now();
     });
   }
 
@@ -661,6 +911,8 @@ class _SosScreenState extends State<SosScreen>
     _toastTimer?.cancel();
     _showIncomingToast = false;
     _stopAnswerButtonAnimation();
+
+    _finalizeAndLogCall();
 
     setState(() {
       _callState = CallState.ended;
@@ -706,6 +958,7 @@ class _SosScreenState extends State<SosScreen>
     );
   }
 
+  // เลือกโฟลเดอร์ Recording (วิดีโอ)
   Future<void> _browseRecordFolder() async {
     final String? dirPath = await getDirectoryPath();
     if (dirPath != null) {
@@ -723,7 +976,25 @@ class _SosScreenState extends State<SosScreen>
     });
   }
 
-  void _saveSettings() {
+  // เลือกโฟลเดอร์ Log
+  Future<void> _browseLogFolder() async {
+    final String? dirPath = await getDirectoryPath();
+    if (dirPath != null) {
+      setState(() {
+        _logFolderPath = dirPath;
+        _logFolderController.text = dirPath;
+      });
+    }
+  }
+
+  void _clearLogFolder() {
+    setState(() {
+      _logFolderPath = '';
+      _logFolderController.clear();
+    });
+  }
+
+  Future<void> _saveSettings() async {
     final input = _sipServerController.text.trim();
 
     if (input.isEmpty) {
@@ -741,6 +1012,12 @@ class _SosScreenState extends State<SosScreen>
         _saveSubtitle = 'การตั้งค่าถูกบันทึกเรียบร้อย';
         _showSaveOverlay = true;
       });
+
+      // เซฟค่าลง SharedPreferences (SIP + โฟลเดอร์วิดีโอ + log)
+      await _persistSettings();
+
+      // โหลด logs จากโฟลเดอร์ log ใหม่ (เผื่อเพิ่งเปลี่ยน)
+      await _loadLogsFromFile();
     }
 
     Future.delayed(const Duration(milliseconds: 1600), () {
@@ -776,7 +1053,9 @@ class _SosScreenState extends State<SosScreen>
       String direction;
       if (log.missed && log.incoming) {
         direction = 'missed incoming';
-      } else if (log.incoming && !log.missed) {
+      } else if (log.missed && !log.incoming) {
+        direction = 'missed outgoing';
+      } else if (log.incoming) {
         direction = 'incoming';
       } else {
         direction = 'outgoing';
@@ -1156,9 +1435,13 @@ class _SosScreenState extends State<SosScreen>
     final Color sipBorderColor =
         sipFocused ? Colors.blue.shade700 : Colors.black;
 
-    final bool recordFocused = _recordFocus.hasFocus;
+    final bool recordFocused = _recordFolderFocus.hasFocus;
     final Color recordBorderColor =
         recordFocused ? Colors.blue.shade700 : Colors.black;
+
+    final bool logFocused = _logFolderFocus.hasFocus;
+    final Color logBorderColor =
+        logFocused ? Colors.blue.shade700 : Colors.black;
 
     return Padding(
       padding: const EdgeInsets.all(8.0),
@@ -1218,7 +1501,7 @@ class _SosScreenState extends State<SosScreen>
           ),
           const SizedBox(height: 10),
 
-          // ----- Recording folder -----
+          // ----- Recording folder (วิดีโอ) -----
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
             decoration: BoxDecoration(
@@ -1230,7 +1513,7 @@ class _SosScreenState extends State<SosScreen>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'Recording folder',
+                  'โฟลเดอร์เก็บไฟล์บันทึกวิดีโอ (Recording)',
                   style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w600,
@@ -1255,7 +1538,7 @@ class _SosScreenState extends State<SosScreen>
                             borderRadius: BorderRadius.circular(8),
                             child: TextField(
                               controller: _recordFolderController,
-                              focusNode: _recordFocus,
+                              focusNode: _recordFolderFocus,
                               style: const TextStyle(
                                 fontSize: 15,
                               ),
@@ -1290,7 +1573,7 @@ class _SosScreenState extends State<SosScreen>
                           color: Colors.black87,
                         ),
                         onPressed: _browseRecordFolder,
-                        tooltip: 'เลือกโฟลเดอร์',
+                        tooltip: 'เลือกโฟลเดอร์ Recording',
                       ),
                     ),
                     const SizedBox(width: 4),
@@ -1314,13 +1597,129 @@ class _SosScreenState extends State<SosScreen>
                     ),
                   ],
                 ),
+                const SizedBox(height: 4),
+                const Text(
+                  'สำหรับกำหนดที่เก็บไฟล์บันทึกวิดีโอ',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Colors.grey,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+
+          // ----- Log folder -----
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: Colors.grey.shade300),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'โฟลเดอร์เก็บไฟล์ประวัติการโทร',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    Expanded(
+                      child: SizedBox(
+                        height: 32,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: logBorderColor,
+                              width: 1,
+                            ),
+                            color: Colors.white,
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: TextField(
+                              controller: _logFolderController,
+                              focusNode: _logFolderFocus,
+                              style: const TextStyle(
+                                fontSize: 15,
+                              ),
+                              maxLines: 1,
+                              textAlignVertical: TextAlignVertical.center,
+                              decoration: const InputDecoration(
+                                border: InputBorder.none,
+                                isDense: true,
+                                contentPadding: EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 0,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    SizedBox(
+                      width: 30,
+                      height: 30,
+                      child: IconButton(
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(
+                          minWidth: 30,
+                          minHeight: 30,
+                        ),
+                        icon: const Icon(
+                          Icons.folder_open,
+                          size: 22,
+                          color: Colors.black87,
+                        ),
+                        onPressed: _browseLogFolder,
+                        tooltip: 'เลือกโฟลเดอร์ Log',
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    SizedBox(
+                      width: 30,
+                      height: 30,
+                      child: IconButton(
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(
+                          minWidth: 30,
+                          minHeight: 30,
+                        ),
+                        icon: const Icon(
+                          Icons.close,
+                          size: 22,
+                          color: Colors.black87,
+                        ),
+                        onPressed: _clearLogFolder,
+                        tooltip: 'ล้างค่า',
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'ระบบจะบันทึก log เป็นไฟล์ "call_logs.txt" ในโฟลเดอร์นี้',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Colors.grey,
+                  ),
+                ),
               ],
             ),
           ),
 
           const Spacer(),
 
-          // 🔘 ปุ่มบันทึก
           Center(
             child: SizedBox(
               width: 100,
@@ -1899,7 +2298,6 @@ class _SosScreenState extends State<SosScreen>
       padding: const EdgeInsets.symmetric(horizontal: 14),
       child: Row(
         children: [
-          // 🔵 สถานะ
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -1936,7 +2334,6 @@ class _SosScreenState extends State<SosScreen>
               ),
             ],
           ),
-
           const SizedBox(width: 12),
           Container(
             width: 1,
@@ -1944,8 +2341,6 @@ class _SosScreenState extends State<SosScreen>
             color: Colors.white.withOpacity(0.14),
           ),
           const SizedBox(width: 12),
-
-          // 🧑‍💻 ชื่อ account
           Expanded(
             child: Row(
               children: [
@@ -1974,7 +2369,6 @@ class _SosScreenState extends State<SosScreen>
               ],
             ),
           ),
-
           const SizedBox(width: 12),
           Row(
             children: [
@@ -2083,8 +2477,7 @@ class _SosScreenState extends State<SosScreen>
             ),
           ),
           const SizedBox(width: 14),
-          SizedBox(
-            width: 260,
+          Expanded(
             child: Container(
               padding: const EdgeInsets.symmetric(
                 horizontal: 14,
@@ -2141,7 +2534,6 @@ class _SosScreenState extends State<SosScreen>
   }
 
   Widget _buildIncomingArea() {
-    // 🟢 สายเรียกเข้า
     if (_hasIncoming) {
       final displayNumber = (_incomingNumber ?? '').trim();
       final displayName =
@@ -2232,7 +2624,6 @@ class _SosScreenState extends State<SosScreen>
       );
     }
 
-    // 🟣 กำลังคุย (Video call)
     if (_isInVideoCall && _callState == CallState.inCall) {
       final displayNumber = (_incomingNumber ?? _numberController.text).trim();
       final displayName =
@@ -2289,7 +2680,6 @@ class _SosScreenState extends State<SosScreen>
       );
     }
 
-    // ⚪️ Idle
     return Column(
       children: [
         Expanded(
@@ -2311,7 +2701,6 @@ class _SosScreenState extends State<SosScreen>
     );
   }
 
-  /// ใช้สร้างบล็อกไอคอนตรงกลางให้เหมือนกันทั้งตอน idle และตอนมีสายเข้า
   Widget _buildCenterVideoBlock({
     required IconData icon,
     required String line1,
@@ -2422,6 +2811,10 @@ class _SosScreenState extends State<SosScreen>
       icon = Icons.call_missed;
       color = Colors.redAccent;
       directionTh = 'สายที่ไม่ได้รับ';
+    } else if (item.missed && !item.incoming) {
+      icon = Icons.call_missed_outgoing;
+      color = Colors.redAccent;
+      directionTh = 'โทรไม่สำเร็จ';
     } else if (item.incoming) {
       icon = Icons.call_received;
       color = Colors.green;
@@ -2569,7 +2962,6 @@ class _SosScreenState extends State<SosScreen>
   }
 }
 
-/// extension สำหรับ darken สีในแถบสถานะการโทร
 extension _ColorX on Color {
   Color darken([double amount = 0.18]) {
     final hsl = HSLColor.fromColor(this);
