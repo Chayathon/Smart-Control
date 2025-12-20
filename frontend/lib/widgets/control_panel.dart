@@ -500,7 +500,7 @@ class _ControlPanelState extends State<ControlPanel> {
         if (mounted) {
           setState(() => isControlsCoolingDown = true);
         }
-        await Future.delayed(const Duration(seconds: 2));
+        await Future.delayed(const Duration(seconds: 4));
         if (mounted) {
           setState(() => isControlsCoolingDown = false);
         }
