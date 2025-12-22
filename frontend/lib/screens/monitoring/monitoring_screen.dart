@@ -904,7 +904,7 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
             fontWeight: FontWeight.bold,
             color: Colors.black,
           ),
-        ),
+       ),
         actions: [
           // 🔔 ไอคอนแจ้งเตือน + Dot badge ระบุจำนวนโหนดที่มี alarm และยังไม่อ่าน
           Padding(

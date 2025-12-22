@@ -1,5 +1,5 @@
 const mqtt = require('mqtt');
-const { broadcast } = require('../ws/wsServer');
+const { broadcast, broadcastDeviceData } = require('../ws/wsServer');
 const Device = require('../models/Device');
 const DeviceData = require('../models/DeviceData');
 const uart = require('./uart.handle');
@@ -17,6 +17,7 @@ let blockSyncUntil = 0;
 let lastBulkString = "";
 
 let dbBuffer = [];
+let wsBuffer = [];
 const BATCH_INTERVAL = 500;
 const TOTAL_ZONES = 200;
 
@@ -71,6 +72,10 @@ function connectAndSend({
 
         client.subscribe('mass-radio/test/bulk', { qos: 1 });
 
+        // setInterval(() => {
+        //     publish(allCommandTopic, { get_status: true });
+        // }, 30000);
+
         setInterval(checkOfflineZones, 10000);
         setInterval(processBatch, BATCH_INTERVAL);
     });
@@ -85,13 +90,21 @@ function connectAndSend({
 
         if (topic === 'mass-radio/test/bulk') {
             console.log(`🧪 [TEST] Received Bulk String via MQTT: ${payloadStr}`);
+            // เรียกใช้ฟังก์ชัน Bulk Update ทันที
             await handleRawBulkStatus(payloadStr);
             return;
         }
 
+        // 1. เช็คว่าเป็น Data Monitoring หรือไม่?
         if (await handleDeviceData(topic, payloadStr, packet)) return;
+
+        // 2. เช็คว่าเป็น Status หรือไม่?
         if (await handleStatus(topic, payloadStr, packet)) return;
+
+        // 3. เช็คว่าเป็น Command หรือไม่?
         if (await handleCommand(topic, payloadStr)) return;
+
+        // 4. เช็คว่าเป็น LWT หรือไม่?
         if (await handleLWT(topic, payloadStr)) return;
     });
 
@@ -181,7 +194,6 @@ async function updateDeviceInDB(no, data) {
 /** System Control Functions */
 
 async function processBatch() {
-    // ✅ เหลือแค่ DB batch (WS batch ย้ายไป deviceData.service แล้ว)
     if (dbBuffer.length > 0) {
         const batch = [...dbBuffer];
         dbBuffer = [];
@@ -190,6 +202,15 @@ async function processBatch() {
             DeviceData.insertMany(batch)
                 .catch(err => console.error('[Batch-DB] Error:', err.message));
         }
+    }
+
+    if (wsBuffer.length > 0) {
+        const batch = [...wsBuffer];
+        wsBuffer = [];
+
+        broadcastDeviceData({
+            data: batch
+        });
     }
 }
 
@@ -255,11 +276,16 @@ async function handleDeviceData(topic, payloadStr, packet) {
         console.warn('[Data] Formatting error, sending raw:', e.message);
     }
 
-    // ✅ ส่งเข้า WS batch ที่เดียว (deviceData.service)
-    deviceDataService.enqueueWsRow(payloadForUI);
+    // // ✅ ส่ง realtime ไปยัง /ws/device-data แบบเวอร์ชันเก่า (row ต่อ row)
+    // try {
+    //     broadcastDeviceData(payloadForUI);
+    // } catch (e) {
+    //     console.warn('[WS] broadcastDeviceData error:', e.message);
+    // }
 
-    // ✅ DB batch เหมือนเดิม
-    dbBuffer.push(payloadForIngest);
+    // ✅ ยังเก็บ buffer สำหรับ bulk WS + Mongo ตามเดิม
+    wsBuffer.push(payloadForUI);
+    dbBuffer.push(payloadForIngest); // รอรถเมล์รอบ DB
 
     const now = Date.now();
     const lastUpdate = lastHeartbeatUpdate.get(no) || 0;
@@ -446,8 +472,8 @@ async function handleStatus(topic, payloadStr, packet) {
 async function sendZoneUartCommand(zone, set_stream) {
     const zoneStr = String(zone).padStart(4, '0');
     const baseCmd = set_stream
-        ? `$S${zoneStr}Y$`
-        : `$S${zoneStr}N$`;
+        ? `$S${zoneStr}Y$`  // เปิดโซน
+        : `$S${zoneStr}N$`; // ปิดโซน
 
     const now = Date.now();
     const key = `${baseCmd}`;
@@ -472,19 +498,59 @@ async function sendZoneUartCommand(zone, set_stream) {
     }
 }
 
+// 5.1 ส่งคำสั่ง Bulk เปิด/ปิดโซนไปยัง UART
+async function sendZoneUartBulkCommand(zone, set_stream) {
+    let bulkString = '';
+    if (zone === 1111) {
+        bulkString = (set_stream ? 'Y' : 'N').repeat(TOTAL_ZONES);
+    } else {
+        for (let i = 1; i <= TOTAL_ZONES; i++) {
+            let isZoneOn = false;
+            if (i === zone) {
+                isZoneOn = set_stream;
+            }
+            else {
+                const item = deviceStatus.find(d => d.zone === i);
+                isZoneOn = item && item.data ? item.data.stream_enabled : false;
+            }
+            bulkString += (isZoneOn ? 'Y' : 'N');
+        }
+    }
+    const finalCmd = `${bulkString}`;
+    console.log(`[RadioZone] Bulk String Length: ${finalCmd.length}`);
+    const now = Date.now();
+    if (lastUartCmd === finalCmd && (now - lastUartTs) < 300) {
+        console.log('[RadioZone] Skip duplicate UART bulk cmd');
+        return;
+    }
+    lastUartCmd = finalCmd;
+    lastUartTs = now;
+    console.log(`[RadioZone] 📤 UART Syncing ${TOTAL_ZONES} zones (Target: ${zone}, Val: ${set_stream})`);
+    try {
+        await uart.writeString(finalCmd, 'ascii');
+    } catch (err) {
+        console.error('[RadioZone] ❌ UART Write Error:', err.message);
+    }
+}
+
 // 5.2 ส่งคำสั่งเปิด/ปิดหลายโซน bulk ไปยัง UART
 async function sendMultiZoneUartCommand(targetZonesArray, set_stream) {
     const TOTAL_ZONES = 200;
     let bulkString = '';
 
+    // 1. แปลง Array เป็น Set เพื่อให้เช็คเร็วขึ้น (O(1)) และกันค่าซ้ำ
     const targets = new Set(targetZonesArray.map(z => parseInt(z, 10)));
 
+    // 2. วนลูปสร้าง String 200 ตัว
     for (let i = 1; i <= TOTAL_ZONES; i++) {
         let isZoneOn = false;
 
+        // A. ถ้าโซนนี้ (i) อยู่ในรายชื่อที่เลือก -> ใช้ค่าใหม่ที่สั่งมา
         if (targets.has(i)) {
             isZoneOn = set_stream;
-        } else {
+        }
+        // B. ถ้าไม่อยู่ -> ให้รักษาค่าเดิมจาก Memory ไว้
+        else {
             const item = deviceStatus.find(d => d.zone === i);
             isZoneOn = item && item.data ? item.data.stream_enabled : false;
         }
@@ -494,6 +560,7 @@ async function sendMultiZoneUartCommand(targetZonesArray, set_stream) {
 
     const finalCmd = `${bulkString}`;
 
+    // 3. ระบบ Debounce (กันส่งซ้ำ)
     const now = Date.now();
     if (lastUartCmd === finalCmd) {
         console.log('[RadioZone] ⏹️ Skip sending UART: State unchanged (Already sent)');
@@ -520,6 +587,7 @@ async function sendMultiZoneUartCommand(targetZonesArray, set_stream) {
 async function sendVolUartCommand(zone, set_volume) {
     const zoneStr = String(zone).padStart(4, '0');
 
+    // clamp 0–21
     let vol = Number(set_volume);
     if (!Number.isFinite(vol)) {
         console.warn('[RadioZone] invalid volume value:', set_volume);
@@ -532,6 +600,7 @@ async function sendVolUartCommand(zone, set_volume) {
     const now = Date.now();
     const key = baseCmd;
 
+    // กันยิงซ้ำในเวลาใกล้ ๆ กัน (เหมือน set_stream)
     if (lastUartCmd === key) {
         console.log('[RadioZone] skip duplicate UART cmd (VOL):', key);
         return;
@@ -576,6 +645,7 @@ async function handleRawBulkStatus(rawString) {
         let streamEnabled = (char === 'Y');
         if (char !== 'Y' && char !== 'N') continue;
 
+        // ดึงค่าเก่าจาก Memory
         const prev = getCurrentStatusOfZone(zoneNum);
         const oldState = prev ? prev.stream_enabled : false;
         if (prev) {

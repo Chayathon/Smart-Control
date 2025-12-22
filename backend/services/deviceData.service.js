@@ -3,67 +3,6 @@
 const DeviceData = require('../models/DeviceData');
 const { broadcastDeviceData } = require('../ws/wsServer');
 
-/** =========================
- *  WS Batch Broadcaster
- *  - เก็บ row ไว้ใน buffer
- *  - flush ออกเป็นก้อนทุก ๆ BATCH_INTERVAL ms
- *  ========================= */
-let wsBuffer = [];
-let wsBatchTimerStarted = false;
-
-// ปรับได้ด้วย env ถ้าต้องการ (เช่น 1000)
-// ค่า default = 500ms
-const BATCH_INTERVAL = Number(process.env.DEVICEDATA_WS_BATCH_MS || 500);
-
-// กัน buffer โตผิดปกติ
-const WS_BUFFER_MAX = Number(process.env.DEVICEDATA_WS_BUFFER_MAX || 5000);
-
-function startWsBatchBroadcaster() {
-  if (wsBatchTimerStarted) return;
-  wsBatchTimerStarted = true;
-
-  setInterval(() => {
-    flushWsBuffer();
-  }, BATCH_INTERVAL);
-}
-
-function flushWsBuffer() {
-  if (!wsBuffer.length) return;
-
-  const batch = wsBuffer;
-  wsBuffer = [];
-
-  try {
-    // ✅ ส่งออกเป็นก้อนเดียว
-    // format เดียวกับ mqtt.service.js ที่คุณทำไว้: { data: [...] }
-    broadcastDeviceData({ data: batch });
-  } catch (e) {
-    console.warn('[deviceData.service] WS batch broadcast error:', e.message || e);
-  }
-}
-
-function pushWsRow(row) {
-  wsBuffer.push(row);
-
-  // ถ้า buffer ใหญ่มาก ให้ flush ทันที กัน RAM บวม
-  if (wsBuffer.length >= WS_BUFFER_MAX) {
-    flushWsBuffer();
-  }
-}
-
-/**
- * ✅ ฟังก์ชันใหม่: ให้โมดูลอื่น (เช่น mqtt.service) โยน row เข้ามา
- * โดยไม่ต้องมี wsBuffer ซ้ำอีกกอง
- */
-function enqueueWsRow(row) {
-  startWsBatchBroadcaster();
-  try {
-    pushWsRow(row);
-  } catch (e) {
-    console.warn('[deviceData.service] enqueueWsRow error:', e.message || e);
-  }
-}
-
 /** แปลง timestamp ทุกแบบให้กลายเป็น Date() */
 function toDate(v) {
   try {
@@ -78,34 +17,51 @@ function toDate(v) {
 }
 
 /**
- * 🔹 decode flag 7 หลัก (มี '$' นำหน้า + 6 ตัวเลข) ตามสเปคใหม่
- * ตัวอย่าง: "$010120"
+ * ✅ decodeFlag (สเปคของคุณจริง ๆ)
+ * - flag จะมาแบบ "$" + 2 หลัก เช่น "$00", "$12"
+ * - หลังตัด '$' จะเหลือ 2 ตัวอักษร (0–2)
+ *
+ * ⚠️ หมายเหตุ:
+ * - เดิมโค้ดเคยเขียนรองรับ 6 หลัก (สเปคใหม่) แต่คุณยืนยันว่า "ของจริงมีแค่ 2 หลัก"
+ * - ดังนั้น "ห้าม pad เป็น 6 หลัก" เพราะจะเพี้ยนความหมาย
+ *
+ * ✅ เราจะคืนค่า object alarms ให้ UI ใช้ต่อได้ทันที โดยยังใช้ key เดิมที่ UI คาดหวัง:
+ * { acSensor, acVoltage, acCurrent, dcSensor, dcVoltage, dcCurrent }
+ *
+ * ✅ Mapping ที่ใช้ (ปลอดภัยและเข้ากับค่า 0–2):
+ * - หลักที่ 1 (a) -> acVoltage  (0/1/2)
+ * - หลักที่ 2 (b) -> dcVoltage  (0/1/2)
+ * - ค่าอื่นที่ไม่รู้ (sensor/current) ตั้งเป็น 0
+ *
+ * ถ้าคุณต้องการ mapping แบบอื่นในอนาคต (เช่น a=acSensor b=dcSensor) ก็ปรับ return ได้ง่ายมาก
  */
 function decodeFlag(flag) {
   if (!flag || typeof flag !== 'string') return null;
 
   let s = flag.trim();
-  if (s.startsWith('$')) s = s.slice(1);
+  if (s.startsWith('$')) s = s.slice(1); // "$00" → "00"
 
-  if (!/^[0-2]{6}$/.test(s)) {
-    console.warn('[deviceData.service] invalid 6-digit flag format:', flag);
+  // ต้องเป็น 2 หลัก และเป็นตัวเลข 0–2 เท่านั้น
+  if (!/^[0-2]{2}$/.test(s)) {
+    console.warn('[deviceData.service] invalid 2-digit flag format:', flag);
     return null;
   }
 
-  const acSensor = parseInt(s[0], 10);
-  const acVoltage = parseInt(s[1], 10);
-  const acCurrent = parseInt(s[2], 10);
-  const dcSensor = parseInt(s[3], 10);
-  const dcVoltage = parseInt(s[4], 10);
-  const dcCurrent = parseInt(s[5], 10);
+  const a = parseInt(s[0], 10); // 0/1/2
+  const b = parseInt(s[1], 10); // 0/1/2
 
   return {
-    acSensor,
-    acVoltage,
-    acCurrent,
-    dcSensor,
-    dcVoltage,
-    dcCurrent,
+    // ค่า 0/1: sensor check (เราไม่มีข้อมูลจาก 2 หลักนี้ จึงตั้งเป็น 0)
+    acSensor: 0,
+    dcSensor: 0,
+
+    // ค่า 0/1/2: voltage normal/over/under (เหมาะกับช่วง 0–2)
+    acVoltage: a,
+    dcVoltage: b,
+
+    // current ไม่มีข้อมูลจาก flag 2 หลักนี้
+    acCurrent: 0,
+    dcCurrent: 0,
   };
 }
 
@@ -146,59 +102,67 @@ function buildOrderedPayload(raw = {}) {
  * แปลง doc/data -> รูปแบบส่งให้ frontend
  * - timestamp เป็น ISO string
  * - เติม alarms ที่ decode จาก flag + oat
+ *
+ * alarms รูปแบบ:
+ * {
+ *   acSensor: 0|1,
+ *   acVoltage: 0|1|2,
+ *   acCurrent: 0|1,
+ *   dcSensor: 0|1,
+ *   dcVoltage: 0|1|2,
+ *   dcCurrent: 0|1,
+ *   oat: 0|1          // 0 ไม่ประกาศ, 1 กำลังประกาศ (ส่งตรงจากค่า oat)
+ * }
  */
 function toFrontendRow(docOrData) {
   const r = docOrData.toObject ? docOrData.toObject() : { ...docOrData };
 
-  // 1) decode flag
+  // 1) decode flag -> alarms
   const alarmsFromFlag = decodeFlag(r.flag) || {};
   const alarms = { ...alarmsFromFlag };
 
+  // 2) oat (ประกาศ/ไม่ประกาศ) เติมเพิ่ม
   if (typeof r.oat === 'number') {
     const oatBit = r.oat !== 0 ? 1 : 0;
     alarms.oat = oatBit;
   }
 
-  // 2) เติม nodeId ให้แน่ใจว่ามี
+  // 3) เติม nodeId ให้แน่ใจว่ามี (สำคัญต่อการ update UI ทีละโซน)
   let nodeId = r.nodeId;
   if (!nodeId) {
     if (r.meta && r.meta.no != null) {
-      nodeId = String(r.meta.no);
+      nodeId = String(r.meta.no); // ใช้เลขโซนเป็น nodeId
     } else if (r.meta && r.meta.devEui) {
-      nodeId = String(r.meta.devEui);
+      nodeId = String(r.meta.devEui); // สำรอง
     }
   }
 
   return {
     ...r,
-    ...(nodeId ? { nodeId } : {}),
+    ...(nodeId ? { nodeId } : {}), // ใส่เฉพาะถ้าเราหาได้จริง
     timestamp:
       r.timestamp instanceof Date ? r.timestamp.toISOString() : r.timestamp,
     ...(Object.keys(alarms).length ? { alarms } : {}),
   };
 }
 
-/** บันทึก 1 แถว + buffer WS (batch) */
+/** บันทึก 1 แถว + broadcast realtime */
 async function ingestOne(raw) {
-  startWsBatchBroadcaster();
-
   const data = buildOrderedPayload(raw);
   const saved = await DeviceData.create(data);
 
   try {
-    // ✅ เปลี่ยนจากยิงทันที -> push เข้า buffer
-    pushWsRow(toFrontendRow(saved));
+    // ส่งไปให้ frontend ผ่าน WS
+    broadcastDeviceData(toFrontendRow(saved));
   } catch (e) {
-    console.warn('[deviceData.service] buffer push error (one):', e.message || e);
+    console.warn('[deviceData.service] broadcast error:', e.message || e);
   }
 
   return saved;
 }
 
-/** บันทึกหลายแถว + buffer WS (batch) */
+/** บันทึกหลายแถว + broadcast ทีละแถว */
 async function ingestMany(rows = []) {
-  startWsBatchBroadcaster();
-
   const items = Array.isArray(rows) ? rows : [rows];
   if (items.length === 0) return [];
 
@@ -206,12 +170,14 @@ async function ingestMany(rows = []) {
   const docs = await DeviceData.insertMany(normalized, { ordered: false });
 
   try {
-    // ✅ เปลี่ยนจาก loop broadcast ทีละตัว -> loop push เข้า buffer
     for (const d of docs) {
-      pushWsRow(toFrontendRow(d));
+      broadcastDeviceData(toFrontendRow(d));
     }
   } catch (e) {
-    console.warn('[deviceData.service] buffer push error (many):', e.message || e);
+    console.warn(
+      '[deviceData.service] broadcast error (many):',
+      e.message || e
+    );
   }
 
   return docs;
@@ -229,11 +195,10 @@ async function getDeviceDataList(limit) {
   return rows.map(toFrontendRow);
 }
 
-/** คงไว้เพื่อ log/compat */
+/** ตอนนี้ realtime มาจาก ingest → broadcast แล้ว (ฟังก์ชันนี้คงไว้เป็น log) */
 function initRealtimeBridge() {
-  startWsBatchBroadcaster();
   console.log(
-    `✅ deviceData realtime bridge initialized (WS batch every ${BATCH_INTERVAL}ms)`
+    '✅ deviceData realtime bridge initialized (ingest → WS broadcast)'
   );
 }
 
@@ -244,7 +209,4 @@ module.exports = {
   initRealtimeBridge,
   decodeFlag,
   toFrontendRow,
-
-  // ✅ export ตัวนี้ให้ mqtt.service เรียกใช้
-  enqueueWsRow,
 };
