@@ -997,13 +997,6 @@ packages:
     description: flutter
     source: sdk
     version: "0.0.0"
-  sos_pjsip:
-    dependency: "direct main"
-    description:
-      path: "plugins/sos_pjsip"
-      relative: true
-    source: path
-    version: "0.0.1"
   source_span:
     dependency: transitive
     description:
@@ -1213,5 +1206,5 @@ packages:
     source: hosted
     version: "6.5.0"
 sdks:
-  dart: ">=3.9.2 <4.0.0"
+  dart: ">=3.9.0 <4.0.0"
   flutter: ">=3.35.0"

@@ -149,9 +149,7 @@ class _MetricLineChartState extends State<MetricLineChart> {
                         const SizedBox(height: 2),
                         // subtitle = ชื่อ metric + หน่วย
                         Text(
-                          unit.isNotEmpty
-                              ? '$metricTitle ($unit)'
-                              : metricTitle,
+                          unit.isNotEmpty ? '$metricTitle ($unit)' : metricTitle,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
@@ -188,14 +186,12 @@ class _MetricLineChartState extends State<MetricLineChart> {
                       behavior: HitTestBehavior.opaque,
                       onTapDown: (d) {
                         if (pts.isEmpty) return;
-                        final hit =
-                            _nearestIndex(pts, d.localPosition, context);
+                        final hit = _nearestIndex(pts, d.localPosition, context);
                         setState(() => _hitIndex = hit);
                       },
                       onHorizontalDragUpdate: (d) {
                         if (pts.isEmpty) return;
-                        final render =
-                            context.findRenderObject() as RenderBox?;
+                        final render = context.findRenderObject() as RenderBox?;
                         if (render == null) return;
                         final size = render.size;
 
@@ -212,21 +208,17 @@ class _MetricLineChartState extends State<MetricLineChart> {
 
                           setState(() {
                             _pan = (_pan + deltaPan).clamp(0.0, 1.0);
-                            _hitIndex =
-                                null; // เลื่อนกราฟแล้ว เคลียร์ highlight ก่อน
+                            _hitIndex = null; // เลื่อนกราฟแล้ว เคลียร์ highlight ก่อน
                           });
                         } else {
                           // ถ้าไม่ zoom → drag เพื่อเลื่อน highlight เหมือนเดิม
-                          final local =
-                              render.globalToLocal(d.globalPosition);
-                          final hit =
-                              _nearestIndex(pts, local, context);
+                          final local = render.globalToLocal(d.globalPosition);
+                          final hit = _nearestIndex(pts, local, context);
                           setState(() => _hitIndex = hit);
                         }
                       },
                       child: Padding(
-                        padding:
-                            const EdgeInsets.fromLTRB(12, 10, 16, 16),
+                        padding: const EdgeInsets.fromLTRB(12, 10, 16, 16),
                         child: _ChartCanvas(
                           points: pts,
                           unit: unit,
@@ -234,8 +226,7 @@ class _MetricLineChartState extends State<MetricLineChart> {
                           mainColor: mainColor,
                           span: _selectedSpan, // 🔹 ส่ง span เข้าไป
                           totalPoints: totalPoints, // ✅ ใหม่
-                          visibleStartIndex:
-                              _visibleStartIndex, // ✅ ใหม่
+                          visibleStartIndex: _visibleStartIndex, // ✅ ใหม่
                         ),
                       ),
                     ),
@@ -444,8 +435,7 @@ class _MetricLineChartState extends State<MetricLineChart> {
   ) {
     final totalAll = totalPoints; // ✅ จำนวนจุดทั้งหมดสำหรับ span นี้
 
-    final hasHit =
-        _hitIndex != null && _hitIndex! >= 0 && _hitIndex! < pts.length;
+    final hasHit = _hitIndex != null && _hitIndex! >= 0 && _hitIndex! < pts.length;
 
     int idxLocal = 0; // index ในหน้าจอ (pts)
     _Pt? pt;
@@ -457,8 +447,7 @@ class _MetricLineChartState extends State<MetricLineChart> {
     // globalIndex = ลำดับจริงใน "จุดทั้งหมด" (หลังกรองวันแล้ว)
     int globalIndex = 0;
     if (hasHit && totalAll > 0) {
-      globalIndex =
-          (_visibleStartIndex + idxLocal).clamp(0, totalAll - 1);
+      globalIndex = (_visibleStartIndex + idxLocal).clamp(0, totalAll - 1);
     }
 
     // ขนาด window ปัจจุบัน + ขอบซ้าย-ขวาใน index global
@@ -475,8 +464,7 @@ class _MetricLineChartState extends State<MetricLineChart> {
     );
 
     final remainingLeft = windowStart; // จุดที่อยู่ซ้ายหน้าต่าง
-    final remainingRight =
-        totalAll - (windowEnd + 1); // จุดที่อยู่ขวาหน้าต่าง
+    final remainingRight = totalAll - (windowEnd + 1); // จุดที่อยู่ขวาหน้าต่าง
 
     // step สำหรับเลื่อน pan ต่อ 1 คลิก (เลื่อนประมาณขนาดหน้าต่าง / ทั้งหมด)
     double stepPan = 0.0;
@@ -488,12 +476,9 @@ class _MetricLineChartState extends State<MetricLineChart> {
 
     // ปรับเงื่อนไขให้ดู "จุดทั้งหมด" ไม่ใช่แค่ในหน้าจอ
     final canGoPrev = hasHit && globalIndex > 0;
-    final canGoNext =
-        (hasHit && globalIndex < totalAll - 1) ||
-            (!hasHit && totalAll > 0);
+    final canGoNext = (hasHit && globalIndex < totalAll - 1) || (!hasHit && totalAll > 0);
 
-    final titleText =
-        hasHit ? '${pt!.y.toStringAsFixed(2)} $unit' : 'ยังไม่ได้เลือกจุด';
+    final titleText = hasHit ? '${pt!.y.toStringAsFixed(2)} $unit' : 'ยังไม่ได้เลือกจุด';
 
     // ✅ subtitle แสดง "จุดที่ X/Y • เวลา"
     final subtitleText = hasHit && totalAll > 0
@@ -501,9 +486,7 @@ class _MetricLineChartState extends State<MetricLineChart> {
         : 'แตะจุดบนกราฟ หรือใช้ปุ่มเลื่อนด้านขวา';
 
     // ✅ แสดงเป็น "ลำดับ / จำนวนทั้งหมด" ตามที่ต้องการ (ด้านขวา)
-    final indexLabel = (hasHit && totalAll > 0)
-        ? '${globalIndex + 1}/$totalAll'
-        : '0/$totalAll';
+    final indexLabel = (hasHit && totalAll > 0) ? '${globalIndex + 1}/$totalAll' : '0/$totalAll';
 
     // helper เล็ก ๆ สำหรับปุ่มลูกศรสไตล์ฟองกลม + เงา
     Widget navButton({
@@ -512,8 +495,7 @@ class _MetricLineChartState extends State<MetricLineChart> {
       required VoidCallback onTap,
     }) {
       final bgColor = enabled ? Colors.white : const Color(0xFFE5E7EB);
-      final iconColor =
-          enabled ? const Color(0xFF334155) : const Color(0xFF9CA3AF);
+      final iconColor = enabled ? const Color(0xFF334155) : const Color(0xFF9CA3AF);
       final shadows = enabled
           ? [
               BoxShadow(
@@ -530,7 +512,7 @@ class _MetricLineChartState extends State<MetricLineChart> {
           borderRadius: BorderRadius.circular(999),
           onTap: enabled ? onTap : null,
           child: Container(
-            width: 36,  // ปุ่มใหญ่ขึ้น
+            width: 36, // ปุ่มใหญ่ขึ้น
             height: 36,
             decoration: BoxDecoration(
               color: bgColor,
@@ -557,8 +539,7 @@ class _MetricLineChartState extends State<MetricLineChart> {
         children: [
           // === ชิปด้านซ้าย: "จุดบนกราฟ N" แบบฟอง gradient ===
           Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(999),
               gradient: const LinearGradient(
@@ -622,9 +603,7 @@ class _MetricLineChartState extends State<MetricLineChart> {
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
-                    color: hasHit
-                        ? const Color(0xFF0F172A)
-                        : Colors.black87,
+                    color: hasHit ? const Color(0xFF0F172A) : Colors.black87,
                   ),
                 ),
                 const SizedBox(height: 2),
@@ -659,22 +638,18 @@ class _MetricLineChartState extends State<MetricLineChart> {
 
                     // ถ้ายังไม่ซูม → แค่เลื่อนจุดในหน้าจอ
                     if (!canPan) {
-                      _hitIndex =
-                          (idxLocal - 1).clamp(0, pts.length - 1);
+                      _hitIndex = (idxLocal - 1).clamp(0, pts.length - 1);
                       return;
                     }
 
                     // ถ้าจุดชิดซ้าย และยังมีจุดเหลือทางซ้าย → เลื่อน window ด้วย pan
                     final bool nearLeftEdge = idxLocal <= 0;
-                    if (nearLeftEdge &&
-                        remainingLeft > 0 &&
-                        stepPan > 0) {
+                    if (nearLeftEdge && remainingLeft > 0 && stepPan > 0) {
                       _pan = (_pan - stepPan).clamp(0.0, 1.0);
                       _hitIndex = 0; // ให้ค้างอยู่ด้านซ้ายของหน้าต่างใหม่
                     } else {
                       // ยังอยู่กลาง ๆ → เลื่อนแค่จุด
-                      _hitIndex =
-                          (idxLocal - 1).clamp(0, pts.length - 1);
+                      _hitIndex = (idxLocal - 1).clamp(0, pts.length - 1);
                     }
                   });
                 },
@@ -710,24 +685,18 @@ class _MetricLineChartState extends State<MetricLineChart> {
 
                     // ถ้ายังไม่ซูม → เลื่อนจุดในหน้าจออย่างเดียว
                     if (!canPan) {
-                      _hitIndex =
-                          (idxLocal + 1).clamp(0, pts.length - 1);
+                      _hitIndex = (idxLocal + 1).clamp(0, pts.length - 1);
                       return;
                     }
 
                     // ถ้าจุดชิดขวา และยังมีจุดเหลือทางขวา → เลื่อน window ด้วย pan
-                    final bool nearRightEdge =
-                        idxLocal >= visibleCount - 1;
-                    if (nearRightEdge &&
-                        remainingRight > 0 &&
-                        stepPan > 0) {
+                    final bool nearRightEdge = idxLocal >= visibleCount - 1;
+                    if (nearRightEdge && remainingRight > 0 && stepPan > 0) {
                       _pan = (_pan + stepPan).clamp(0.0, 1.0);
-                      _hitIndex =
-                          pts.length - 1; // ค้างอยู่ด้านขวาของหน้าต่างใหม่
+                      _hitIndex = pts.length - 1; // ค้างอยู่ด้านขวาของหน้าต่างใหม่
                     } else {
                       // ยังอยู่กลาง → เลื่อนเฉพาะจุด
-                      _hitIndex =
-                          (idxLocal + 1).clamp(0, pts.length - 1);
+                      _hitIndex = (idxLocal + 1).clamp(0, pts.length - 1);
                     }
                   });
                 },
@@ -746,9 +715,7 @@ class _MetricLineChartState extends State<MetricLineChart> {
         final hh = dt.hour.toString().padLeft(2, '0');
         final mn = dt.minute.toString().padLeft(2, '0');
         final ss = dt.second.toString().padLeft(2, '0');
-        return '$hh:%02d:%02d'
-            .replaceFirst('%02d', mn)
-            .replaceFirst('%02d', ss);
+        return '$hh:%02d:%02d'.replaceFirst('%02d', mn).replaceFirst('%02d', ss);
       case HistorySpan.day7:
       case HistorySpan.day15:
       case HistorySpan.day30:
@@ -793,9 +760,8 @@ class _MetricLineChartState extends State<MetricLineChart> {
     };
     final from = lastTs.subtract(Duration(days: days));
 
-    final filtered = ptsRaw
-        .where((p) => !p.t.isBefore(from) && !p.t.isAfter(lastTs))
-        .toList();
+    final filtered =
+        ptsRaw.where((p) => !p.t.isBefore(from) && !p.t.isAfter(lastTs)).toList();
 
     if (filtered.length <= 2) {
       return filtered;
@@ -816,14 +782,6 @@ class _MetricLineChartState extends State<MetricLineChart> {
   }
 
   /// ตัดช่วงข้อมูลตามระดับซูม + ตำแหน่ง pan
-  ///
-  /// - x1 = ทั้งหมดในช่วงเวลา (ไม่ตัด, pan = 1.0)
-  /// - x2 = แสดง ~1/2 ของช่วงเวลา
-  /// - x4 = แสดง ~1/4 ของช่วงเวลา
-  /// - x6 = แสดง ~1/6 ของช่วงเวลา
-  /// - x8 = แสดง ~1/8 ของช่วงเวลา
-  ///
-  /// _pan = 0.0 → ซ้ายสุด, 1.0 → ขวาสุด
   List<_Pt> _applyZoom(List<_Pt> pts) {
     // กรณีจุดน้อย หรือยังไม่ซูม → แสดงทั้งหมด
     if (pts.length <= 2 || _zoomFactor <= 1.0) {
@@ -884,12 +842,10 @@ class _MetricLineChartState extends State<MetricLineChart> {
     }
 
     // ==== Fallback: หากช่วงเวลานั้นไม่มีจุดเลย ====
-    // ใช้ index window ให้มีอย่างน้อย 2 จุดเสมอ
     int visibleCount = (total / _zoomFactor).round();
     if (visibleCount < 2) visibleCount = 2;
     if (visibleCount > total) visibleCount = total;
 
-    // center ประมาณจาก pan
     int approxCenterIndex = (panClamped * (total - 1)).round();
     int half = visibleCount ~/ 2;
 
@@ -932,13 +888,9 @@ class _MetricLineChartState extends State<MetricLineChart> {
   }
 
   /// แปลง row -> ค่า metric
-  ///
-  /// ใช้ enum ใหม่:
-  /// vdc, idc, wdc, vac, iac, wac, acfreq, acenergy, oat
   double? _valueForMetric(Json row, MetricKey metric) {
     dynamic raw;
     switch (metric) {
-      // AC → ใช้ field ใหม่ vac / iac / wac / acfreq / acenergy
       case MetricKey.vac:
         raw = row['vac'];
         break;
@@ -954,8 +906,6 @@ class _MetricLineChartState extends State<MetricLineChart> {
       case MetricKey.acenergy:
         raw = row['acenergy'];
         break;
-
-      // DC → ใช้ field ใหม่ vdc / idc / wdc
       case MetricKey.vdc:
         raw = row['vdc'];
         break;
@@ -965,8 +915,6 @@ class _MetricLineChartState extends State<MetricLineChart> {
       case MetricKey.wdc:
         raw = row['wdc'];
         break;
-
-      // OAT → numeric ก็ plot ได้
       case MetricKey.oat:
         raw = row['oat'];
         break;
@@ -982,6 +930,7 @@ class _MetricLineChartState extends State<MetricLineChart> {
     return null;
   }
 
+  // ✅ เปลี่ยน logic nearestIndex เป็น milliseconds ด้วย (กันข้อมูลถี่ ๆ)
   int _nearestIndex(List<_Pt> pts, Offset localPos, BuildContext ctx) {
     final box = ctx.findRenderObject() as RenderBox?;
     if (box == null) return 0;
@@ -991,19 +940,17 @@ class _MetricLineChartState extends State<MetricLineChart> {
 
     final minT = pts.first.t;
     final maxT = pts.last.t;
-    double totalSec = maxT.difference(minT).inSeconds.toDouble();
-    if (totalSec <= 0) totalSec = 1.0;
+    double totalMs = maxT.difference(minT).inMilliseconds.toDouble();
+    if (totalMs <= 0) totalMs = 1.0;
 
     final x = (localPos.dx - left).clamp(0, chartW);
-    final sec = (x / chartW) * totalSec;
-    final target = minT.add(Duration(seconds: sec.round()));
+    final ms = (x / chartW) * totalMs;
+    final target = minT.add(Duration(milliseconds: ms.round()));
 
     int best = 0;
-    int bestDiff =
-        (pts[0].t.difference(target).inMilliseconds).abs();
+    int bestDiff = (pts[0].t.difference(target).inMilliseconds).abs();
     for (int i = 1; i < pts.length; i++) {
-      final diff =
-          (pts[i].t.difference(target).inMilliseconds).abs();
+      final diff = (pts[i].t.difference(target).inMilliseconds).abs();
       if (diff < bestDiff) {
         best = i;
         bestDiff = diff;
@@ -1013,11 +960,8 @@ class _MetricLineChartState extends State<MetricLineChart> {
   }
 
   // ===== Helpers label / unit / สี =====
-
   String _metricLabel(MetricKey m) => metricLabel(m);
-
   String _unitOf(MetricKey m) => unitOf(m);
-
   Color _metricColor(MetricKey m) => metricColor(m);
 }
 
@@ -1050,15 +994,18 @@ class _ChartCanvas extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return CustomPaint(
-      painter: _ChartPainter(
-        points: points,
-        unit: unit,
-        hitIndex: hitIndex,
-        mainColor: mainColor,
-        span: span,
-        totalPoints: totalPoints,
-        visibleStartIndex: visibleStartIndex,
+    // ✅ สำคัญ: บังคับให้ CustomPaint มีขนาดเต็ม ไม่ได้เป็น 0x0
+    return SizedBox.expand(
+      child: CustomPaint(
+        painter: _ChartPainter(
+          points: points,
+          unit: unit,
+          hitIndex: hitIndex,
+          mainColor: mainColor,
+          span: span,
+          totalPoints: totalPoints,
+          visibleStartIndex: visibleStartIndex,
+        ),
       ),
     );
   }
@@ -1138,10 +1085,11 @@ class _ChartPainter extends CustomPainter {
     maxY += yPad;
 
     // ==== X range (local time) ====
+    // ✅ เปลี่ยนจาก seconds -> milliseconds (กันข้อมูลถี่ ๆ จุดทับกัน)
     final minT = points.first.t;
     final maxT = points.last.t;
-    double totalSec = maxT.difference(minT).inSeconds.toDouble();
-    if (totalSec <= 0) totalSec = 1.0;
+    double totalMs = maxT.difference(minT).inMilliseconds.toDouble();
+    if (totalMs <= 0) totalMs = 1.0;
 
     // horizontal grid + y labels
     const yDiv = 4;
@@ -1161,10 +1109,8 @@ class _ChartPainter extends CustomPainter {
       tp.text = TextSpan(
         text: '${val.toStringAsFixed(digits)} $unit',
         style: labelStyle.copyWith(
-          color:
-              isMin || isMax ? Colors.black87 : Colors.grey[600],
-          fontWeight:
-              isMin || isMax ? FontWeight.w700 : FontWeight.w500,
+          color: isMin || isMax ? Colors.black87 : Colors.grey[600],
+          fontWeight: isMin || isMax ? FontWeight.w700 : FontWeight.w500,
         ),
       );
       tp.layout();
@@ -1188,8 +1134,8 @@ class _ChartPainter extends CustomPainter {
         vAxis,
       );
 
-      final sec = totalSec * (i / xDiv);
-      final dt = minT.add(Duration(seconds: sec.round()));
+      final ms = totalMs * (i / xDiv);
+      final dt = minT.add(Duration(milliseconds: ms.round()));
       final label = _fmtTimeAxis(dt);
       tp.text = TextSpan(
         text: label,
@@ -1205,8 +1151,6 @@ class _ChartPainter extends CustomPainter {
       );
     }
 
-    // === ไม่มีเส้นแบ่งวันพิเศษแล้ว (ตามที่สั่งให้เอาออก) ===
-
     // main line + เก็บตำแหน่งจุดไว้ใช้วาด marker
     final path = Path();
     final areaPath = Path();
@@ -1214,9 +1158,10 @@ class _ChartPainter extends CustomPainter {
 
     for (int i = 0; i < points.length; i++) {
       final p = points[i];
+
       final nx = chart.left +
-          chart.width *
-              (p.t.difference(minT).inSeconds / totalSec);
+          chart.width * (p.t.difference(minT).inMilliseconds / totalMs);
+
       final ny = chart.bottom -
           chart.height * ((p.y - minY) / (maxY - minY));
 
@@ -1232,6 +1177,7 @@ class _ChartPainter extends CustomPainter {
         areaPath.lineTo(nx, ny);
       }
     }
+
     // ปิด path สำหรับพื้นที่ด้านล่าง
     if (pointPositions.isNotEmpty) {
       final last = pointPositions.last;
@@ -1283,13 +1229,12 @@ class _ChartPainter extends CustomPainter {
     }
 
     // marker + tooltip ของจุดที่เลือก
-    if (hitIndex != null &&
-        hitIndex! >= 0 &&
-        hitIndex! < points.length) {
+    if (hitIndex != null && hitIndex! >= 0 && hitIndex! < points.length) {
       final p = points[hitIndex!];
+
       final nx = chart.left +
-          chart.width *
-              (p.t.difference(minT).inSeconds / totalSec);
+          chart.width * (p.t.difference(minT).inMilliseconds / totalMs);
+
       final ny = chart.bottom -
           chart.height * ((p.y - minY) / (maxY - minY));
 
@@ -1313,8 +1258,7 @@ class _ChartPainter extends CustomPainter {
       );
 
       // ✅ คำนวณ index global ของจุดนี้ (0-based)
-      final safeTotal =
-          totalPoints > 0 ? totalPoints : points.length;
+      final safeTotal = totalPoints > 0 ? totalPoints : points.length;
       int globalIndex = visibleStartIndex + hitIndex!;
       if (globalIndex < 0) globalIndex = 0;
       if (globalIndex > safeTotal - 1) {
@@ -1369,8 +1313,6 @@ class _ChartPainter extends CustomPainter {
   // ==== formatting เวลา ====
 
   /// label ที่แกน X
-  ///  - 1D  : HH:mm
-  ///  - 7D+ : dd/MM/yy
   String _fmtTimeAxis(DateTime dt) {
     switch (span) {
       case HistorySpan.day1:
@@ -1388,8 +1330,6 @@ class _ChartPainter extends CustomPainter {
   }
 
   /// เวลาใน tooltip
-  ///  - 1D  : HH:mm:ss
-  ///  - 7D+ : dd/MM/yy HH:mm:ss
   String _fmtTimeTooltip(DateTime dt) {
     switch (span) {
       case HistorySpan.day1:
@@ -1417,6 +1357,6 @@ class _ChartPainter extends CustomPainter {
       old.hitIndex != hitIndex ||
       old.mainColor != mainColor ||
       old.span != span ||
-      old.totalPoints != totalPoints || // ✅ เช็ค field ใหม่
-      old.visibleStartIndex != visibleStartIndex; // ✅
+      old.totalPoints != totalPoints ||
+      old.visibleStartIndex != visibleStartIndex;
 }

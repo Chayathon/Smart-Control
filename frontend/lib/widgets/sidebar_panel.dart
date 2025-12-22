@@ -82,16 +82,16 @@ class _SidebarPanelState extends State<SidebarPanel>
       'สตรีมเสียง',
       () => Get.toNamed(AppRoutes.stream),
     ),
-    // _MenuItem(
-    //   Icons.monitor_heart_rounded,
-    //   'ตรวจสอบสถานะ',
-    //   () => Get.toNamed(AppRoutes.monitoring),
-    // ),
     _MenuItem(
-      Icons.phone_in_talk_rounded,
-      'SOS',
-      () => Get.toNamed(AppRoutes.sos),
+      Icons.monitor_heart_rounded,
+      'ตรวจสอบสถานะ',
+      () => Get.toNamed(AppRoutes.monitoring),
     ),
+    // _MenuItem(
+    //   Icons.phone_in_talk_rounded,
+    //   'SOS',
+    //   () => Get.toNamed(AppRoutes.sos),
+    // ),
     _MenuItem(
       Icons.logout_rounded,
       'ออกจากระบบ',
