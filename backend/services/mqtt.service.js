@@ -27,7 +27,7 @@ const pendingRequestsByZone = {};
 const lastManualByZone = new Map();
 
 function connectAndSend({
-    brokerUrl = 'mqtt://192.168.1.83:1883',
+    brokerUrl = 'mqtt://192.168.1.101:1883',
     username = 'admin',
     password = 'admin',
     statusTopic = process.env.MQTT_TOPIC_ZONE_STATUS,
