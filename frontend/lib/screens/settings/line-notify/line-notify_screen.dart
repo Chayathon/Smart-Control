@@ -193,7 +193,75 @@ class _LineNotifyScreenState extends State<LineNotifyScreen> {
             iconColor: Colors.blue,
             child: _buildLineEnableSwitch(),
           ),
+
           const SizedBox(height: 8),
+
+          // Message Start Template
+          _buildSettingCard(
+            title: 'ข้อความเมื่อเริ่มเล่น',
+            subtitle: 'แจ้งเตือนเมื่อเริ่มเล่นเพลง',
+            icon: Icons.play_circle_outline,
+            iconColor: Colors.green,
+            trailing: _buildVariableHelpTooltip(),
+            child: TextFieldBox(
+              hint: '🟢 เริ่มถ่ายทอดสดเพลง! {date} 🎵',
+              controller: _lineMessageStartCtrl,
+              maxLines: null,
+              minLines: 3,
+              keyboardType: TextInputType.multiline,
+              onChanged: (value) {
+                setState(() {
+                  _hasChanges = true;
+                });
+              },
+              textInputAction: TextInputAction.newline,
+            ),
+          ),
+          const SizedBox(height: 8),
+
+          // Message End Template
+          _buildSettingCard(
+            title: 'ข้อความเมื่อเพลงจบ',
+            subtitle: 'แจ้งเตือนเมื่อเพลงเล่นจบ',
+            icon: Icons.stop_circle_outlined,
+            iconColor: Colors.red,
+            trailing: _buildVariableHelpTooltip(),
+            child: TextFieldBox(
+              hint: '🔴 หยุดการถ่ายทอดสด {date}',
+              controller: _lineMessageEndCtrl,
+              maxLines: null,
+              minLines: 3,
+              keyboardType: TextInputType.multiline,
+              onChanged: (value) {
+                setState(() {
+                  _hasChanges = true;
+                });
+              },
+              textInputAction: TextInputAction.newline,
+            ),
+          ),
+          const SizedBox(height: 8),
+
+          // App Base URL
+          _buildSettingCard(
+            title: 'URL ของ Server',
+            subtitle: 'URL สำหรับลิงก์เปิดแอป (ใช้กับตัวแปร {link})',
+            icon: Icons.link,
+            iconColor: Colors.purple,
+            child: TextFieldBox(
+              hint: 'https://your-server.com',
+              controller: _appBaseUrlCtrl,
+              keyboardType: TextInputType.url,
+              onChanged: (value) {
+                setState(() {
+                  _hasChanges = true;
+                });
+              },
+              textInputAction: TextInputAction.done,
+            ),
+          ),
+          const SizedBox(height: 8),
+
           // Channel Access Token
           _buildSettingCard(
             title: 'Channel Access Token',
@@ -252,72 +320,6 @@ class _LineNotifyScreenState extends State<LineNotifyScreen> {
                 });
               },
               textInputAction: TextInputAction.done,
-            ),
-          ),
-          const SizedBox(height: 8),
-
-          // App Base URL
-          _buildSettingCard(
-            title: 'URL ของ Server',
-            subtitle: 'URL สำหรับลิงก์เปิดแอป (ใช้กับตัวแปร {link})',
-            icon: Icons.link,
-            iconColor: Colors.purple,
-            child: TextFieldBox(
-              hint: 'https://your-server.com',
-              controller: _appBaseUrlCtrl,
-              keyboardType: TextInputType.url,
-              onChanged: (value) {
-                setState(() {
-                  _hasChanges = true;
-                });
-              },
-              textInputAction: TextInputAction.done,
-            ),
-          ),
-          const SizedBox(height: 8),
-
-          // Message Start Template
-          _buildSettingCard(
-            title: 'ข้อความเมื่อเริ่มเล่น',
-            subtitle: 'แจ้งเตือนเมื่อเริ่มเล่นเพลง',
-            icon: Icons.play_circle_outline,
-            iconColor: Colors.green,
-            trailing: _buildVariableHelpTooltip(),
-            child: TextFieldBox(
-              hint: '🟢 เริ่มถ่ายทอดสดเพลง! {date} 🎵',
-              controller: _lineMessageStartCtrl,
-              maxLines: null,
-              minLines: 3,
-              keyboardType: TextInputType.multiline,
-              onChanged: (value) {
-                setState(() {
-                  _hasChanges = true;
-                });
-              },
-              textInputAction: TextInputAction.newline,
-            ),
-          ),
-          const SizedBox(height: 8),
-
-          // Message End Template
-          _buildSettingCard(
-            title: 'ข้อความเมื่อเพลงจบ',
-            subtitle: 'แจ้งเตือนเมื่อเพลงเล่นจบ',
-            icon: Icons.stop_circle_outlined,
-            iconColor: Colors.red,
-            trailing: _buildVariableHelpTooltip(),
-            child: TextFieldBox(
-              hint: '🔴 หยุดการถ่ายทอดสด {date}',
-              controller: _lineMessageEndCtrl,
-              maxLines: null,
-              minLines: 3,
-              keyboardType: TextInputType.multiline,
-              onChanged: (value) {
-                setState(() {
-                  _hasChanges = true;
-                });
-              },
-              textInputAction: TextInputAction.newline,
             ),
           ),
           const SizedBox(height: 8),
